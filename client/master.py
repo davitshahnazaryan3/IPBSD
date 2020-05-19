@@ -20,11 +20,6 @@ from external.openseesrun import OpenSeesRun
 from postprocessing.detailing import Detailing
 
 
-# todo, add gravity analysis with ELFM
-# todo, fix MAFC calculation, MAF to Hs
-# todo, add option for MAFC calculation, if H is provided, use it directly, if not use fitted H
-# todo, fix, should be cdf not pdf for MAFC calculation
-# todo, remove todos on fstiff, fstiff is still necessary for internal elastic section definition
 class Master:
     def __init__(self, dir):
         """
@@ -356,38 +351,3 @@ class Master:
         ductility_hard = d.get_hardening_ductility(period, say, details, sections, lp_args)
         print(f"Estimated system hardening ductility: {ductility_hard:.2f}")
         return ductility_hard
-
-
-if __name__ == "__main__":
-
-    directory = Path.cwd()
-    # Phase 1 - ready
-    csd = Master(directory)
-    csd.read_input("input.csv", "Hazard-LAquila-Soil-C.pkl")
-    lambda_ls, pga = csd.get_hazard_pga()
-    eal = csd.get_loss_curve(lambda_ls, 0.6)
-    slf_file = {0: "client/slf.xlsx"}
-    theta_max, a_max = csd.get_design_values(slf_file)
-    sls_table, gamma, mstar, delta_d, alpha_d = csd.perform_transformations(theta_max, a_max)
-    print("[PHASE] 1 completed!")
-    # Phase 2
-    sa, sd = csd.get_spectra(lambda_ls[1])
-    T_lower, T_upper = csd.get_period_range(delta_d, alpha_d, sd, sa)
-    solutions, opt_sol = csd.get_all_section_combinations(T_lower, T_upper, fstiff=0.5)
-    print("[PHASE] 2 completed!")
-    # Phase 3
-    spo = csd.i_d.initial_spo_data(round(float(opt_sol['T']), 1))
-    spo2ida_info = csd.perform_spo2ida(spo)
-    say, dy = csd.verify_mafc(spo['T'], spo2ida_info, gamma)
-    print("[PHASE] 3 completed!")
-    # Phase 4
-    forces = csd.get_action(mstar, gamma, say, pd.DataFrame.from_dict(sls_table))
-    elfm_demands = csd.run_analysis(opt_sol, list(forces['Fi']))
-    mphi_sections = csd.design_elements(elfm_demands, opt_sol, T_lower, T_upper)
-    print("[PHASE] 4 completed!")
-    # Phase 5
-    period, phi = csd.run_ma(opt_sol, T_lower, T_upper, mphi_sections)
-    print(period)
-    csd.verify_period(round(period, 2), T_lower, T_upper)
-    ductility_hard = csd.get_system_ductility(opt_sol, period, say[0], mphi_sections)
-    print("[PHASE] 5 completed!")
