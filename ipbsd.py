@@ -172,11 +172,18 @@ class IPBSD:
             raise ValueError("[EXCEPTION] Incorrect analysis type...")
 
         print("[SUCCESS] Analysis completed and demands on structural elements were estimated")
-        print(forces)
-        print(demands)
+
         """Design the structural elements"""
         # todo, look into this, target for next paper
         # sections = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper)
+
+        # print("[PHASE] 4 completed!")
+        # # Phase 5
+        # period, phi = csd.run_ma(opt_sol, T_lower, T_upper, mphi_sections)
+        # print(period)
+        # csd.verify_period(round(period, 2), T_lower, T_upper)
+        # ductility_hard = csd.get_system_ductility(opt_sol, period, say[0], mphi_sections)
+        # print("[PHASE] 5 completed!")
 
         print("[END] IPBSD was performed successfully")
 

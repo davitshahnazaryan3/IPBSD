@@ -262,11 +262,13 @@ class OpenSeesRun:
         n_cols = self.i_d.nst*(self.i_d.n_bays + 1)
         results = {"Beams": {}, "Columns": {}}
         for i in range(n_beams):
-            results["Beams"][i] = {"M": ops.eleForce(beams[i], 5), "N": ops.eleForce(beams[i], 1),
-                                   "V": abs(ops.eleForce(beams[i], 3))}
+            results["Beams"][i] = {"M": abs(max(ops.eleForce(beams[i], 5), ops.eleForce(beams[i], 11), key=abs)),
+                                   "N": abs(max(ops.eleForce(beams[i], 1), ops.eleForce(beams[i], 7), key=abs)),
+                                   "V": abs(max(ops.eleForce(beams[i], 3), ops.eleForce(beams[i], 9), key=abs))}
         for i in range(n_cols):
-            results["Columns"][i] = {"M": -ops.eleForce(columns[i], 5), "N": -abs(ops.eleForce(columns[i], 3)),
-                                     "V": abs(ops.eleForce(columns[i], 1))}
+            results["Columns"][i] = {"M": abs(max(ops.eleForce(columns[i], 5), ops.eleForce(columns[i], 11), key=abs)),
+                                     "N": abs(max(ops.eleForce(columns[i], 3), ops.eleForce(columns[i], 9), key=abs)),
+                                     "V": abs(max(ops.eleForce(columns[i], 1), ops.eleForce(columns[i], 7), key=abs))}
         return results
 
 
@@ -280,7 +282,7 @@ if __name__ == "__main__":
     csd.read_input("input.csv", "Hazard-LAquila-Soil-C.pkl")
     cs = pd.DataFrame.from_dict({'he1': [0.25], 'hi1': 0.3, 'b1': 0.25, 'h1': 0.4, 'he2': 0.25, 'hi2': 0.3, 'b2': 0.25,
                                  'h2': 0.4, 'T': 0.96})
-    op = OpenSeesRun(csd.data, cs)
+    op = OpenSeesRun(csd.data, cs, analysis=2)
     beams, columns = op.create_model()
     action = [150, 220]
     op.elfm_loads(action)

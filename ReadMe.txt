@@ -118,7 +118,6 @@ Time stamps as relative to each other, since for different input arguments it ma
 
 -> Current version main limitations and assumptions (further development necessary) vs possible solutions:
     * All input xlsx, csv etc. files will be modified to be more flexible
-	* IMPORTANT: FOR KWARGS function refer to get_emf function
 	* Add explanations on how and in which format to provide the inputs for the software
 	* Reinforced concrete moment-resisting frame -> Steel MRF, other typologies to be included
 	* 3 Performance objective limit states -> flexible for inclusion
@@ -127,9 +126,7 @@ Time stamps as relative to each other, since for different input arguments it ma
 	* Symmetric structures only -> add considerations for 3D models
 	* Single conversion factor for peak floor accelerations -> study based on Antonio's work to include regressions
 	* Code-based overstrength factors indirectly accounted for -> flexible to include
-	* Performs equivalent lateral force method of analysis for element design -> RMSA not really necessary, if assymmetric, perform MA, then combine for RMSA, add separate Gravity only analysis, add gravity + ELFM analysis
 	* Same beam cross-sections along the height/no grouping for beams -> add grouping once generic opensees model is updated to account for it
 	* Library, frameworks for GUI version - https://blog.resellerclub.com/the-6-best-python-gui-frameworks-for-developers/
 	* Considerations for shear design, will be useful also in identifying inelastic rotation capacities
-	* Haselton - softening slope definition implementation via post capping rotation capacity
 	

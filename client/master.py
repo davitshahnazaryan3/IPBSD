@@ -320,7 +320,6 @@ class Master:
         :param sections: dataframe
         :return: float, list
         """
-        # todo, verify that we don't repeat calculations from phase 2.3
         fstiff_beam = [sections["Beams"][i][0]["cracked EI"] for i in sections["Beams"]]
         fstiff_col = [sections["Columns"][i][0]["cracked EI"] for i in sections["Columns"]]
         cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x, self.data.h,
