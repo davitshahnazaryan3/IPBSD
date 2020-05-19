@@ -9,37 +9,48 @@ Sample:
 	a. Outputs
 """
 
+// Examples of each file are provided within the relevant directories //
 Input arguments are:    1. Limit EAL                Limiting economic loss value in terms of expected annual loss
                         2. Target MAFC              Target collapse safety value in terms of mean annual frequency of
                                                     exceedance
-                        3. input.csv                input file comprising of the following arguments:
-                            design_scenario: tag/id of case to be used to store results in \database
-                            PLS: performance limit states of interest
-                            ELR: expected loss ratios corresponding to PLS
-                            TR: return periods corresponding to PLS
-                            aleatory: aleatory uncertainties corresponding to PLS
-                            SLF: storey loss functions (linear, nonlinear or provided)
-                            bldg_ch: building characteristics (floor loading in kPa, roof loading in kPa, floor area)
-                            h_storeys: heights of stories
-                            mode_red: higher mode reduction factor
-                            PFA_convert: peak floor acceleration conversion factor
-                            spans_X: bay widths
-                        4. slf.csv                  Storey-loss-functions file:
+                        3. Damping                  Ratio of critical damping (default 0.05)
+                        4. Analysis type            Type of analysis for the definition of demands on the structural
+                                                    elements
+                            1 Simplified ELF        No analysis is run, calculations based on simplified expressions
+                            2 ELF                   Equivalent lateral force method of analysis
+                            3 ELF & gravity         Analysis under ELF and gravity loads
+                            4 RMSA                  Response method of spectral analysis
+                            5 RMSA & gravity        Analysis under RMSA and gravity loads
+                        5. input.csv                input file comprising of the following arguments:
+                            design_scenario:        tag/id of case to be used to store results in \database
+                            PLS:                    performance limit states of interest
+                            ELR:                    expected loss ratios corresponding to PLS
+                            TR:                     return periods corresponding to PLS
+                            aleatory:               aleatory uncertainties corresponding to PLS
+                            SLF:                    storey loss functions (linear, nonlinear or provided)
+                            bldg_ch:                building characteristics (floor loading in kPa, roof loading in kPa, floor area)
+                            h_storeys:              heights of stories
+                            mode_red:               higher mode reduction factor
+                            PFA_convert:            peak floor acceleration conversion factor
+                            spans_X:                bay widths
+                        6. slf.xlsx                 Storey-loss-functions file
+                        7. hazard.pickle            Contains information on
+                                                    a) intensity measure (IM) levels
+                                                    b) Spectral acceleration range associated with each IM
+                                                    c) Annual probability of exceedance list associated with each IM
+                                                    e.g. [['PGA',''SA(0.1)', ...], [sa1_list, sa2_list, ...],
+                                                    [apoe1_list, apoe2_list, ...]]
+                        8. spo.csv                  Static pushover curve parameter assumptions
+                                                    Currently used as input for SPO2IDA
+                                                    Features:
+                            mc:                     Hardening ductility
+                            a:                      Hardening slope
+                            ac:                     Softening slope
+                            r:                      Residual strength ratio with respect to yield strength
+                            mf:                     Fracturing ductility
+                            pw:                     Pinching weight (default 1.0)
 
-                        5. Hazard file
-
-Classes ready: external/HazardFit, client/Hazard, client/ErrorCheck,
-
---> Functionality of a software
-1. Input:
-        a. Reading of the input data and storing the information; Input - read_inputs
-        b. Reading of hazard input; Input - read_hazard
-        c. Fitting the hazard if necessary - HazardFit
-4.
-
-
-
-
+todo, modify descriptions
 Time stamps as relative to each other, since for different input arguments it may vary.
 
 -> Phase 1 - Performance objectives: 0.0 seconds, 0.0 minutes
