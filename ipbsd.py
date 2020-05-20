@@ -144,7 +144,11 @@ class IPBSD:
 
         """Get action and demands"""
         print("[PHASE] Commencing phase 4...")
-        se_rmsa = ipbsd.get_sa_at_period(sa, period_range, opt_modes["Periods"])
+        if self.analysis_type == 4 or self.analysis_type == 5:
+            se_rmsa = ipbsd.get_sa_at_period(say, sa, period_range, opt_modes["Periods"])
+        else:
+            se_rmsa = None
+
         self.num_modes = min(self.num_modes, ipbsd.data.nst)
         if self.analysis_type == 4 or self.analysis_type == 5:
             corr = ipbsd.get_correlation_matrix(opt_modes["Periods"], self.num_modes, damping=self.damping)
@@ -183,7 +187,7 @@ class IPBSD:
             raise ValueError("[EXCEPTION] Incorrect analysis type...")
 
         print("[SUCCESS] Analysis completed and demands on structural elements were estimated")
-
+        print(demands)
         """Design the structural elements"""
         # todo, look into this, target for next paper
         # sections = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper)

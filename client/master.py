@@ -202,18 +202,20 @@ class Master:
         else:
             return np.where(data >= target)[0][0]
 
-    def get_sa_at_period(self, sa, periods, periods_of_interest):
+    def get_sa_at_period(self, say, sa, periods, periods_of_interest):
         """
         Generates acceleration based on provided and target data
+        :param say: float                           Spectral acceleration at yield
         :param sa: list                             List of interest to generate from
         :param periods: list                        List used to get index of target variable
         :param periods_of_interest: list            Target variables
         :return: list                               Target values generated from list of interest
         """
         se = np.array([])
+        scaling_factor = say/sa[self.get_index(periods_of_interest[0], periods)]
         for p in periods_of_interest:
             p = round(p, 2)
-            se = np.append(se, sa[self.get_index(p, periods)])
+            se = np.append(se, sa[self.get_index(p, periods)]*scaling_factor)
         return se
 
     def get_correlation_matrix(self, periods, num_modes, damping=.05):
