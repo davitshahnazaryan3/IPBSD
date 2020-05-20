@@ -60,8 +60,9 @@ class Action:
                               'Vi': [0] * self.nst})
             # lateral forces
             for n in range(self.nst):
-                d.at[n, 'Fi'] = d['m'][n]*self.df.loc['phi'][n] * self.get_vb()/sum(map(lambda x, y: x * y, list(d['m']),
-                                                                                        list(self.df.loc['phi'])))
+                d.at[n, 'Fi'] = d['m'][n]*self.df.loc['phi'][n] * self.get_vb() / \
+                                sum(map(lambda x, y: x * y, list(d['m']), list(self.df.loc['phi'])))
+
             # base shear at each storey level
             for n in range(self.nst):
                 d.at[n, 'Vi'] = sum(fi for fi in d['Fi'][n:self.nst])
@@ -91,6 +92,7 @@ class Action:
                 M[st][st] = masses[st]
             identity = np.ones((1, self.nst))
 
+            # Modal parameters
             modes = self.opt_modes["Modes"]
             periods = self.opt_modes["Periods"]
             part_factor = np.zeros(self.num_modes)
@@ -99,6 +101,7 @@ class Action:
                 modes = modes_transposed[0: self.nst, mode: mode+1]
                 part_factor[mode] = (modes.transpose().dot(M)).dot(identity.transpose()) / \
                                     (modes.transpose().dot(M)).dot(modes)
+
             # Generating the action
             forces = np.zeros([self.nst, self.num_modes])
             # lateral loads

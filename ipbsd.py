@@ -137,6 +137,7 @@ class IPBSD:
         print("[SUCCESS] SPO2IDA was performed")
 
         """Yield strength optimization for MAFC and verification"""
+        # todo, overstrength consideration, maybe take it as 1.3 to 1.5 as an initial estimate
         overstrength = 1.0
         say, dy = ipbsd.verify_mafc(period, spo2ida_data, part_factor, self.target_MAFC, overstrength, hazard="Fitted")
         print("[SUCCESS] MAFC was validated")
@@ -147,6 +148,8 @@ class IPBSD:
         self.num_modes = min(self.num_modes, ipbsd.data.nst)
         if self.analysis_type == 4 or self.analysis_type == 5:
             corr = ipbsd.get_correlation_matrix(opt_modes["Periods"], self.num_modes, damping=self.damping)
+        else:
+            corr = None
         forces = ipbsd.get_action(opt_sol, say, pd.DataFrame.from_dict(table_sls),
                                   ipbsd.data.w_seismic, self.analysis_type, self.num_modes, opt_modes, modal_sa=se_rmsa)
         print("[SUCCESS] Actions on the structure for analysis were estimated")
@@ -165,8 +168,16 @@ class IPBSD:
                     demands[f"Mode{mode+1}"] = ipbsd.run_analysis(self.analysis_type, opt_sol, list(forces["Fi"][mode]))
                 else:
                     demands[f"Mode{mode+1}"] = ipbsd.run_analysis(self.analysis_type, opt_sol, list(forces["Fi"][mode]))
+            demands = ipbsd.perform_cqc(corr, demands)
             if self.analysis_type == 5:
-                demands["Gravity"] = ipbsd.run_analysis(self.analysis_type, opt_sol, grav_loads=list(forces["G"]))
+                demands_gravity = ipbsd.run_analysis(self.analysis_type, opt_sol, grav_loads=list(forces["G"]))
+
+                # Combining gravity and RSMA results
+                for eleType in demands_gravity.keys():
+                    for ele in demands_gravity[eleType].keys():
+                        demands[eleType][ele]["M"] = demands[eleType][ele]["M"] + demands_gravity[eleType][ele]["M"]
+                        demands[eleType][ele]["N"] = demands[eleType][ele]["N"] + demands_gravity[eleType][ele]["N"]
+                        demands[eleType][ele]["V"] = demands[eleType][ele]["V"] + demands_gravity[eleType][ele]["V"]
 
         else:
             raise ValueError("[EXCEPTION] Incorrect analysis type...")
@@ -206,7 +217,7 @@ if __name__ == "__main__":
     :param mafc_target: float                   MAFC target performance objective    
     """
     # Add input arguments
-    analysis_type = 3
+    analysis_type = 4
     input_file = "input.csv"
     hazard_file = "Hazard-LAquila-Soil-C.pkl"
     slf_file = "slf.xlsx"

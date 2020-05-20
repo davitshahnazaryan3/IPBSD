@@ -73,12 +73,10 @@ class OpenSeesRun:
             nodetag = int(str(1+bay)+'0')
             ops.node(nodetag, xloc, 0, zloc)
             ops.fix(nodetag, 1, 1, 1, 1, 1, 1)
-            # print(f"Node {nodetag}: {xloc}, {zloc}")
             for st in range(1, self.i_d.nst + 1):
                 zloc += self.i_d.h[st-1]
                 nodetag = int(str(1+bay)+str(st))
                 ops.node(nodetag, xloc, 0, zloc)
-                # print(f"Node {nodetag}: {xloc}, {zloc}")
             if bay == int(self.i_d.n_bays):
                 pass
             else:
@@ -251,24 +249,35 @@ class OpenSeesRun:
         ops.analyze(10)
         ops.loadConst("-time", 0.0)
 
-    def define_recorders(self, beams, columns):
+    def define_recorders(self, beams, columns, analysis):
         """
         recording results
         :param beams: list                          Beam element tags
         :param columns: list                        Column element tags
+        :param analysis: int                        Analysis type
         :return: dict                               Demands on beams and columns
         """
         n_beams = self.i_d.nst*self.i_d.n_bays
         n_cols = self.i_d.nst*(self.i_d.n_bays + 1)
         results = {"Beams": {}, "Columns": {}}
-        for i in range(n_beams):
-            results["Beams"][i] = {"M": abs(max(ops.eleForce(beams[i], 5), ops.eleForce(beams[i], 11), key=abs)),
-                                   "N": abs(max(ops.eleForce(beams[i], 1), ops.eleForce(beams[i], 7), key=abs)),
-                                   "V": abs(max(ops.eleForce(beams[i], 3), ops.eleForce(beams[i], 9), key=abs))}
-        for i in range(n_cols):
-            results["Columns"][i] = {"M": abs(max(ops.eleForce(columns[i], 5), ops.eleForce(columns[i], 11), key=abs)),
-                                     "N": abs(max(ops.eleForce(columns[i], 3), ops.eleForce(columns[i], 9), key=abs)),
-                                     "V": abs(max(ops.eleForce(columns[i], 1), ops.eleForce(columns[i], 7), key=abs))}
+        if analysis != 4 and analysis != 5:
+            for i in range(n_beams):
+                results["Beams"][i] = {"M": abs(max(ops.eleForce(beams[i], 5), ops.eleForce(beams[i], 11), key=abs)),
+                                       "N": abs(max(ops.eleForce(beams[i], 1), ops.eleForce(beams[i], 7), key=abs)),
+                                       "V": abs(max(ops.eleForce(beams[i], 3), ops.eleForce(beams[i], 9), key=abs))}
+            for i in range(n_cols):
+                results["Columns"][i] = {"M": abs(max(ops.eleForce(columns[i], 5), ops.eleForce(columns[i], 11), key=abs)),
+                                         "N": abs(max(ops.eleForce(columns[i], 3), ops.eleForce(columns[i], 9), key=abs)),
+                                         "V": abs(max(ops.eleForce(columns[i], 1), ops.eleForce(columns[i], 7), key=abs))}
+        else:
+            for i in range(n_beams):
+                results["Beams"][i] = {"M": np.array([ops.eleForce(beams[i], 5), ops.eleForce(beams[i], 11)]),
+                                       "N": np.array([ops.eleForce(beams[i], 1), ops.eleForce(beams[i], 7)]),
+                                       "V": np.array([ops.eleForce(beams[i], 3), ops.eleForce(beams[i], 9)])}
+            for i in range(n_cols):
+                results["Columns"][i] = {"M": np.array([ops.eleForce(columns[i], 5), ops.eleForce(columns[i], 11)]),
+                                         "N": np.array([ops.eleForce(columns[i], 3), ops.eleForce(columns[i], 9)]),
+                                         "V": np.array([ops.eleForce(columns[i], 1), ops.eleForce(columns[i], 7)])}
         return results
 
 

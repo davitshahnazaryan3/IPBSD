@@ -232,6 +232,34 @@ class Master:
                                                             4*damping**2*(periods[j]/periods[i])))
         return corr
 
+    def perform_cqc(self, corr, demands):
+        """
+        Performs CQC combination
+        :param corr: ndarray                        Correlation matrix
+        :param demands: dict                        Demands on structural elements
+        :return: response                           Critical response demand on structural elements
+        """
+        num_modes = len(corr)
+        response = {}
+        for eleType in demands["Mode1"].keys():
+            response[eleType] = {}
+            for ele in demands["Mode1"][eleType].keys():
+                m_temp = np.zeros(2)
+                n_temp = np.zeros(2)
+                v_temp = np.zeros(2)
+                for i in range(num_modes):
+                    for j in range(num_modes):
+                        m_temp = m_temp + corr[i][j]*demands[f"Mode{i+1}"][eleType][ele]["M"] * \
+                                 demands[f"Mode{j+1}"][eleType][ele]["M"]
+                        n_temp = n_temp + corr[i][j]*demands[f"Mode{i+1}"][eleType][ele]["N"] * \
+                                 demands[f"Mode{j+1}"][eleType][ele]["N"]
+                        v_temp = v_temp + corr[i][j]*demands[f"Mode{i+1}"][eleType][ele]["V"] * \
+                                 demands[f"Mode{j+1}"][eleType][ele]["V"]
+
+                response[eleType][ele] = {"M": max(np.sqrt(m_temp)), "N": max(np.sqrt(n_temp)),
+                                          "V": max(np.sqrt(v_temp))}
+        return response
+
     def get_action(self, solution, say, df, gravity_loads, analysis, num_modes=None, opt_modes=None, modal_sa=None):
         """
         gets demands on the structure
@@ -292,11 +320,15 @@ class Master:
             beams, columns = op.create_model()
             if lat_action is not None:
                 op.elfm_loads(lat_action)
+            # gravity load inclusion
             if analysis == 3 or analysis == 5:
                 if grav_loads is not None:
                     op.gravity_loads(grav_loads, beams)
             op.static_analysis()
-            response = op.define_recorders(beams, columns)
+            # Sets analysis type 3, so that critical demand values are recorded
+            if grav_loads is not None:
+                analysis = 3
+            response = op.define_recorders(beams, columns, analysis)
         return response
 
     def design_elements(self, demands, sections, tlower, tupper):
