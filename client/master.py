@@ -236,7 +236,7 @@ class Master:
 
     def perform_cqc(self, corr, demands):
         """
-        Performs CQC combination
+        Performs complete quadratic combination (CQC)
         :param corr: ndarray                        Correlation matrix
         :param demands: dict                        Demands on structural elements
         :return: response                           Critical response demand on structural elements
