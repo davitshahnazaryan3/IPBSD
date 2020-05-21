@@ -64,7 +64,7 @@ Additional explanations of each file are provided within the relevant directorie
     
 </a><font color=blue><div style="text-align: right">[up](#contents)
 
-**Step by step procedure**<a id='process'>
+### Step by step procedure<a id='process'>
 
 -> **Phase 1 - Performance objectives:**<br/>
 
@@ -139,7 +139,7 @@ Additional explanations of each file are provided within the relevant directorie
 
 </a><font color=blue><div style="text-align: right">[up](#contents)
   
-**Future upgrade objectives**<a id='future'>
+### Future upgrade objectives<a id='future'>
 
 * [ ] All input xlsx, csv etc. files will be modified to be more flexible
 
