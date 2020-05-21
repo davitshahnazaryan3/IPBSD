@@ -21,37 +21,46 @@ Additional explanations of each file are provided within the relevant directorie
 3. **Damping** - Ratio of critical damping (default 0.05)
 
 4. **Analysis type** - Type of analysis for the definition of demands on the structural elements<br/>
-	1. Simplified ELF -        	No analysis is run, calculations based on simplified expressions<br /> 
-	2. ELF -                  	Equivalent lateral force method of analysis<br/>
-	3. ELF & gravity -       	Analysis under ELF and gravity loads<br/>
-	4. RMSA -                	Response method of spectral analysis<br/.
-	5. RMSA & gravity -      	Analysis under RMSA and gravity loads<br/>
+
+		1. Simplified ELF -        	No analysis is run, calculations based on simplified expressions
+		2. ELF -                  	Equivalent lateral force method of analysis
+		3. ELF & gravity -       	Analysis under ELF and gravity loads
+		4. RMSA -                	Response method of spectral analysis
+		5. RMSA & gravity -      	Analysis under RMSA and gravity loads
+		
 5. **input.csv** - input file comprising of the following arguments:<br/>
-    - design_scenario -       		tag/id of case to be used to store results in \database<br/>
-    - PLS -                   		performance limit states of interest<br/>
-    - ELR -                    		expected loss ratios corresponding to PLS<br/>
-    - TR -                     		return periods corresponding to PLS<br/>
-    - aleatory -               		aleatory uncertainties corresponding to PLS<br/>
-    - SLF -                  		storey loss functions (linear, nonlinear or provided)<br/>
-    - bldg_ch -               		building characteristics (floor loading in kPa, roof loading in kPa, floor area)<br/>
-    - h_storeys -             		heights of stories<br/>
-    - mode_red -              		higher mode reduction factor<br/>
-    - PFA_convert -            		peak floor acceleration conversion factor<br/>
-    - spans_X -               		bay widths<br/>
+
+    	- design_scenario -       		tag/id of case to be used to store results in \database
+    	- PLS -                   		performance limit states of interest
+    	- ELR -                    		expected loss ratios corresponding to PLS
+    	- TR -                     		return periods corresponding to PLS
+    	- aleatory -               		aleatory uncertainties corresponding to PLS<
+   	- SLF -                  		storey loss functions (linear, nonlinear or provided)
+    	- bldg_ch -               		building characteristics (floor loading in kPa, roof loading in kPa, floor area)
+    	- h_storeys -             		heights of stories
+    	- mode_red -              		higher mode reduction factor
+    	- PFA_convert -            		peak floor acceleration conversion factor
+    	- spans_X -               		bay widths
+	
 6. **slf.xlsx** - Storey-loss-functions file<br/>
+
 7. **hazard.pickle** - Contains information on<br/>
-				a) intensity measure (IM) levels<br/>
-				b) Spectral acceleration range associated with each IM<br/>
-				c) Annual probability of exceedance list associated with each IM e.g. [['PGA',''SA(0.1)', ...], [sa1_list, sa2_list, ...], [apoe1_list, apoe2_list, ...]]<br/>
+
+				a) intensity measure (IM) levels
+				b) Spectral acceleration range associated with each IM
+				c) Annual probability of exceedance list associated with each IM,
+				e.g. [['PGA',''SA(0.1)', ...], [sa1_list, sa2_list, ...], [apoe1_list, apoe2_list, ...]]
+				
 8. **spo.csv** - Static pushover curve parameter assumptions<br/>
-                            	Currently used as input for SPO2IDA<br/>
-                            	Features:<br/>
-	- mc - 			Hardening ductility<br/>
-	- a - 			Hardening slope<br/>
-	- ac - 			Softening slope<br/>
-	- r -			Residual strength ratio with respect to yield strength<br/>
-	- mf -			Fracturing ductility<br/>
-	- pw - 			Pinching weight (default 1.0)<br/>
+
+                            		Currently used as input for SPO2IDA
+                            		Features:
+		- mc - 			Hardening ductility
+		- a - 			Hardening slope
+		- ac - 			Softening slope
+		- r -			Residual strength ratio with respect to yield strength
+		- mf -			Fracturing ductility
+		- pw - 			Pinching weight (default 1.0)
     
 </a><font color=blue><div style="text-align: right">[up](#contents)
 
@@ -61,7 +70,7 @@ Additional explanations of each file are provided within the relevant directorie
 
 		1. Define limit EAL (economic loss) and target MAFC (collapse safety) - Input
 		and supply other input arguments; methods: read_inputs
-		2. Supply seismic hazard and perform second-order fitting - Input, Hazard<br/>
+		2. Supply seismic hazard and perform second-order fitting - Input, Hazard
 			a. Mean annual frequency of exceeding performance limit states
 			b. Peak ground acceleration at limit states relevant for EAL (e.g. SLS)
 			methods: read_hazard
@@ -115,7 +124,8 @@ Additional explanations of each file are provided within the relevant directorie
 			
 -> **Phase 5 - Detailing:**<br/>
 
-        	1. Use the optimal solution and estimate Period based on cracked section properties of 4.3d - Detailing, 					CrossSection
+        	1. Use the optimal solution and estimate Period based on cracked section properties of 4.3d - Detailing,
+			CrossSection
         		a. Fundamental period
         		b. Verify that the period is within the bounds
         	2. Estimate system hardening ductility - Detailing
@@ -131,17 +141,28 @@ Additional explanations of each file are provided within the relevant directorie
   
 **Future upgrade objectives**<a id='future'>
 
-* All input xlsx, csv etc. files will be modified to be more flexible
-* Add explanations on how and in which format to provide the inputs for the software
-* Reinforced concrete moment-resisting frame -> Steel MRF, other typologies to be included
-* 3 Performance objective limit states -> flexible for inclusion
-* Homogeneous storey-loss-functions along the height -> flexible for inclusion
-* SPO2IDA tool for collapse fragility definition -> ML algorithms to avoid using SPO2IDA, needs extensive studies and analysis, possible data collection
-* Symmetric structures only -> add considerations for 3D models
-* Single conversion factor for peak floor accelerations -> study based on Antonio's work to include regressions
-* Code-based overstrength factors indirectly accounted for -> flexible to include
-* Same beam cross-sections along the height/no grouping for beams -> add grouping once generic opensees model is updated to account for it
-* Considerations for shear design, will be useful also in identifying inelastic rotation capacities
+* [x] All input xlsx, csv etc. files will be modified to be more flexible
+
+* [ ] Add explanations on how and in which format to provide the inputs for the software
+
+* [ ] Reinforced concrete moment-resisting frame -> Steel MRF, other typologies to be included
+
+* [ ] 3 Performance objective limit states -> flexible for inclusion
+
+* [ ] Homogeneous storey-loss-functions along the height -> flexible for inclusion
+
+* [ ] SPO2IDA tool for collapse fragility definition -> ML algorithms to avoid using SPO2IDA, needs extensive studies and analysis, possible data collection
+
+* [ ] Symmetric structures only -> add considerations for 3D models
+
+* [ ] Single conversion factor for peak floor accelerations -> study based on Antonio's work to include regressions
+
+* [ ] Code-based overstrength factors indirectly accounted for -> flexible to include
+
+* [ ] Same beam cross-sections along the height/no grouping for beams -> add grouping once generic opensees model is updated to account for it
+
+* [ ] Considerations for shear design, will be useful also in identifying inelastic rotation capacities
+
 
 </a><font color=blue><div style="text-align: right">[up](#contents)
   
