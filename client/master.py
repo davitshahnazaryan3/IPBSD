@@ -345,8 +345,10 @@ class Master:
     def design_elements(self, demands, sections, tlower, tupper):
         """
         Runs M-phi to optimize for reinforcement for each section
-        :param demands: dict                        Demands identified from a structural analysis (ELFM+gravity)
+        :param demands: DataFrame or dict           Demands identified from a structural analysis (lateral+gravity)
         :param sections: DataFrame                  Solution including section information
+        :param tlower: float                        Lower period limit
+        :param tupper: float                        Upper period limit
         :return: dict                               Designed element properties from the moment-curvature relationship
         """
         d = Detailing(demands, self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
