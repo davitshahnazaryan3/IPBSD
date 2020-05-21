@@ -295,9 +295,10 @@ class Master:
         if analysis == 1:
             print("[INITIATE] Starting simplified approximate demand estimation...")
             response = pd.DataFrame({'Mbi': np.zeros(self.data.nst),
-                                     'Mci': np.zeros(self.data.nst)})
+                                     'Mci': np.zeros(self.data.nst),
+                                     'Mce': np.zeros(self.data.nst)})
 
-            base_shear = yield_sa*solution["Mstar"]*solution["Part Factor"]*self.g / self.data.n_seismic
+            base_shear = yield_sa*solution["Mstar"]*solution["Part Factor"]*self.g
             masses = self.data.masses / self.data.n_seismic
             modes = [sls[str(st+1)]['phi'] for st in range(self.data.nst)]
             # lateral forces
@@ -316,7 +317,15 @@ class Master:
                     response['Mbi'][st] = 1/2/self.data.n_bays * self.data.h[st]/2 * (shear[st] + shear[st+1])
                 else:
                     response['Mbi'][st] = 1/2/self.data.n_bays * self.data.h[st]/2 * shear[st]
-                response['Mci'][st] = 1/2/self.data.n_bays * 0.6 * self.data.h[st] * shear[st]
+                # The following is based on assumption that beam stiffness effects are neglected
+                ei_external = solution[f"he{st+1}"]**4
+                ei_internal = solution[f"hi{st+1}"]**4
+                ei_ratio = ei_internal / ei_external
+                ei_total = 2 + ei_ratio*(self.data.n_bays - 1)
+                shear_external = shear[st] / ei_total
+                shear_internal = shear_external * ei_ratio
+                response['Mci'][st] = 0.6 * self.data.h[st] * shear_internal
+                response['Mce'][st] = 0.6 * self.data.h[st] * shear_external
         else:
             op = OpenSeesRun(self.data, solution, analysis)
             beams, columns = op.create_model()

@@ -1,0 +1,42 @@
+Files that were modified
+ipbsd
+
+
+
+
+Master file
+IPBSD
+
+-> Client:
+ErrorCheck              ready
+Hazard                  ready
+Input                   ready
+Master
+SLF                     ready
+SPO                     redundant
+
+-> External:
+CrossSection            ready
+GetT1                   ready
+HazardFit               ready
+MomentCurvatureRC
+OpenSeesRun             ready
+Spo2ida_call            ready as a function
+
+-> calculations:
+DesignLimits            ready
+Hazard                  ready
+LossCurve               ready
+PeriodRange             ready
+Spectra                 ready
+Transformations         ready
+
+-> postprocessing
+Action                  ready
+Detailing
+Plasticity
+
+-> verifications
+EALCheck                ready
+MAFCCheck               ready
+PeriodCheck

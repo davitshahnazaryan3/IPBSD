@@ -137,7 +137,6 @@ class IPBSD:
         print("[SUCCESS] SPO2IDA was performed")
 
         """Yield strength optimization for MAFC and verification"""
-        # todo, overstrength consideration, maybe take it as 1.3 to 1.5 as an initial estimate
         overstrength = 1.0
         say, dy = ipbsd.verify_mafc(period, spo2ida_data, part_factor, self.target_MAFC, overstrength, hazard="Fitted")
         print("[SUCCESS] MAFC was validated")
@@ -187,7 +186,8 @@ class IPBSD:
             raise ValueError("[EXCEPTION] Incorrect analysis type...")
 
         print("[SUCCESS] Analysis completed and demands on structural elements were estimated")
-        print(demands)
+
+        # Estimating Vy based on Capacities of elements (preliminary, subject to change or removal)
         """Design the structural elements"""
         # todo, look into this, target for next paper
         # sections = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper)
@@ -221,7 +221,7 @@ if __name__ == "__main__":
     :param mafc_target: float                   MAFC target performance objective    
     """
     # Add input arguments
-    analysis_type = 4
+    analysis_type = 1
     input_file = "input.csv"
     hazard_file = "Hazard-LAquila-Soil-C.pkl"
     slf_file = "slf.xlsx"
