@@ -9,7 +9,7 @@ Design framework based on limiting economic losses, i.e. expected annual loss (E
 3. [Step by step procedures](#process)
 4. [Future upgrade objectives](#future)
 
-### Input arguments and files <a id='research'>
+### Published journal articles and conference papers <a id='research'>
 
 Literature:
 
