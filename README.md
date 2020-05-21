@@ -20,11 +20,11 @@ Additional explanations of each file are provided within the relevant directorie
 3. Damping                  Ratio of critical damping (default 0.05)
 4. Analysis type            Type of analysis for the definition of demands on the structural
                             elements<br/>
-	1. Simplified ELF        	No analysis is run, calculations based on simplified expressions<br/>		
+	1. Simplified ELF        	No analysis is run, calculations based on simplified expressions<br /> 
 	2. ELF                   	Equivalent lateral force method of analysis<br/>
 	3. ELF & gravity         	Analysis under ELF and gravity loads<br/>
-	4. RMSA                  	Response method of spectral analysis<br/>
-    5. RMSA & gravity        	Analysis under RMSA and gravity loads<br/>
+	4. RMSA                  	Response method of spectral analysis<br/.
+	5. RMSA & gravity        	Analysis under RMSA and gravity loads<br/>
 5. input.csv                input file comprising of the following arguments:<br/>
     - design_scenario:        tag/id of case to be used to store results in \database<br/>
     - PLS:                    performance limit states of interest<br/>
