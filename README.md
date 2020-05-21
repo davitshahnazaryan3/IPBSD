@@ -46,21 +46,21 @@ Additional explanations of each file are provided within the relevant directorie
 
 7. **hazard.pickle** - Contains information on<br/>
 
-		a) intensity measure (IM) levels
-		b) Spectral acceleration range associated with each IM
-		c) Annual probability of exceedance list associated with each IM,
-		e.g. [['PGA',''SA(0.1)', ...], [sa1_list, sa2_list, ...], [apoe1_list, apoe2_list, ...]]
+        a) intensity measure (IM) levels
+        b) Spectral acceleration range associated with each IM
+        c) Annual probability of exceedance list associated with each IM,
+        e.g. [['PGA',''SA(0.1)', ...], [sa1_list, sa2_list, ...], [apoe1_list, apoe2_list, ...]]
 				
 8. **spo.csv** - Static pushover curve parameter assumptions<br/>
 
-		Currently used as input for SPO2IDA
-		Features:
-		- mc -			Hardening ductility
-		- a -			Hardening slope
-		- ac - 			Softening slope
-		- r -			Residual strength ratio with respect to yield strength
-		- mf -			Fracturing ductility
-		- pw - 			Pinching weight (default 1.0)
+        Currently used as input for SPO2IDA
+        Features:
+        - mc -                    	Hardening ductility
+        - a -                    	Hardening slope
+        - ac -                    	Softening slope
+        - r -                    	Residual strength ratio with respect to yield strength
+        - mf -                    	Fracturing ductility
+        - pw -                    	Pinching weight (default 1.0)
     
 </a><font color=blue><div style="text-align: right">[up](#contents)
 
