@@ -22,25 +22,25 @@ Additional explanations of each file are provided within the relevant directorie
 
 4. **Analysis type** - Type of analysis for the definition of demands on the structural elements<br/>
 
-		1. Simplified ELF -        	No analysis is run, calculations based on simplified expressions
-		2. ELF -                  	Equivalent lateral force method of analysis
-		3. ELF & gravity -       	Analysis under ELF and gravity loads
-		4. RMSA -                	Response method of spectral analysis
-		5. RMSA & gravity -      	Analysis under RMSA and gravity loads
+        1. Simplified ELF -        	No analysis is run, calculations based on simplified expressions
+        2. ELF -                  	Equivalent lateral force method of analysis
+        3. ELF & gravity -       	Analysis under ELF and gravity loads
+        4. RMSA -                	Response method of spectral analysis
+        5. RMSA & gravity -      	Analysis under RMSA and gravity loads
 		
 5. **input.csv** - input file comprising of the following arguments:<br/>
 
-    		design_scenario -       	tag/id of case to be used to store results in \database
-    		PLS -                   	performance limit states of interest
-    		ELR -                    	expected loss ratios corresponding to PLS
-    		TR -                     	return periods corresponding to PLS
-    	 	aleatory -               	aleatory uncertainties corresponding to PLS
-		SLF -                  		storey loss functions (linear, nonlinear or provided)
-		bldg_ch -               	building characteristics (floor loading in kPa, roof loading in kPa, floor area)
-    		h_storeys -             	heights of stories
-    	 	mode_red -              	higher mode reduction factor
-    		PFA_convert -            	peak floor acceleration conversion factor
-    		spans_X -               	bay widths
+    	design_scenario -       	tag/id of case to be used to store results in \database
+    	PLS -                   	performance limit states of interest
+    	ELR -                    	expected loss ratios corresponding to PLS
+    	TR -                     	return periods corresponding to PLS
+        aleatory -               	aleatory uncertainties corresponding to PLS
+        SLF -                  		storey loss functions (linear, nonlinear or provided)
+        bldg_ch -               	building characteristics (floor loading in kPa, roof loading in kPa, floor area)
+        h_storeys -             	heights of stories
+        mode_red -              	higher mode reduction factor
+        PFA_convert -            	peak floor acceleration conversion factor
+        spans_X -               	bay widths
 	
 6. **slf.xlsx** - Storey-loss-functions file<br/>
 
