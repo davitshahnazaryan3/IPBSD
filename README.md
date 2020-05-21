@@ -55,73 +55,81 @@ Additional explanations of each file are provided within the relevant directorie
     
 </a><font color=blue><div style="text-align: right">[up](#contents)
 
-**Step by step procedure** (#process)
+**Step by step procedure**<a id='process'>
 
 -> **Phase 1 - Performance objectives:**<br/>
 
 		1. Define limit EAL (economic loss) and target MAFC (collapse safety) - Input
-		and supply other input arguments; methods: read_inputs<br/>
+		and supply other input arguments; methods: read_inputs
 		2. Supply seismic hazard and perform second-order fitting - Input, Hazard<br/>
-			a. Mean annual frequency of exceeding performance limit states<br/>
+			a. Mean annual frequency of exceeding performance limit states
 			b. Peak ground acceleration at limit states relevant for EAL (e.g. SLS)
-			methods: read_hazard<br/>
-		3. Get the loss curve - LossCurve, EALCheck<br/>
-			a. EAL calculated<br/>
-			b. EAL verification<br/>
-		* if EAL < EAL limit, continue, otherwise update performance objectives in Step 3<br/>
+			methods: read_hazard
+		3. Get the loss curve - LossCurve, EALCheck
+			a. EAL calculated
+			b. EAL verification
+		* if EAL < EAL limit, continue, otherwise update performance objectives in Step 3
 		4. Supply storey loss functions, or relevant parameters (e.g. HAZUS) - SLF
-		and Get design engineering demand parameters (EDPs) - DesignLimits<br/>
-			a. Peak storey drift, PSD<br/>
-			b. Peak floor acceleration, PFA<br/>
-		5. Perform design to spectral value transformations of EDPs - Transformations<br/>
-			a. Effective first mode mass<br/>
-			b. First mode participation factor<br/>
-			c. Design spectral displacement<br/>
-			d. Design spectral acceleration<br/>
+		and Get design engineering demand parameters (EDPs) - DesignLimits
+			a. Peak storey drift, PSD
+			b. Peak floor acceleration, PFA
+		5. Perform design to spectral value transformations of EDPs - Transformations
+			a. Effective first mode mass
+			b. First mode participation factor
+			c. Design spectral displacement
+			d. Design spectral acceleration
+			
 -> **Phase 2 - Building information:** <br/>
 
-		1. Get design spectra at limit states relevant for EAL (e.g. SLS) - Spectra<br/>
-			a. Sa and Sd<br/>
-		2. Get feasible period range - PeriodRange<br/>
-			a. Lower period bound<br/>
-			b. Upper period bound<br/>
+		1. Get design spectra at limit states relevant for EAL (e.g. SLS) - Spectra
+			a. Sa and Sd
+		2. Get feasible period range - PeriodRange
+			a. Lower period bound
+			b. Upper period bound
 		3. Optimization for fundamental period to identify all possible structural solutions within the period range -
-		CrossSection, GetT1<br/>
-			a. All solutions meeting the period range condition<br/>
-			b. Optimal solution based on least weight<br/>
+		CrossSection, GetT1
+			a. All solutions meeting the period range condition
+			b. Optimal solution based on least weight
+			
 -> **Phase 3 - Collapse safety consideration:** <br/>
-		1. Identify possible static pushover curve (SPO) information as input for SPO2IDA - Input<br/>
-		2. Perform SPO2IDA and derive collapse fragility function<br/>
-		    a. IDA curves<br/>
-		    b. Fractiles of R at collapse<br/>
-		3. Perform optimization for MAFC - MAFCCheck<br/>
-            a. Spectral acceleration at yield<br/>
-            b. Yield displacement<br/>
+
+		1. Identify possible static pushover curve (SPO) information as input for SPO2IDA - Input
+		2. Perform SPO2IDA and derive collapse fragility function
+		    	a. IDA curves<br/>
+		    	b. Fractiles of R at collapse
+		3. Perform optimization for MAFC - MAFCCheck
+            		a. Spectral acceleration at yield
+            		b. Yield displacement
 -> **Phase 4 - Design:**<br/>
-        1. Identify design actions on the structure - Action<br/>
-            a. Lateral forces<br/>
-        2. Perform ELFM and identify demands on the structural members - OpenSeesRun<br/>
-            a. Demands<br/>
-        3. Perform moment-curvature sectional analysis to identify the necessary reinforcement, includes capacity design
-           requirements per Eurocode - MPhi, Detailing<br/>
-            a. Reinforcement ratios<br/>
-            b. Moment capacities<br/>
-            c. Curvature ductility<br/>
-            d. Cracked section propertis<br/>
+
+        	1. Identify design actions on the structure - Action
+           		a. Lateral forces
+        	2. Perform ELFM and identify demands on the structural members - OpenSeesRun
+            		a. Demands
+        	3. Perform moment-curvature sectional analysis to identify the necessary reinforcement, includes capacity design
+           		requirements per Eurocode - MPhi, Detailing
+            		a. Reinforcement ratios
+            		b. Moment capacities
+            		c. Curvature ductility
+            		d. Cracked section propertis
+			
 -> **Phase 5 - Detailing:**<br/>
-        1. Use the optimal solution and estimate Period based on cracked section properties of 4.3d - Detailing, CrossSection<br/>
-        	a. Fundamental period<br/>
-        	b. Verify that the period is within the bounds<br/>
-        2. Estimate system hardening ductility - Detailing<br/>
-        	a. System hardening ductility<br/>
-        ***3. todo, add estimations of other parameters of SPO curve***<br/>
-        X. Check for conditions met, if non met, return to 3.1 and repeat until conditions are met - Detailing<br/>
+
+        	1. Use the optimal solution and estimate Period based on cracked section properties of 4.3d - Detailing, 					CrossSection
+        		a. Fundamental period
+        		b. Verify that the period is within the bounds
+        	2. Estimate system hardening ductility - Detailing
+        		a. System hardening ductility
+        	***3. todo, add estimations of other parameters of SPO curve***<br/>
+        	X. Check for conditions met, if non met, return to 3.1 and repeat until conditions are met - Detailing
+		
 -> ***Phase 6 - Modifications and Rerunning of Phases if necessary:***<br/>
-        1.<br/>
+
+        	1.
 
 </a><font color=blue><div style="text-align: right">[up](#contents)
   
-**Future upgrade objectives** (#future)
+**Future upgrade objectives**<a id='future'>
 
 * All input xlsx, csv etc. files will be modified to be more flexible
 * Add explanations on how and in which format to provide the inputs for the software
