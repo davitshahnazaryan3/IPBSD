@@ -9,7 +9,8 @@ Design framework based on limiting economic losses, i.e. expected annual loss (E
 3. [Future upgrade objectives](#future)
 
 
-### Input arguments and files <a id='input'></a><font color=blue><div style="text-align: right">[up](#contents)
+### Input arguments and files 
+<a id='input'></a><font color=blue><div style="text-align: right">[up](#contents)
 
 
 
