@@ -30,33 +30,33 @@ Additional explanations of each file are provided within the relevant directorie
 		
 5. **input.csv** - input file comprising of the following arguments:<br/>
 
-    	- design_scenario -       		tag/id of case to be used to store results in \database
-    	- PLS -                   		performance limit states of interest
-    	- ELR -                    		expected loss ratios corresponding to PLS
-    	- TR -                     		return periods corresponding to PLS
-    	- aleatory -               		aleatory uncertainties corresponding to PLS
-   	- SLF -                  		storey loss functions (linear, nonlinear or provided)
-    	- bldg_ch -               		building characteristics (floor loading in kPa, roof loading in kPa, floor area)
-    	- h_storeys -             		heights of stories
-    	- mode_red -              		higher mode reduction factor
-    	- PFA_convert -            		peak floor acceleration conversion factor
-    	- spans_X -               		bay widths
+    		design_scenario -       	tag/id of case to be used to store results in \database
+    		PLS -                   	performance limit states of interest
+    		ELR -                    	expected loss ratios corresponding to PLS
+    		TR -                     	return periods corresponding to PLS
+    	 	aleatory -               	aleatory uncertainties corresponding to PLS
+		SLF -                  		storey loss functions (linear, nonlinear or provided)
+		bldg_ch -               	building characteristics (floor loading in kPa, roof loading in kPa, floor area)
+    		h_storeys -             	heights of stories
+    	 	mode_red -              	higher mode reduction factor
+    		PFA_convert -            	peak floor acceleration conversion factor
+    		spans_X -               	bay widths
 	
 6. **slf.xlsx** - Storey-loss-functions file<br/>
 
 7. **hazard.pickle** - Contains information on<br/>
 
-				a) intensity measure (IM) levels
-				b) Spectral acceleration range associated with each IM
-				c) Annual probability of exceedance list associated with each IM,
-				e.g. [['PGA',''SA(0.1)', ...], [sa1_list, sa2_list, ...], [apoe1_list, apoe2_list, ...]]
+		a) intensity measure (IM) levels
+		b) Spectral acceleration range associated with each IM
+		c) Annual probability of exceedance list associated with each IM,
+		e.g. [['PGA',''SA(0.1)', ...], [sa1_list, sa2_list, ...], [apoe1_list, apoe2_list, ...]]
 				
 8. **spo.csv** - Static pushover curve parameter assumptions<br/>
 
-                            		Currently used as input for SPO2IDA
-                            		Features:
-		- mc - 			Hardening ductility
-		- a - 			Hardening slope
+		Currently used as input for SPO2IDA
+		Features:
+		- mc -			Hardening ductility
+		- a -			Hardening slope
 		- ac - 			Softening slope
 		- r -			Residual strength ratio with respect to yield strength
 		- mf -			Fracturing ductility
