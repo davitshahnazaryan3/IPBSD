@@ -34,7 +34,7 @@ Additional explanations of each file are provided within the relevant directorie
     	- PLS -                   		performance limit states of interest
     	- ELR -                    		expected loss ratios corresponding to PLS
     	- TR -                     		return periods corresponding to PLS
-    	- aleatory -               		aleatory uncertainties corresponding to PLS<
+    	- aleatory -               		aleatory uncertainties corresponding to PLS
    	- SLF -                  		storey loss functions (linear, nonlinear or provided)
     	- bldg_ch -               		building characteristics (floor loading in kPa, roof loading in kPa, floor area)
     	- h_storeys -             		heights of stories
@@ -141,7 +141,7 @@ Additional explanations of each file are provided within the relevant directorie
   
 **Future upgrade objectives**<a id='future'>
 
-* [x] All input xlsx, csv etc. files will be modified to be more flexible
+* [ ] All input xlsx, csv etc. files will be modified to be more flexible
 
 * [ ] Add explanations on how and in which format to provide the inputs for the software
 
@@ -151,7 +151,7 @@ Additional explanations of each file are provided within the relevant directorie
 
 * [ ] Homogeneous storey-loss-functions along the height -> flexible for inclusion
 
-* [ ] SPO2IDA tool for collapse fragility definition -> ML algorithms to avoid using SPO2IDA, needs extensive studies and analysis, possible data collection
+* [ ] SPO2IDA tool for collapse fragility definition -> ML algorithms to avoid being limited to using SPO2IDA, needs extensive studies and analysis, possible data collection
 
 * [ ] Symmetric structures only -> add considerations for 3D models
 
