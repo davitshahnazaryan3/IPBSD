@@ -35,7 +35,7 @@ Additional explanations of each file are provided within the relevant directorie
     	ELR -                    	expected loss ratios corresponding to PLS
     	TR -                     	return periods corresponding to PLS
         aleatory -               	aleatory uncertainties corresponding to PLS
-        SLF -                  		storey loss functions (linear, nonlinear or provided)
+        SLF -                    	storey loss functions (linear, nonlinear or provided)
         bldg_ch -               	building characteristics (floor loading in kPa, roof loading in kPa, floor area)
         h_storeys -             	heights of stories
         mode_red -              	higher mode reduction factor
@@ -107,20 +107,20 @@ Additional explanations of each file are provided within the relevant directorie
 		    	a. IDA curves<br/>
 		    	b. Fractiles of R at collapse
 		3. Perform optimization for MAFC - MAFCCheck
-            		a. Spectral acceleration at yield
-            		b. Yield displacement
+		    	a. Spectral acceleration at yield
+		    	b. Yield displacement
 -> **Phase 4 - Design:**<br/>
 
         	1. Identify design actions on the structure - Action
            		a. Lateral forces
         	2. Perform ELFM and identify demands on the structural members - OpenSeesRun
-            		a. Demands
+		    	a. Demands
         	3. Perform moment-curvature sectional analysis to identify the necessary reinforcement, includes capacity design
-           		requirements per Eurocode - MPhi, Detailing
-            		a. Reinforcement ratios
-            		b. Moment capacities
-            		c. Curvature ductility
-            		d. Cracked section propertis
+		requirements per Eurocode - MPhi, Detailing
+		    	a. Reinforcement ratios
+		    	b. Moment capacities
+		    	c. Curvature ductility
+		    	d. Cracked section propertis
 			
 -> **Phase 5 - Detailing:**<br/>
 
