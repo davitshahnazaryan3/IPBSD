@@ -176,7 +176,8 @@ class Detailing:
                     m_target = myc[st+self.nst]
                     nc_design = nci[st]
                 nlayers = 0 if h <= 0.35 else 1 if (0.35 < h <= 0.55) else 2
-                mphi = MomentCurvatureRC(b, h, m_target, p=nc_design, nlayers=nlayers, d=self.rebar_cover)
+                z = self.heights[st]
+                mphi = MomentCurvatureRC(b, h, m_target, length=z, p=nc_design, nlayers=nlayers, d=self.rebar_cover)
                 data["Columns"][cnt] = mphi.get_mphi()
                 cnt += 1
         return data

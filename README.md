@@ -167,7 +167,7 @@ Additional explanations of each file are provided within the relevant directorie
 
 * [ ] Same beam cross-sections along the height/no grouping for beams -> add grouping once generic opensees model is updated to account for it
 
-* [ ] Considerations for shear design, will be useful also in identifying inelastic rotation capacities
+* [ ] Considerations for shear design, will be useful also in identifying inelastic rotation capacities, then input ro_sh based on that for Haselton platic hinge length definition
 
 
 </a><font color=blue><div style="text-align: right">[up](#contents)
