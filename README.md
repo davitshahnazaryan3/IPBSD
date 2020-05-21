@@ -155,17 +155,18 @@ Additional explanations of each file are provided within the relevant directorie
 
 * [ ] 3 Performance objective limit states -> flexible for inclusion
 
-* [ ] Homogeneous storey-loss-functions along the height -> flexible for inclusion
+* [ ] Variation of storey-loss-functions along the height -> flexible for inclusion
 
 * [ ] SPO2IDA tool for collapse fragility definition -> ML algorithms to avoid being limited to using SPO2IDA, needs extensive studies and analysis, possible data collection
 
 * [ ] Symmetric structures only -> add considerations for 3D models
 
 * [ ] Single conversion factor for peak floor accelerations -> study based on Antonio's work to include regressions
+		* [x] Added regression based on number of stories for RC MRFs
 
-* [ ] Code-based overstrength factors indirectly accounted for -> flexible to include
+* [ ] Code-based overstrength factors indirectly accounted for -> to be included based on literature
 
-* [ ] Same beam cross-sections along the height/no grouping for beams -> add grouping once generic opensees model is updated to account for it
+* [ ] Same beam cross-sections along the height/no grouping for beams -> partially included
 
 * [ ] Considerations for shear design, will be useful also in identifying inelastic rotation capacities
 
