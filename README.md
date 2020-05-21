@@ -13,9 +13,9 @@ Design framework based on limiting economic losses, i.e. expected annual loss (E
 
 Literature:
 
-* O’Reilly GJ, Calvi GM. Conceptual seismic design in performance-based earthquake engineering. Earthquake Engineering & Structural Dynamics 2019; 48(4): 389–411. DOI: 10.1002/eqe.3141.
+* O’Reilly GJ, Calvi GM. Conceptual seismic design in performance-based earthquake engineering. *Earthquake Engineering & Structural Dynamics* 2019; **48**(4): 389–411. DOI: 10.1002/eqe.3141.
 
-* Shahnazaryan D, O’Reilly GJ, Monteiro R. Using direct economic losses and collapse risk for seismic design of RC buildings. COMPDYN 2019 - 7th International Conference on Computational Methods in Structural Dynamics and Earthquake Engineering, Crete Island, Greece: 2019. DOI: 10.7712/120119.7281.19516.
+* Shahnazaryan D, O’Reilly GJ, Monteiro R. Using direct economic losses and collapse risk for seismic design of RC buildings. *COMPDYN 2019 - 7th International Conference on Computational Methods in Structural Dynamics and Earthquake Engineering*, Crete Island, Greece: 2019. DOI: 10.7712/120119.7281.19516.
 
 </a><font color=blue><div style="text-align: right">[up](#contents)
 	
