@@ -4,7 +4,7 @@ Integrated Performance-Based Seismic Design
 Design framework based on limiting economic losses, i.e. expected annual loss (EAL) and targetting a probability of collapse, i.e. mean annual frequency of collapse (MAFC).
 
 **Contents**<a id='contents'></a>
-1. [Published research papers](#research)
+1. [Published journal articles and conference papers](#research)
 2. [Input arguments and files](#input)
 3. [Step by step procedures](#process)
 4. [Future upgrade objectives](#future)
