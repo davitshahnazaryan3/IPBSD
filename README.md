@@ -149,7 +149,7 @@ Additional explanations of each file are provided within the relevant directorie
 
 * [ ] All input xlsx, csv etc. files will be modified to be more flexible
 
-* [ ] Add explanations on how and in which format to provide the inputs for the software
+* [x] Add explanations on how and in which format to provide the inputs for the software
 
 * [ ] Reinforced concrete moment-resisting frame -> Steel MRF, other typologies to be included
 
