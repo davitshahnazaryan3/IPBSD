@@ -14,18 +14,19 @@ Design framework based on limiting economic losses, i.e. expected annual loss (E
 Additional explanations of each file are provided within the relevant directories.
 
 **Input arguments are**
-1. Limit EAL                Limiting economic loss value in terms of expected annual loss
-2. Target MAFC              Target collapse safety value in terms of mean annual frequency of
-                            exceedance
-3. Damping                  Ratio of critical damping (default 0.05)
-4. Analysis type            Type of analysis for the definition of demands on the structural
-                            elements<br/>
+1. **Limit EAL** - Limiting economic loss value in terms of expected annual loss
+
+2. **Target MAFC** - Target collapse safety value in terms of mean annual frequency of exceedance
+
+3. **Damping** - Ratio of critical damping (default 0.05)
+
+4. **Analysis type** - Type of analysis for the definition of demands on the structural elements<br/>
 	1. Simplified ELF -        	No analysis is run, calculations based on simplified expressions<br /> 
 	2. ELF -                  	Equivalent lateral force method of analysis<br/>
 	3. ELF & gravity -       	Analysis under ELF and gravity loads<br/>
 	4. RMSA -                	Response method of spectral analysis<br/.
 	5. RMSA & gravity -      	Analysis under RMSA and gravity loads<br/>
-5. input.csv                input file comprising of the following arguments:<br/>
+5. **input.csv** - input file comprising of the following arguments:<br/>
     - design_scenario -       		tag/id of case to be used to store results in \database<br/>
     - PLS -                   		performance limit states of interest<br/>
     - ELR -                    		expected loss ratios corresponding to PLS<br/>
@@ -37,12 +38,12 @@ Additional explanations of each file are provided within the relevant directorie
     - mode_red -              		higher mode reduction factor<br/>
     - PFA_convert -            		peak floor acceleration conversion factor<br/>
     - spans_X -               		bay widths<br/>
-6. slf.xlsx                 	Storey-loss-functions file<br/>
-7. hazard.pickle            	Contains information on<br/>
+6. **slf.xlsx** - Storey-loss-functions file<br/>
+7. **hazard.pickle** - Contains information on<br/>
 				a) intensity measure (IM) levels<br/>
 				b) Spectral acceleration range associated with each IM<br/>
 				c) Annual probability of exceedance list associated with each IM e.g. [['PGA',''SA(0.1)', ...], [sa1_list, sa2_list, ...], [apoe1_list, apoe2_list, ...]]<br/>
-8. spo.csv                  	Static pushover curve parameter assumptions<br/>
+8. **spo.csv** - Static pushover curve parameter assumptions<br/>
                             	Currently used as input for SPO2IDA<br/>
                             	Features:<br/>
 	- mc - 			Hardening ductility<br/>
@@ -56,7 +57,8 @@ Additional explanations of each file are provided within the relevant directorie
 
 **Step by step procedure** (#process)
 
--> Phase 1 - Performance objectives:<br/>
+-> **Phase 1 - Performance objectives:**<br/>
+
 		1. Define limit EAL (economic loss) and target MAFC (collapse safety) - Input
 		and supply other input arguments; methods: read_inputs<br/>
 		2. Supply seismic hazard and perform second-order fitting - Input, Hazard<br/>
@@ -76,7 +78,8 @@ Additional explanations of each file are provided within the relevant directorie
 			b. First mode participation factor<br/>
 			c. Design spectral displacement<br/>
 			d. Design spectral acceleration<br/>
--> Phase 2 - Building information: <br/>
+-> **Phase 2 - Building information:** <br/>
+
 		1. Get design spectra at limit states relevant for EAL (e.g. SLS) - Spectra<br/>
 			a. Sa and Sd<br/>
 		2. Get feasible period range - PeriodRange<br/>
@@ -86,7 +89,7 @@ Additional explanations of each file are provided within the relevant directorie
 		CrossSection, GetT1<br/>
 			a. All solutions meeting the period range condition<br/>
 			b. Optimal solution based on least weight<br/>
--> Phase 3 - Collapse safety consideration: <br/>
+-> **Phase 3 - Collapse safety consideration:** <br/>
 		1. Identify possible static pushover curve (SPO) information as input for SPO2IDA - Input<br/>
 		2. Perform SPO2IDA and derive collapse fragility function<br/>
 		    a. IDA curves<br/>
@@ -94,7 +97,7 @@ Additional explanations of each file are provided within the relevant directorie
 		3. Perform optimization for MAFC - MAFCCheck<br/>
             a. Spectral acceleration at yield<br/>
             b. Yield displacement<br/>
--> Phase 4 - Design:<br/>
+-> **Phase 4 - Design:**<br/>
         1. Identify design actions on the structure - Action<br/>
             a. Lateral forces<br/>
         2. Perform ELFM and identify demands on the structural members - OpenSeesRun<br/>
@@ -105,7 +108,7 @@ Additional explanations of each file are provided within the relevant directorie
             b. Moment capacities<br/>
             c. Curvature ductility<br/>
             d. Cracked section propertis<br/>
--> Phase 5 - Detailing:<br/>
+-> **Phase 5 - Detailing:**<br/>
         1. Use the optimal solution and estimate Period based on cracked section properties of 4.3d - Detailing, CrossSection<br/>
         	a. Fundamental period<br/>
         	b. Verify that the period is within the bounds<br/>
