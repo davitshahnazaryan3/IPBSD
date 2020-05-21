@@ -141,6 +141,12 @@ Additional explanations of each file are provided within the relevant directorie
   
 ### Future upgrade objectives<a id='future'>
 
+* [ ] Design of structural elements based on critical combination of M+N, M-N etc.
+
+* [ ] Add class of reinforcement and concrete as input arguments
+
+* [ ] Add softening slope by Vecchio and Collins 1986
+
 * [ ] All input xlsx, csv etc. files will be modified to be more flexible
 
 * [ ] Add explanations on how and in which format to provide the inputs for the software

@@ -185,18 +185,16 @@ class IPBSD:
         else:
             raise ValueError("[EXCEPTION] Incorrect analysis type...")
 
-        print("[SUCCESS] Analysis completed and demands on structural elements were estimated")
+        print("[SUCCESS] Analysis completed and demands on structural elements were estimated.")
 
-        # Estimating Vy based on Capacities of elements (preliminary, subject to change or removal)
         """Design the structural elements"""
-        # todo, look into this, target for next paper
-        # sections = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper)
+        sections = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper)
+        print("[SUCCESS] Structural elements were designed and detailed.")
 
-        # print("[PHASE] 4 completed!")
-        # # Phase 5
-        # period, phi = csd.run_ma(opt_sol, T_lower, T_upper, mphi_sections)
-        # print(period)
-        # csd.verify_period(round(period, 2), T_lower, T_upper)
+        """Perform eigenvalue analysis on designed frame"""
+        print("[PHASE] Commencing phase 5...")
+        # period, phi = ipbsd.run_ma(opt_sol, t_lower, t_upper, sections)
+        # ipbsd.verify_period(round(period, 2), t_lower, t_upper)
         # ductility_hard = csd.get_system_ductility(opt_sol, period, say[0], mphi_sections)
         # print("[PHASE] 5 completed!")
 
@@ -221,7 +219,7 @@ if __name__ == "__main__":
     :param mafc_target: float                   MAFC target performance objective    
     """
     # Add input arguments
-    analysis_type = 1
+    analysis_type = 3
     input_file = "input.csv"
     hazard_file = "Hazard-LAquila-Soil-C.pkl"
     slf_file = "slf.xlsx"

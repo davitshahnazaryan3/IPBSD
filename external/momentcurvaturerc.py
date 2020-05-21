@@ -22,7 +22,7 @@ warnings.filterwarnings('ignore')
 
 class MomentCurvatureRC:
     def __init__(self, b, h, m_target, nlayers=0, p=0, d=.04, fc_prime=25, fy=415, young_mod_s=200e3,
-                 check_reinforcement=False, reinf_test=0, plotting=False, soft_method="Collins"):
+                 check_reinforcement=False, reinf_test=0, plotting=False, soft_method="Collins", k_hard=1.0):
         """
         init Moment curvature tool
         :param b: float                         Element sectional width
@@ -36,9 +36,10 @@ class MomentCurvatureRC:
         :param young_mod_s: float               Young modulus of reinforcement
         :param check_reinforcement: bool        Gets moment for reinforcement provided (True) or applied optimization
                                                 for Mtarget (False)
-        :param reinf_test: float                Reinforcement for test todo into kwargs
+        :param reinf_test: int                  Reinforcement for test todo into kwargs
         :param plotting: bool                   Plotting flag
         :param soft_method: str                 Method for the softening slope calculation
+        :param k_hard: float                    Hardening slope of reinforcement (i.e. fu/fy)
         """
         self.b = b
         self.h = h
@@ -49,10 +50,9 @@ class MomentCurvatureRC:
         self.fc_prime = fc_prime
         self.fy = fy
         self.young_mod_s = young_mod_s
-        # todo, make dependent on class of reinforcement
         self.EPSSH = 0.008
         self.EPSUK = 0.075
-        self.K_HARD = 1.35
+        self.k_hard = k_hard
         self.check_reinforcement = check_reinforcement
         self.reinf_test = reinf_test
         self.plotting = plotting
@@ -99,9 +99,9 @@ class MomentCurvatureRC:
         epsc = data[0]
         epsc_prime = data[1]
         rebar = data[2]
-        # reinforcement properties (500C grade)
+        # reinforcement properties
         ey = self.fy / self.young_mod_s
-        fu = self.K_HARD * self.fy
+        fu = self.k_hard * self.fy
 
         # Block parameters
         b1 = (4 - epsc / epsc_prime) / (6 - 2 * epsc / epsc_prime)
@@ -167,7 +167,7 @@ class MomentCurvatureRC:
         c = np.array([0.05])
         c = float(abs(optimize.fsolve(self.objective, c, [2 * epsc_prime, epsc_prime, asinit], factor=0.1)))
 
-        return abs(self.mi / self.K_HARD - self.m_target)
+        return abs(self.mi / self.k_hard - self.m_target)
     
     def get_softening_slope(self, **kwargs):
         """
@@ -186,8 +186,8 @@ class MomentCurvatureRC:
             else:
                 theta_pc = 0.1
             lp = Plasticity().get_lp(db=20, fy=self.fy)
-            # todo, fix phi_pc formula, remove phiy
-            phi_pc = (theta_pc + phiy)/lp
+            # todo, fix phi_pc formula, the accuracy needs to be increased as it does not account for elastic portion
+            phi_pc = theta_pc/lp
             phi_critical = phiy*mu_phi + phi_pc
 
         elif self.soft_method == "Collins":
@@ -223,7 +223,6 @@ class MomentCurvatureRC:
         Gives the Moment-curvature relationship
         :return: dict                              M-phi response data, reinforcement and concrete data for detailing
         """
-
         # Concrete properties
         # Assumption - parabolic stress-strain relationship for the concrete
         # concrete elasticity modulus MPa
@@ -245,7 +244,7 @@ class MomentCurvatureRC:
         yc = fcr * self.h / (fcr + fcr_t)
         phicr = epscr / yc
 
-        # The "Process"
+        ''' The "Process" '''
         epsc = np.linspace(epsc_prime * 2 / 500, 2 * epsc_prime, 1000)
         sigma_c = self.fc_prime*n*epsc/epsc_prime / (n - 1 + np.power(epsc/epsc_prime, n*k_parameter))
         m = np.zeros(len(epsc))
@@ -257,26 +256,24 @@ class MomentCurvatureRC:
         asinit = np.array([0.001])
         asinit = abs(float(optimize.fsolve(self.max_moment, asinit, epsc_prime, factor=0.1)))
         if self.check_reinforcement:
-            c = np.array([0.02])
+            c = np.array([0.01])
             c = abs(float(optimize.fsolve(self.objective, c, [2 * epsc_prime, epsc_prime, self.reinf_test], factor=0.1)))
             return self.mi
         else:
             for i in range(len(epsc)):
                 # compressed section height optimization
-                c = np.array([0.05])
+                c = np.array([0.01])
                 c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=0.1)))
-                if self.mi >= 1000000:
-                    # softening slope Vecchio and Collins 1986
-                    break
-                else:
-                    # tensile reinforcement strains
-                    eps_tensile[i] = self.epss
-                    # tensile reinforcement stresses
-                    sigmat[i] = self.fst
-                    # bending moment capacity
-                    m[i] = self.mi
-                    # curvature
-                    phi[i] = self.phii
+
+                # tensile reinforcement strains
+                eps_tensile[i] = self.epss
+                # tensile reinforcement stresses
+                sigmat[i] = self.fst
+                # bending moment capacity
+                m[i] = self.mi
+                # curvature
+                phi[i] = self.phii
+
             yield_index = self.checkMy(self.fy, sigmat)
 
             my_first = m[yield_index]
@@ -293,9 +290,12 @@ class MomentCurvatureRC:
         phi_critical = self.get_softening_slope(rebar_area=asinit)
         m = np.append(m, 0.0)
         phi = np.append(phi, phi_critical)
-        
+
+        # Plotting
         if self.plotting:
             self.plot_mphi(phi, m)
+
+        # Storing the results
         data = {'curvature': phi, 'moment': m, 'curvature ductility': mu_phi, 'peak/yield ratio': rpeak,
                 'reinforcement': asinit, 'cracked EI': ei_cracked, 
                 'nominal yield moment': my_nom, 'nominal yield curvature': phiy_nom}
@@ -321,8 +321,6 @@ if __name__ == '__main__':
     reinf_test              given reinforcement [m2]
     plotting                plot the M-phi [bool]
     """
-    # todo, add two options for softening slope definition preliminary calling them:
-    #   Collins, Haselton
     # Section properties
     b = 0.25
     h = 0.25

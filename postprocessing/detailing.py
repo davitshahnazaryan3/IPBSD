@@ -155,7 +155,7 @@ class Detailing:
         mbi, mci, nci = self.ensure_symmetry()
         myb, myc = self.capacity_design(mbi, mci)
         data = {"Beams": {}, "Columns": {}}
-        # Beams
+        # Design of beams
         for st in range(self.nst):
             m_target = myb[st]
             b = self.sections[f"b{st+1}"]
@@ -163,18 +163,18 @@ class Detailing:
             mphi = MomentCurvatureRC(b, h, m_target, d=self.rebar_cover)
             data["Beams"][st] = mphi.get_mphi()
 
-        # Columns
+        # Design of columns
         cnt = 0
         for bay in range(0, 2):
             for st in range(self.nst):
                 if bay == 0:
                     b = h = self.sections[f"he{st+1}"]
                     m_target = myc[st]
-                    nc_design = min([self.demands["Columns"][i * self.nst + st]["N"] for i in [0, self.nbays]])
+                    nc_design = nci[st]
                 else:
                     b = h = self.sections[f"hi{st+1}"]
                     m_target = myc[st+self.nst]
-                    nc_design = min([self.demands["Columns"][i * self.nst + st]["N"] for i in range(1, self.nbays)])
+                    nc_design = nci[st]
                 nlayers = 0 if h <= 0.35 else 1 if (0.35 < h <= 0.55) else 2
                 mphi = MomentCurvatureRC(b, h, m_target, p=nc_design, nlayers=nlayers, d=self.rebar_cover)
                 data["Columns"][cnt] = mphi.get_mphi()
