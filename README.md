@@ -20,39 +20,37 @@ Additional explanations of each file are provided within the relevant directorie
 3. Damping                  Ratio of critical damping (default 0.05)
 4. Analysis type            Type of analysis for the definition of demands on the structural
                             elements<br/>
-	1. Simplified ELF        	<br>No analysis is run, calculations based on simplified expressions<br /> 
-	2. ELF                   	Equivalent lateral force method of analysis<br/>
-	3. ELF & gravity         	Analysis under ELF and gravity loads<br/>
-	4. RMSA                  	Response method of spectral analysis<br/.
-	5. RMSA & gravity        	Analysis under RMSA and gravity loads<br/>
+	1. Simplified ELF -        	No analysis is run, calculations based on simplified expressions<br /> 
+	2. ELF -                  	Equivalent lateral force method of analysis<br/>
+	3. ELF & gravity -       	Analysis under ELF and gravity loads<br/>
+	4. RMSA -                	Response method of spectral analysis<br/.
+	5. RMSA & gravity -      	Analysis under RMSA and gravity loads<br/>
 5. input.csv                input file comprising of the following arguments:<br/>
-    - design_scenario:        tag/id of case to be used to store results in \database<br/>
-    - PLS:                    performance limit states of interest<br/>
-    - ELR:                    expected loss ratios corresponding to PLS<br/>
-    - TR:                     return periods corresponding to PLS<br/>
-    - aleatory:               aleatory uncertainties corresponding to PLS<br/>
-    - SLF:                    storey loss functions (linear, nonlinear or provided)<br/>
-    - bldg_ch:                building characteristics (floor loading in kPa, roof loading in kPa, floor area)<br/>
-    - h_storeys:              heights of stories<br/>
-    - mode_red:               higher mode reduction factor<br/>
-    - PFA_convert:            peak floor acceleration conversion factor<br/>
-    - spans_X:                bay widths<br/>
-6. slf.xlsx                 Storey-loss-functions file<br/>
-7. hazard.pickle            Contains information on<br/>
-                            a) intensity measure (IM) levels<br/>
-                            b) Spectral acceleration range associated with each IM<br/>
-                            c) Annual probability of exceedance list associated with each IM
-                            e.g. [['PGA',''SA(0.1)', ...], [sa1_list, sa2_list, ...],
-                            [apoe1_list, apoe2_list, ...]]<br/>
-8. spo.csv                  Static pushover curve parameter assumptions<br/>
-                            Currently used as input for SPO2IDA<br/>
-                            Features:<br/>
-    mc:                     Hardening ductility<br/>
-    a:                      Hardening slope<br/>
-    ac:                     Softening slope<br/>
-    r:                      Residual strength ratio with respect to yield strength<br/>
-    mf:                     Fracturing ductility<br/>
-    pw:                     Pinching weight (default 1.0)<br/>
+    - design_scenario -       		tag/id of case to be used to store results in \database<br/>
+    - PLS -                   		performance limit states of interest<br/>
+    - ELR -                    		expected loss ratios corresponding to PLS<br/>
+    - TR -                     		return periods corresponding to PLS<br/>
+    - aleatory -               		aleatory uncertainties corresponding to PLS<br/>
+    - SLF -                  		storey loss functions (linear, nonlinear or provided)<br/>
+    - bldg_ch -               		building characteristics (floor loading in kPa, roof loading in kPa, floor area)<br/>
+    - h_storeys -             		heights of stories<br/>
+    - mode_red -              		higher mode reduction factor<br/>
+    - PFA_convert -            		peak floor acceleration conversion factor<br/>
+    - spans_X -               		bay widths<br/>
+6. slf.xlsx                 	Storey-loss-functions file<br/>
+7. hazard.pickle            	Contains information on<br/>
+				a) intensity measure (IM) levels<br/>
+				b) Spectral acceleration range associated with each IM<br/>
+				c) Annual probability of exceedance list associated with each IM e.g. [['PGA',''SA(0.1)', ...], [sa1_list, sa2_list, ...], [apoe1_list, apoe2_list, ...]]<br/>
+8. spo.csv                  	Static pushover curve parameter assumptions<br/>
+                            	Currently used as input for SPO2IDA<br/>
+                            	Features:<br/>
+	- mc - 			Hardening ductility<br/>
+	- a - 			Hardening slope<br/>
+	- ac - 			Softening slope<br/>
+	- r -			Residual strength ratio with respect to yield strength<br/>
+	- mf -			Fracturing ductility<br/>
+	- pw - 			Pinching weight (default 1.0)<br/>
     
 </a><font color=blue><div style="text-align: right">[up](#contents)
 
