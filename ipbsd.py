@@ -182,7 +182,7 @@ class IPBSD:
         print("[SUCCESS] Analysis completed and demands on structural elements were estimated.")
 
         """Design the structural elements"""
-        # sections = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper)
+        sections = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper)
         print("[SUCCESS] Structural elements were designed and detailed.")
 
         """Perform eigenvalue analysis on designed frame"""

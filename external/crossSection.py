@@ -212,10 +212,11 @@ class CrossSection:
     def find_optimal_solution(self):
         """
         finds optimal solution based on minimizing weight
-        :return optimal: DataFrame                              Optimal solution based on minimizing weight
+        :return optimal: Series                                 Optimal solution based on minimizing weight
         :return opt_modes: dict                                 Periods and normalized modal shapes of the optimal
                                                                 solution
         """
+        # todo, currently using optimal as series, transform into a dataframe and then store
         optimal = self.solutions[self.solutions["Weight"] == self.solutions["Weight"].min()].iloc[0]
         hce, hci, b, h = self.get_section(optimal)
         properties = self.create_props(hce, hci, b, h)

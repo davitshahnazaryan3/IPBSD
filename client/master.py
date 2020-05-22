@@ -305,8 +305,7 @@ class Master:
         :return: dict                               Demands on the structural elements
         """
         elf = ELF(solution, loads, heights, widths)
-        # response = elf.get_demands()
-        # return response
+        return elf.response
 
     def run_analysis(self, analysis, solution, lat_action=None, grav_loads=None, sls=None, yield_sa=None):
         """
