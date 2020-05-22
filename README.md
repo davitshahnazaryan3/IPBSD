@@ -147,26 +147,28 @@ Additional explanations of each file are provided within the relevant directorie
 
 * [ ] Add softening slope by Vecchio and Collins 1986
 
-* [ ] All input xlsx, csv etc. files will be modified to be more flexible
+* [x] All input xlsx, csv etc. files will be modified to be more flexible
 
-* [ ] Add explanations on how and in which format to provide the inputs for the software
+* [x] Add explanations on how and in which format to provide the inputs for the software
 
 * [ ] Reinforced concrete moment-resisting frame -> Steel MRF, other typologies to be included
 
 * [ ] 3 Performance objective limit states -> flexible for inclusion
 
-* [ ] Homogeneous storey-loss-functions along the height -> flexible for inclusion
+* [ ] Variable storey-loss-functions along the height -> flexible for inclusion
 
 * [ ] SPO2IDA tool for collapse fragility definition -> ML algorithms to avoid being limited to using SPO2IDA, needs extensive studies and analysis, possible data collection
 
-* [ ] Symmetric structures only -> add considerations for 3D models
+* [ ] Symmetric structures only -> add considerations for 3D models, partially done
 
 * [ ] Single conversion factor for peak floor accelerations -> study based on Antonio's work to include regressions
 
+* [x] Conversion factor regression based on number of stories for PFA
+
 * [ ] Code-based overstrength factors indirectly accounted for -> flexible to include
 
-* [ ] Same beam cross-sections along the height/no grouping for beams -> add grouping once generic opensees model is updated to account for it
-
+* [x] Same beam cross-sections along the height/no grouping for beams -> partially done, more will be added when necessary
+ 
 * [ ] Considerations for shear design, will be useful also in identifying inelastic rotation capacities, then input ro_sh based on that for Haselton platic hinge length definition
 
 
