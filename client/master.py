@@ -1,7 +1,6 @@
 """
 Runs the integrated seismic risk and economic loss driven framework
 """
-from pathlib import Path
 from scipy.optimize import fsolve
 import numpy as np
 import pandas as pd
@@ -18,6 +17,7 @@ from verifications.mafcCheck import MAFCCheck
 from postprocessing.action import Action
 from external.openseesrun import OpenSeesRun
 from postprocessing.detailing import Detailing
+from external.elf import ELF
 
 
 class Master:
@@ -239,10 +239,14 @@ class Master:
         Performs complete quadratic combination (CQC)
         :param corr: ndarray                        Correlation matrix
         :param demands: dict                        Demands on structural elements
-        :return: response                           Critical response demand on structural elements
+        :return: ndarray                            Critical response demand on structural elements
         """
         num_modes = len(corr)
         response = {}
+        b = np.zeros((self.data.nst, self.data.n_bays))
+        c = np.zeros((self.data.nst, self.data.n_bays + 1))
+        results = {"Beams": {"M": b.copy(), "N": b.copy(), "V": b.copy()},
+                   "Columns": {"M": c.copy(), "N": c.copy(), "V": c.copy()}}
         for eleType in demands["Mode1"].keys():
             response[eleType] = {}
             for ele in demands["Mode1"][eleType].keys():
@@ -257,10 +261,24 @@ class Master:
                                  demands[f"Mode{j+1}"][eleType][ele]["N"]
                         v_temp = v_temp + corr[i][j]*demands[f"Mode{i+1}"][eleType][ele]["V"] * \
                                  demands[f"Mode{j+1}"][eleType][ele]["V"]
-
                 response[eleType][ele] = {"M": max(np.sqrt(m_temp)), "N": max(np.sqrt(n_temp)),
                                           "V": max(np.sqrt(v_temp))}
-        return response
+        # Storing results in a specific format
+        ele = 0
+        for bay in range(self.data.n_bays):
+            for st in range(self.data.nst):
+                results["Beams"]["M"][st][bay] = response["Beams"][ele]["M"]
+                results["Beams"]["N"][st][bay] = response["Beams"][ele]["N"]
+                results["Beams"]["V"][st][bay] = response["Beams"][ele]["V"]
+                ele += 1
+        ele = 0
+        for bay in range(self.data.n_bays + 1):
+            for st in range(self.data.nst):
+                results["Columns"]["M"][st][bay] = response["Columns"][ele]["M"]
+                results["Columns"]["N"][st][bay] = response["Columns"][ele]["N"]
+                results["Columns"]["V"][st][bay] = response["Columns"][ele]["V"]
+                ele += 1
+        return results
 
     def get_action(self, solution, say, df, gravity_loads, analysis, num_modes=None, opt_modes=None, modal_sa=None):
         """
@@ -281,6 +299,15 @@ class Master:
         d = a.forces()
         return d
 
+    def run_muto_approach(self, solution, loads, heights, widths):
+        """
+        Runs simplified lateral analysis based on Muto's approach
+        :return: dict                               Demands on the structural elements
+        """
+        elf = ELF(solution, loads, heights, widths)
+        # response = elf.get_demands()
+        # return response
+
     def run_analysis(self, analysis, solution, lat_action=None, grav_loads=None, sls=None, yield_sa=None):
         """
         runs elfm to identify demands on the structural elements
@@ -290,9 +317,9 @@ class Master:
         :param grav_loads: list                     Acting gravity loads in kN/m
         :param sls: dict                            Table at SLS, necessary for simplified computations only
         :param yield_sa: float                      Spectral acceleration at yield
-        :return: DataFrame or dict                  Demands on the structural elements
+        :return: dict                               Demands on the structural elements
         """
-        if analysis == 1:
+        if analysis == 1:       # redundant, unnecessary, but will be left here as a placeholder for future changes
             print("[INITIATE] Starting simplified approximate demand estimation...")
             response = pd.DataFrame({'Mbi': np.zeros(self.data.nst),
                                      'Mci': np.zeros(self.data.nst),

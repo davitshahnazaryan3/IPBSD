@@ -4,21 +4,11 @@ Integrated Performance-Based Seismic Design
 Design framework based on limiting economic losses, i.e. expected annual loss (EAL) and targetting a probability of collapse, i.e. mean annual frequency of collapse (MAFC).
 
 **Contents**<a id='contents'></a>
-1. [Published journal articles and conference papers](#research)
-2. [Input arguments and files](#input)
-3. [Step by step procedures](#process)
-4. [Future upgrade objectives](#future)
+1. [Input arguments and files](#input)
+2. [Step by step procedures](#process)
+3. [Future upgrade objectives](#future)
 
-### Published journal articles and conference papers <a id='research'>
 
-Literature:
-
-* O’Reilly GJ, Calvi GM. Conceptual seismic design in performance-based earthquake engineering. *Earthquake Engineering & Structural Dynamics* 2019; **48**(4): 389–411. DOI: 10.1002/eqe.3141.
-
-* Shahnazaryan D, O’Reilly GJ, Monteiro R. Using direct economic losses and collapse risk for seismic design of RC buildings. *COMPDYN 2019 - 7th International Conference on Computational Methods in Structural Dynamics and Earthquake Engineering*, Crete Island, Greece: 2019. DOI: 10.7712/120119.7281.19516.
-
-</a><font color=blue><div style="text-align: right">[up](#contents)
-	
 ### Input arguments and files <a id='input'>
 
 Additional explanations of each file are provided within the relevant directories.
@@ -159,24 +149,23 @@ Additional explanations of each file are provided within the relevant directorie
 
 * [ ] All input xlsx, csv etc. files will be modified to be more flexible
 
-* [x] Add explanations on how and in which format to provide the inputs for the software
+* [ ] Add explanations on how and in which format to provide the inputs for the software
 
 * [ ] Reinforced concrete moment-resisting frame -> Steel MRF, other typologies to be included
 
 * [ ] 3 Performance objective limit states -> flexible for inclusion
 
-* [ ] Variation of storey-loss-functions along the height -> flexible for inclusion
+* [ ] Homogeneous storey-loss-functions along the height -> flexible for inclusion
 
 * [ ] SPO2IDA tool for collapse fragility definition -> ML algorithms to avoid being limited to using SPO2IDA, needs extensive studies and analysis, possible data collection
 
 * [ ] Symmetric structures only -> add considerations for 3D models
 
 * [ ] Single conversion factor for peak floor accelerations -> study based on Antonio's work to include regressions
-		* [x] Added regression based on number of stories for RC MRFs
 
-* [ ] Code-based overstrength factors indirectly accounted for -> to be included based on literature
+* [ ] Code-based overstrength factors indirectly accounted for -> flexible to include
 
-* [ ] Same beam cross-sections along the height/no grouping for beams -> partially included
+* [ ] Same beam cross-sections along the height/no grouping for beams -> add grouping once generic opensees model is updated to account for it
 
 * [ ] Considerations for shear design, will be useful also in identifying inelastic rotation capacities, then input ro_sh based on that for Haselton platic hinge length definition
 

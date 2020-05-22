@@ -159,7 +159,7 @@ class IPBSD:
 
         """Perform ELF analysis"""
         if self.analysis_type == 1:
-            demands = ipbsd.run_analysis(self.analysis_type, opt_sol, list(forces["Fi"]), sls=table_sls, yield_sa=say)
+            demands = ipbsd.run_muto_approach(opt_sol, list(forces["Fi"]), ipbsd.data.h, ipbsd.data.spans_x)
         elif self.analysis_type == 2:
             demands = ipbsd.run_analysis(self.analysis_type, opt_sol, list(forces["Fi"]))
         elif self.analysis_type == 3:
@@ -167,20 +167,14 @@ class IPBSD:
         elif self.analysis_type == 4 or self.analysis_type == 5:
             demands = {}
             for mode in range(self.num_modes):
-                if self.analysis_type == 4:
-                    demands[f"Mode{mode+1}"] = ipbsd.run_analysis(self.analysis_type, opt_sol, list(forces["Fi"][mode]))
-                else:
-                    demands[f"Mode{mode+1}"] = ipbsd.run_analysis(self.analysis_type, opt_sol, list(forces["Fi"][mode]))
+                demands[f"Mode{mode+1}"] = ipbsd.run_analysis(self.analysis_type, opt_sol, list(forces["Fi"][mode]))
             demands = ipbsd.perform_cqc(corr, demands)
             if self.analysis_type == 5:
                 demands_gravity = ipbsd.run_analysis(self.analysis_type, opt_sol, grav_loads=list(forces["G"]))
-
                 # Combining gravity and RSMA results
                 for eleType in demands_gravity.keys():
-                    for ele in demands_gravity[eleType].keys():
-                        demands[eleType][ele]["M"] = demands[eleType][ele]["M"] + demands_gravity[eleType][ele]["M"]
-                        demands[eleType][ele]["N"] = demands[eleType][ele]["N"] + demands_gravity[eleType][ele]["N"]
-                        demands[eleType][ele]["V"] = demands[eleType][ele]["V"] + demands_gravity[eleType][ele]["V"]
+                    for dem in demands_gravity[eleType].keys():
+                        demands[eleType][dem] = demands[eleType][dem] + demands_gravity[eleType][dem]
 
         else:
             raise ValueError("[EXCEPTION] Incorrect analysis type...")
@@ -188,7 +182,7 @@ class IPBSD:
         print("[SUCCESS] Analysis completed and demands on structural elements were estimated.")
 
         """Design the structural elements"""
-        sections = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper)
+        # sections = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper)
         print("[SUCCESS] Structural elements were designed and detailed.")
 
         """Perform eigenvalue analysis on designed frame"""
@@ -219,7 +213,7 @@ if __name__ == "__main__":
     :param mafc_target: float                   MAFC target performance objective    
     """
     # Add input arguments
-    analysis_type = 3
+    analysis_type = 2
     input_file = "input.csv"
     hazard_file = "Hazard-LAquila-Soil-C.pkl"
     slf_file = "slf.xlsx"

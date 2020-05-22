@@ -43,48 +43,47 @@ class Detailing:
     def capacity_design(self, Mbi, Mci):
         """
         applies capacity design strong column - weak beam concept
-        :param Mbi: list                    Moment demands on beams
-        :param Mci: list                    Moment demands on columns
-        :return: lists                      Beam and column yield moments
+        :param Mbi: ndarray                 Moment demands on beams
+        :param Mci: ndarray                 Moment demands on columns
+        :return: ndarray                    Beam and column moment demands
         """
-        Myc = np.zeros(self.nst*(self.nbays + 1))
+        Myc = np.zeros(Mci.shape)
         Myb = Mbi.copy()
-        cnt = self.nst*(self.nbays+1)-1
-        for j in range(self.nbays, -1, -1):
-            for i in range(self.nst-1, -1, -1):
-                if i != self.nst-1:
-                    if j == 0:
-                        if (Mci[i] + Myc[cnt+1])/Myb[i] < 1.3:
-                            Myc[cnt] = 1.3*Myb[i]-Myc[cnt+1]
+        for bay in range(self.nbays, -1, -1):
+            for st in range(self.nst-1, -1, -1):
+                # Roof storey level
+                if st == self.nst - 1:
+                    if bay == 0:
+                        if Mci[st][bay] / Myb[st][bay] < 1.3:
+                            Myc[st][bay] = max(1.3*Myb[st][bay], Mci[st][bay])
                         else:
-                            Myc[cnt] = Mci[i]
-                    elif j == self.nbays:
-                        if (Mci[j*self.nst+i] + Myc[cnt+1])/Myb[self.nst*self.nbays-self.nst+i] < 1.3:
-                            Myc[cnt] = 1.3*Myb[self.nst*self.nbays-self.nst+i]-Myc[cnt+1]
+                            Myc[st][bay] = Mci[st][bay]
+                    elif bay == self.nbays:
+                        if Mci[st][bay] / Myb[st][bay-1] < 1.3:
+                            Myc[st][bay] = max(1.3*Myb[st][bay-1], Mci[st][bay])
                         else:
-                            Myc[cnt] = Mci[j*self.nst+i]
+                            Myc[st][bay] = Mci[st][bay]
                     else:
-                        if (Mci[j*self.nst+i] + Myc[cnt+1])/(Myb[(j-1)*self.nst+i] + Myb[j*self.nst+i]) < 1.3:
-                            Myc[cnt] = 1.3*(Myb[(j-1)*self.nst+i] + Myb[j*self.nst+i])-Myc[cnt+1]
+                        if Mci[st][bay] / (Myb[st][bay-1] + Myb[st][bay]) < 1.3:
+                            Myc[st][bay] = max(1.3*(Myb[st][bay-1] + Myb[st][bay]), Mci[st][bay])
                         else:
-                            Myc[cnt] = Mci[j*self.nst+i]
+                            Myc[st][bay] = Mci[st][bay]
                 else:
-                    if j == 0:
-                        if (Mci[i])/Myb[i] < 1.3:
-                            Myc[cnt] = max(1.3*Myb[i], Mci[i])
+                    if bay == 0:
+                        if (Mci[st][bay] + Mci[st+1][bay]) / Myb[st][bay] < 1.3:
+                            Myc[st][bay] = 1.3*Myb[st][bay] - Mci[st+1][bay]
                         else:
-                            Myc[cnt] = Mci[i]
-                    elif j == self.nbays:
-                        if (Mci[j*self.nst+i])/Myb[self.nst*self.nbays-self.nst+i] < 1.3:
-                            Myc[cnt] = max(1.3*Myb[self.nst*self.nbays-self.nst+i], Mci[j*self.nst+i])
+                            Myc[st][bay] = Mci[st][bay]
+                    elif bay == self.nbays:
+                        if (Mci[st][bay] + Mci[st+1][bay]) / Myb[st][bay-1] < 1.3:
+                            Myc[st][bay] = 1.3*Myb[st][bay-1] - Mci[st+1][bay]
                         else:
-                            Myc[cnt] = Mci[j*self.nst+i]
+                            Myc[st][bay] = Mci[st][bay]
                     else:
-                        if (Mci[j*self.nst+i])/(Myb[(j-1)*self.nst+i] + Myb[j*self.nst+i]) < 1.3:
-                            Myc[cnt] = max(1.3*(Myb[(j-1)*self.nst+i] + Myb[j*self.nst+i]), Mci[j*self.nst+i])
+                        if (Mci[st][bay] + Mci[st+1][bay]) / (Myb[st][bay-1] + Myb[st][bay]) < 1.3:
+                            Myc[st][bay] = 1.3*(Myb[st][bay-1] + Myb[st][bay]) - Mci[st+1][bay]
                         else:
-                            Myc[cnt] = Mci[j*self.nst+i]
-                cnt -= 1
+                            Myc[st][bay] = Mci[st][bay]
         return Myb, Myc
 
     def ensure_symmetry(self, option="max"):
@@ -94,57 +93,58 @@ class Detailing:
         :return: ndarray                    Internal force demands of structural elements, i.e. M of beams,
                                             M and N of columns
         """
-        # Read original demands
-        Mbi = np.zeros(len(self.demands["Beams"]))
-        Mci = np.zeros(len(self.demands["Columns"]))
-        Nci = np.zeros(len(self.demands["Columns"]))
-        for ele in self.demands["Beams"]:
-            Mbi[int(ele)] = self.demands["Beams"][ele]["M"]
-        for ele in self.demands["Columns"]:
-            Mci[int(ele)] = self.demands["Columns"][ele]["M"]
-            Nci[int(ele)] = self.demands["Columns"][ele]["N"]
-
-        # Ensure symmetry
-        if self.nbays > 2:
+        Mbi = self.demands["Beams"]["M"]
+        Mci = self.demands["Columns"]["M"]
+        Nci = self.demands["Columns"]["N"]
+        if self.nbays <= 2:
             for st in range(self.nst):
                 if option == "max":
-                    Mbi[st] = Mbi[-self.nst+st] = np.max((Mbi[st], Mbi[-self.nst+st]))
-                    Mci[st] = Mci[-self.nst+st] = np.max((Mci[st], Mci[-self.nst+st]))
-                    Mci[st+self.nst] = Mci[-2*self.nst+st] = np.max((Mci[st+self.nst], Mci[-2*self.nst+st]))
-                    Nci[st] = Nci[-self.nst+st] = np.max((Nci[st], Nci[-self.nst + st]))
-                    Nci[st+self.nst] = Nci[-2*self.nst+st] = np.max((Nci[st+self.nst], Nci[-2*self.nst+st]))
+                    Mbi[st][0] = Mbi[st][self.nbays-1] = np.max((Mbi[st][0], Mbi[st][self.nbays-1]))
+                    Mci[st][0] = Mci[st][self.nbays] = np.max((Mci[st][0], Mci[st][self.nbays]))
+                    Nci[st][0] = Nci[st][self.nbays] = np.max((Nci[st][0], Nci[st][self.nbays]))
                 elif option == "mean":
-                    Mbi[st] = Mbi[-self.nst+st] = np.mean((Mbi[st], Mbi[-self.nst+st]))
-                    Mci[st] = Mci[-self.nst+st] = np.mean((Mci[st], Mci[-self.nst+st]))
-                    Mci[st+self.nst] = Mci[-2*self.nst+st] = np.mean((Mci[st+self.nst], Mci[-2*self.nst+st]))
-                    Nci[st] = Nci[-self.nst+st] = np.mean((Nci[st], Nci[-self.nst + st]))
-                    Nci[st+self.nst] = Nci[-2*self.nst+st] = np.mean((Nci[st+self.nst], Nci[-2*self.nst+st]))
+                    Mbi[st][0] = Mbi[st][self.nbays-1] = np.mean((Mbi[st][0], Mbi[st][self.nbays-1]))
+                    Mci[st][0] = Mci[st][self.nbays] = np.mean((Mci[st][0], Mci[st][self.nbays]))
+                    Nci[st][0] = Nci[st][self.nbays] = np.mean((Nci[st][0], Nci[st][self.nbays]))
                 elif option == "min":
-                    Mbi[st] = Mbi[-self.nst+st] = np.min((Mbi[st], Mbi[-self.nst+st]))
-                    Mci[st] = Mci[-self.nst+st] = np.min((Mci[st], Mci[-self.nst+st]))
-                    Mci[st+self.nst] = Mci[-2*self.nst+st] = np.min((Mci[st+self.nst], Mci[-2*self.nst+st]))
-                    Nci[st] = Nci[-self.nst+st] = np.min((Nci[st], Nci[-self.nst + st]))
-                    Nci[st+self.nst] = Nci[-2*self.nst+st] = np.min((Nci[st+self.nst], Nci[-2*self.nst+st]))
+                    Mbi[st][0] = Mbi[st][self.nbays-1] = np.min((Mbi[st][0], Mbi[st][self.nbays-1]))
+                    Mci[st][0] = Mci[st][self.nbays] = np.min((Mci[st][0], Mci[st][self.nbays]))
+                    Nci[st][0] = Nci[st][self.nbays] = np.min((Nci[st][0], Nci[st][self.nbays]))
                 else:
                     raise ValueError("[EXCEPTION] Wrong option for ensuring symmetry, must be max, mean or min")
-
         else:
             for st in range(self.nst):
                 if option == "max":
-                    Mbi[st] = Mbi[-self.nst+st] = np.max((Mbi[st], Mbi[-self.nst+st]))
-                    Mci[st] = Mci[-self.nst+st] = np.max((Mci[st], Mci[-self.nst+st]))
-                    Nci[st] = Nci[-self.nst+st] = np.max((Nci[st], Nci[-self.nst+st]))
-                elif option == "mean":
-                    Mbi[st] = Mbi[-self.nst+st] = np.mean((Mbi[st], Mbi[-self.nst+st]))
-                    Mci[st] = Mci[-self.nst+st] = np.mean((Mci[st], Mci[-self.nst+st]))
-                    Nci[st] = Nci[-self.nst+st] = np.mean((Nci[st], Nci[-self.nst+st]))
-                elif option == "min":
-                    Mbi[st] = Mbi[-self.nst+st] = np.min((Mbi[st], Mbi[-self.nst+st]))
-                    Mci[st] = Mci[-self.nst+st] = np.min((Mci[st], Mci[-self.nst+st]))
-                    Nci[st] = Nci[-self.nst+st] = np.min((Nci[st], Nci[-self.nst+st]))
+                    Mbi[st][0] = Mbi[st][self.nbays-1] = np.max((Mbi[st][0], Mbi[st][self.nbays-1]))
+                    Mbi[st][1:self.nbays-1] = np.max(Mbi[st][1:self.nbays-1])
+                    Mci[st][0] = Mci[st][self.nbays] = np.max((Mci[st][0], Mci[st][self.nbays]))
+                    for bay in range(1, int((self.nbays-1)/2)):
+                        Mci[st][bay] = Mci[st][-bay-1] = np.max((Mci[st][bay], Mci[st][-bay-1]))
+                    Nci[st][0] = Nci[st][self.nbays] = np.max((Nci[st][0], Nci[st][self.nbays]))
+                    for bay in range(1, int((self.nbays-1)/2)):
+                        Nci[st][bay] = Nci[st][-bay-1] = np.max((Nci[st][bay], Nci[st][-bay-1]))
+
+                if option == "mean":
+                    Mbi[st][0] = Mbi[st][self.nbays-1] = np.mean((Mbi[st][0], Mbi[st][self.nbays-1]))
+                    Mbi[st][1:self.nbays-1] = np.mean(Mbi[st][1:self.nbays-1])
+                    Mci[st][0] = Mci[st][self.nbays] = np.mean((Mci[st][0], Mci[st][self.nbays]))
+                    for bay in range(1, int((self.nbays-1)/2)):
+                        Mci[st][bay] = Mci[st][-bay-1] = np.mean((Mci[st][bay], Mci[st][-bay-1]))
+                    Nci[st][0] = Nci[st][self.nbays] = np.mean((Nci[st][0], Nci[st][self.nbays]))
+                    for bay in range(1, int((self.nbays-1)/2)):
+                        Nci[st][bay] = Nci[st][-bay-1] = np.mean((Nci[st][bay], Nci[st][-bay-1]))
+
+                if option == "min":
+                    Mbi[st][0] = Mbi[st][self.nbays-1] = np.min((Mbi[st][0], Mbi[st][self.nbays-1]))
+                    Mbi[st][1:self.nbays-1] = np.min(Mbi[st][1:self.nbays-1])
+                    Mci[st][0] = Mci[st][self.nbays] = np.min((Mci[st][0], Mci[st][self.nbays]))
+                    for bay in range(1, int((self.nbays-1)/2)):
+                        Mci[st][bay] = Mci[st][-bay-1] = np.min((Mci[st][bay], Mci[st][-bay-1]))
+                    Nci[st][0] = Nci[st][self.nbays] = np.min((Nci[st][0], Nci[st][self.nbays]))
+                    for bay in range(1, int((self.nbays-1)/2)):
+                        Nci[st][bay] = Nci[st][-bay-1] = np.min((Nci[st][bay], Nci[st][-bay-1]))
                 else:
                     raise ValueError("[EXCEPTION] Wrong option for ensuring symmetry, must be max, mean or min")
-
         return Mbi, Mci, Nci
 
     def design_elements(self):
@@ -157,27 +157,32 @@ class Detailing:
         data = {"Beams": {}, "Columns": {}}
         # Design of beams
         for st in range(self.nst):
-            m_target = myb[st]
-            b = self.sections[f"b{st+1}"]
-            h = self.sections[f"h{st+1}"]
-            mphi = MomentCurvatureRC(b, h, m_target, d=self.rebar_cover)
-            data["Beams"][st] = mphi.get_mphi()
+            if self.nbays >= 2:
+                for bay in range(int(round(self.nbays/2, 0))):
+                    m_target = myb[st][bay]
+                    b = self.sections[f"b{st+1}"]
+                    h = self.sections[f"h{st+1}"]
+                    mphi = MomentCurvatureRC(b, h, m_target, d=self.rebar_cover)
+                    data["Beams"][f"S{st+1}B{bay+1}"] = mphi.get_mphi()
+            else:
+                m_target = myb[st][0]
+                b = self.sections[f"b{st + 1}"]
+                h = self.sections[f"h{st + 1}"]
+                mphi = MomentCurvatureRC(b, h, m_target, d=self.rebar_cover)
+                data["Beams"][f"S{st+1}B{1}"] = mphi.get_mphi()
 
         # Design of columns
-        cnt = 0
-        for bay in range(0, 2):
-            for st in range(self.nst):
+        for st in range(self.nst):
+            for bay in range(int(round((self.nbays+1)/2, 0))):
                 if bay == 0:
                     b = h = self.sections[f"he{st+1}"]
-                    m_target = myc[st]
-                    nc_design = nci[st]
                 else:
                     b = h = self.sections[f"hi{st+1}"]
-                    m_target = myc[st+self.nst]
-                    nc_design = nci[st]
+                m_target = myc[st][bay]
+                nc_design = nci[st][bay]
                 nlayers = 0 if h <= 0.35 else 1 if (0.35 < h <= 0.55) else 2
                 z = self.heights[st]
                 mphi = MomentCurvatureRC(b, h, m_target, length=z, p=nc_design, nlayers=nlayers, d=self.rebar_cover)
-                data["Columns"][cnt] = mphi.get_mphi()
-                cnt += 1
+                data["Columns"][f"S{st+1}B{bay+1}"] = mphi.get_mphi()
+
         return data
