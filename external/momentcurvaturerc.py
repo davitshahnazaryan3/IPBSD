@@ -149,9 +149,9 @@ class MomentCurvatureRC:
                             np.sqrt((epss[i] - 2 * (np.sign(epss[i]) * self.EPSUK - np.sign(epss[i]) * self.EPSSH)) / (
                                         np.sign(epss[i]) * self.EPSUK - 2 * (np.sign(epss[i]) * self.EPSUK
                                                                              - np.sign(epss[i]) * self.EPSSH)))
-            if abs(epss[i]) > self.EPSUK:
-                # todo, fix it, not en elegant way of dealing with the problem, in some occasions will be problematic
-                stress[i] = 0
+            # if abs(epss[i]) > self.EPSUK:
+            #     # todo, fix it, not en elegant way of dealing with the problem, in some occasions will be problematic
+            #     stress[i] = 0
 
         # Forces
         cc = c * a1b1 * self.fc_prime * self.b * 1000
@@ -190,7 +190,7 @@ class MomentCurvatureRC:
             nu = kwargs.get('axial_load_ratio', 0)
             ro_sh = kwargs.get('transverse_steel_ratio', None)
             if ro_sh is not None:
-                theta_pc = 0.76*0.031**nu*(0.02 + 40*ro_sh)**1.02
+                theta_pc = min(0.76*0.031**nu*(0.02 + 40*ro_sh)**1.02, 0.1)
             else:
                 theta_pc = 0.1
             lp = Plasticity().get_lp(lp_name="Priestley", db=20, fy=self.fy, fu=self.fy*self.k_hard, lc=self.length)
@@ -286,24 +286,27 @@ class MomentCurvatureRC:
 
             my_first = m[yield_index]
             phiy_first = phi[yield_index]
-            my_nom = self.m_target
             m = np.array(m)
-            rpeak = max(m) / my_nom
+            rpeak = max(m) / my_first
             ei_cracked = my_first / phiy_first
-            phiy_nom = my_nom / ei_cracked
-            mu_phi = phi[np.nanargmax(m)] / phiy_nom
-            ei_cracked = ei_cracked/young_modulus_rc*self.b*self.h**3/12*1000
+            mu_phi = phi[np.nanargmax(m)] / phiy_first
+            ei_cracked = ei_cracked/(young_modulus_rc*self.b*self.h**3/12*1000)
 
         # Softening slope
         nu = abs(self.p)/area/self.fc_prime/1000
         ro_sh = self.TRANSVERSE_LEGS*np.pi*self.TRANSVERSE_DIAMETER**2/4 / self.TRANSVERSE_SPACING / self.b
-        phi_critical = self.get_softening_slope(rebar_area=asinit, curvature_yield=phiy_nom, curvature_ductility=mu_phi,
-                                                axial_load_ratio=nu, transverse_steel_ratio=ro_sh)
+        phi_critical = self.get_softening_slope(rebar_area=asinit, curvature_yield=phiy_first,
+                                                curvature_ductility=mu_phi, axial_load_ratio=nu,
+                                                transverse_steel_ratio=ro_sh)
         m = np.append(m, 0.0)
 
         # Identifying fracturing point
         phi = np.append(phi, phi_critical)
-        fracturing_ductility = phi_critical/phiy_nom
+        fracturing_ductility = phi_critical/phiy_first
+
+        # Removing None arguments
+        m = m[~np.isnan(m)]
+        phi = phi[~np.isnan(phi)]
 
         # Plotting
         if self.plotting:
@@ -311,8 +314,8 @@ class MomentCurvatureRC:
 
         # Storing the results
         data = {'curvature': phi, 'moment': m, 'curvature_ductility': mu_phi, 'peak/yield ratio': rpeak,
-                'reinforcement': asinit, 'cracked EI': ei_cracked, 'nominal_yield_moment': my_nom,
-                'nominal_yield_curvature': phiy_nom, 'phi_critical': phi_critical,
+                'reinforcement': asinit, 'cracked EI': ei_cracked, 'first_yield_moment': my_first,
+                'first_yield_curvature': phiy_first, 'phi_critical': phi_critical,
                 'fracturing_ductility': fracturing_ductility}
         reinforcement = {"Strain": eps_tensile, "Stress": sigmat}
         concrete = {"Strain": epsc, "Stress": sigma_c}

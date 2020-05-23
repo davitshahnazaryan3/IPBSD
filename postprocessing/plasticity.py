@@ -66,9 +66,9 @@ class Plasticity:
     def get_lp(self, lp_name=None, **kwargs):
         """
         gets plastic hinge length
-        :param lp_name:                         Plastic hinge length name
+        :param lp_name: str                     Plastic hinge length name
         :param args:                            Arguments necessary for the method
-        :return:                                Plastic hinge length
+        :return: float                          Plastic hinge length
         """
         if lp_name == "Baker":                      # Baker, 1956
             "beams and columns"
