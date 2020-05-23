@@ -167,9 +167,7 @@ class Master:
         :param tup: float
         :return: None
         """
-        # todo, period for checking should be rounded to 2 decimals
-        # todo, verify that we don't repeat this check from phase 3.1
-        p = PeriodCheck(period, tlow, tup)
+        PeriodCheck(period, tlow, tup)
 
     def verify_mafc(self, period, spo2ida, g, mafc_target, omega, hazard="True"):
         """
@@ -368,17 +366,19 @@ class Master:
             response = op.define_recorders(beams, columns, analysis)
         return response
 
-    def design_elements(self, demands, sections, tlower, tupper):
+    def design_elements(self, demands, sections, tlower, tupper, ductility_class="DCM"):
         """
         Runs M-phi to optimize for reinforcement for each section
         :param demands: DataFrame or dict           Demands identified from a structural analysis (lateral+gravity)
         :param sections: DataFrame                  Solution including section information
         :param tlower: float                        Lower period limit
         :param tupper: float                        Upper period limit
+        :param ductility_class: str                 Ductility class (DCM or DCH, following Eurocode 8 recommendations)
         :return: dict                               Designed element properties from the moment-curvature relationship
         """
         d = Detailing(demands, self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
-                      self.data.h, self.data.n_seismic, self.data.masses, tlower, tupper, sections)
+                      self.data.h, self.data.n_seismic, self.data.masses, tlower, tupper, sections,
+                      ductility_class=ductility_class)
         data = d.design_elements()
         return data
 
@@ -409,7 +409,7 @@ class Master:
     def get_system_ductility(self, sections, period, say, details):
         """
         estimates system ductility
-        :param sections: dataframe
+        :param sections: Series
         :param period: float
         :param say: float
         :param details: dict

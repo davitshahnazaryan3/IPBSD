@@ -8,7 +8,7 @@ import numpy as np
 
 class Detailing:
     def __init__(self, demands, nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, tlower, tupper, sections,
-                 rebar_cover=0.03):
+                 rebar_cover=0.03, ductility_class="DCM", young_mod_s=200e3):
         # todo, add design based on M+N and M-N (currently only M-N)
         """
         initializes detailing phase
@@ -25,11 +25,14 @@ class Detailing:
         :param tupper: float                Upper period bound
         :param sections: DataFrame          Cross-sections of elements of the solution
         :param rebar_cover: float           Reinforcement cover in m
+        :param ductility_class: str         Ductility class (DCM or DCH, following Eurocode 8 recommendations)
+        :param young_mod_s: float               Young modulus of reinforcement
         """
         self.demands = demands
         self.nst = nst
         self.nbays = nbays
         self.fy = fy
+        self.young_mod_s = young_mod_s
         self.fc = fc
         self.bay_widths = bay_widths
         self.heights = heights
@@ -39,6 +42,9 @@ class Detailing:
         self.tupper = tupper
         self.sections = sections
         self.rebar_cover = rebar_cover
+        self.ductility_class = ductility_class
+        # Reinforcement characteristic yield strength in MPa
+        self.FYK = 500.
 
     def capacity_design(self, Mbi, Mci):
         """
@@ -147,11 +153,71 @@ class Detailing:
                     raise ValueError("[EXCEPTION] Wrong option for ensuring symmetry, must be max, mean or min")
         return Mbi, Mci, Nci
 
+    def ensure_local_ductility(self, b, h, reinforcement, relation, st, bay, eletype):
+        """
+        Local ductility checks according to Eurocode 8
+        :param b: float                             Width of element
+        :param h: float                             Height of element
+        :param reinforcement: float                 Total reinforcement area
+        :param relation: class                      Object created based on M-phi relationship
+        :param st: int                              Storey level
+        :param bay: int                             Bay level
+        :param eletype: str                         Element type, beam or column
+        :return: dict                               M-phi outputs to be stored
+        """
+        # Behaviour factor, for frame systems assuming regularity in elevation
+        # Assuming multi-storey, multi-bay frames
+        if self.ductility_class == "DCM":
+            q = 3.9
+        elif self.ductility_class == "DCH":
+            q = 5.85
+        else:
+            raise ValueError("[EXCEPTION] Wrong type of ductility class, must be DCM or DCH!")
+        # Design compressive strength
+        fcd = 0.8/1.5*self.fc
+        # Tensile strength
+        fctm = 0.3*self.fc**(2/3)
+
+        # Reinforcement ratio
+        ro_prime = reinforcement / (b * (h - self.rebar_cover))
+        req_duct = q * 2 - 1
+        yield_strain = self.fy / self.young_mod_s
+
+        # Reinforcement ratio limits to meet local ductility conditions
+        if eletype == "Beam":
+            ro_max = ro_prime + 0.0018 * fcd / self.fy / req_duct / yield_strain
+            ro_min = 0.5 * fctm / self.FYK
+        elif eletype == "Column":
+            ro_min = 0.01
+            ro_max = 0.04
+        else:
+            raise ValueError("[EXCEPTION] Wrong type of element for local ductility verifications!")
+
+        # Verifications
+        if ro_min > ro_prime:
+            ro_prime = ro_min
+            if eletype == "Beam":
+                rebar = (b * (h - self.rebar_cover)) * ro_prime*2
+            else:
+                rebar = (b * (h - self.rebar_cover)) * ro_prime
+            m_target = relation.get_mphi(check_reinforcement=True, reinf_test=rebar)
+            data = relation.get_mphi(m_target=m_target)
+            return data
+
+        elif ro_max < ro_prime:
+            print(f"[WARNING] Cross-section of {eletype} element at storey {st} and bay {bay} should be increased! "
+                  f"ratio: {ro_prime*100:.2f}%")
+            return None
+
+        else:
+            return None
+
     def design_elements(self):
         """
         designs elements using demands from ELFM and optimal solution, uses moment_curvature_rc
         :return: dict                           Designed element properties from the moment-curvature relationship
         """
+        # Ensure symmetry of strength distribution along the widths of the frame
         mbi, mci, nci = self.ensure_symmetry()
         myb, myc = self.capacity_design(mbi, mci)
         data = {"Beams": {}, "Columns": {}}
@@ -162,14 +228,25 @@ class Detailing:
                     m_target = myb[st][bay]
                     b = self.sections[f"b{st+1}"]
                     h = self.sections[f"h{st+1}"]
-                    mphi = MomentCurvatureRC(b, h, m_target, d=self.rebar_cover)
+                    mphi = MomentCurvatureRC(b, h, m_target, d=self.rebar_cover, young_mod_s=self.young_mod_s)
                     data["Beams"][f"S{st+1}B{bay+1}"] = mphi.get_mphi()
+                    '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
+                    d_temp = self.ensure_local_ductility(b, h, data["Beams"][f"S{st+1}B{bay+1}"][0]["reinforcement"]/2,
+                                                         mphi, st+1, bay+1, eletype="Beam")
+                    if d_temp is not None:
+                        data["Beams"][f"S{st+1}B{bay+1}"] = d_temp
+
             else:
                 m_target = myb[st][0]
                 b = self.sections[f"b{st + 1}"]
                 h = self.sections[f"h{st + 1}"]
-                mphi = MomentCurvatureRC(b, h, m_target, d=self.rebar_cover)
+                mphi = MomentCurvatureRC(b, h, m_target, d=self.rebar_cover, young_mod_s=self.young_mod_s)
                 data["Beams"][f"S{st+1}B{1}"] = mphi.get_mphi()
+                '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
+                d_temp = self.ensure_local_ductility(b, h, data["Beams"][f"S{st+1}B{1}"][0]["reinforcement"]/2, mphi,
+                                                     st+1, 1, eletype="Beam")
+                if d_temp is not None:
+                    data["Beams"][f"S{st+1}B{1}"] = d_temp
 
         # Design of columns
         for st in range(self.nst):
@@ -182,7 +259,13 @@ class Detailing:
                 nc_design = nci[st][bay]
                 nlayers = 0 if h <= 0.35 else 1 if (0.35 < h <= 0.55) else 2
                 z = self.heights[st]
-                mphi = MomentCurvatureRC(b, h, m_target, length=z, p=nc_design, nlayers=nlayers, d=self.rebar_cover)
+                mphi = MomentCurvatureRC(b, h, m_target, length=z, p=nc_design, nlayers=nlayers, d=self.rebar_cover,
+                                         young_mod_s=self.young_mod_s)
                 data["Columns"][f"S{st+1}B{bay+1}"] = mphi.get_mphi()
+                '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
+                d_temp = self.ensure_local_ductility(b, h, data["Columns"][f"S{st+1}B{bay+1}"][0]["reinforcement"], mphi,
+                                                     st+1, bay+1, eletype="Column")
+                if d_temp is not None:
+                    data["Columns"][f"S{st+1}B{bay+1}"] = d_temp
 
         return data

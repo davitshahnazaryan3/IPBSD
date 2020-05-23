@@ -4,10 +4,20 @@ Integrated Performance-Based Seismic Design
 Design framework based on limiting economic losses, i.e. expected annual loss (EAL) and targetting a probability of collapse, i.e. mean annual frequency of collapse (MAFC).
 
 **Contents**<a id='contents'></a>
-1. [Input arguments and files](#input)
-2. [Step by step procedures](#process)
-3. [Future upgrade objectives](#future)
+1. [Literature](#lit)
+2. [Input arguments and files](#input)
+3. [Step by step procedures](#process)
+4. [Future upgrade objectives](#future)
 
+### Literature <a id='lit'>
+* O’Reilly GJ, Calvi GM. Conceptual seismic design in performance-based earthquake engineering. 
+*Earthquake Engineering & Structural Dynamics* 2019; **48**(4): 389–411. DOI: 10.1002/eqe.3141.
+
+* Shahnazaryan D, O’Reilly GJ, Monteiro R. Using direct economic losses and collapse risk for seismic 
+design of RC buildings. *COMPDYN 2019 - 7th International Conference on Computational Methods in 
+Structural Dynamics and Earthquake Engineering*, Crete Island, Greece: 2019. DOI: https://doi.org/10.7712/120119.7281.19516.
+
+</a><font color=blue><div style="text-align: right">[up](#contents)
 
 ### Input arguments and files <a id='input'>
 
@@ -171,6 +181,7 @@ Additional explanations of each file are provided within the relevant directorie
  
 * [ ] Considerations for shear design, will be useful also in identifying inelastic rotation capacities, then input ro_sh based on that for Haselton platic hinge length definition
 
+* [ ] Test all input argument effects for bugs and default arguments for functions as well
 
 </a><font color=blue><div style="text-align: right">[up](#contents)
   

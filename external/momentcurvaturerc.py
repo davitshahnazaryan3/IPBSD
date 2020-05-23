@@ -22,7 +22,7 @@ warnings.filterwarnings('ignore')
 
 class MomentCurvatureRC:
     def __init__(self, b, h, m_target, length=0, nlayers=0, p=0, d=.04, fc_prime=25, fy=415, young_mod_s=200e3,
-                 check_reinforcement=False, reinf_test=0, plotting=False, soft_method="Haselton", k_hard=1.0):
+                 plotting=False, soft_method="Haselton", k_hard=1.0):
         """
         init Moment curvature tool
         :param b: float                         Element sectional width
@@ -35,9 +35,6 @@ class MomentCurvatureRC:
         :param fc_prime: float                  Concrete compressive strength
         :param fy: float                        Reinforcement yield strength
         :param young_mod_s: float               Young modulus of reinforcement
-        :param check_reinforcement: bool        Gets moment for reinforcement provided (True) or applied optimization
-                                                for Mtarget (False)
-        :param reinf_test: int                  Reinforcement for test todo into kwargs
         :param plotting: bool                   Plotting flag
         :param soft_method: str                 Method for the softening slope calculation
         :param k_hard: float                    Hardening slope of reinforcement (i.e. fu/fy)
@@ -55,8 +52,6 @@ class MomentCurvatureRC:
         self.EPSSH = 0.008
         self.EPSUK = 0.075
         self.k_hard = k_hard
-        self.check_reinforcement = check_reinforcement
-        self.reinf_test = reinf_test
         self.plotting = plotting
         self.soft_method = soft_method
         self.mi = np.nan
@@ -226,11 +221,19 @@ class MomentCurvatureRC:
             raise ValueError("[EXCEPTION] Wrong method for the definition of softening slope!")
         return phi_critical
     
-    def get_mphi(self):
+    def get_mphi(self, check_reinforcement=False, reinf_test=0, m_target=None):
         """
         Gives the Moment-curvature relationship
-        :return: dict                              M-phi response data, reinforcement and concrete data for detailing
+        :param check_reinforcement: bool            Gets moment for reinforcement provided (True) or applied
+                                                    optimization for Mtarget (False)
+        :param reinf_test: int                      Reinforcement for test
+        :param m_target: float                      Target bending moment. This is a value that may be increased
+                                                    depending on local ductility requirements
+        :return: dict                               M-phi response data, reinforcement and concrete data for detailing
         """
+        if m_target is not None:
+            self.m_target = m_target
+
         # Concrete properties
         # Assumption - parabolic stress-strain relationship for the concrete
         # concrete elasticity modulus MPa
@@ -243,14 +246,14 @@ class MomentCurvatureRC:
         ey = self.fy / self.young_mod_s
         area = self.h * self.b
         inertia = self.b * self.h ** 3 / 12
-        # Cracking moment calculation
+        # Cracking moment calculation (irrelevant for the design, but will store the data for possible checks)
         lam_nw = 1  # for normal weight concrete
         fcr = 0.33 * lam_nw * np.sqrt(self.fc_prime)
         m_cr = (-self.p / area + fcr * 1000) * inertia / (self.h / 2)
         epscr = fcr / young_modulus_rc
         fcr_t = (-self.p / area + m_cr * self.h / 2 / inertia) / 1000
         yc = fcr * self.h / (fcr + fcr_t)
-        phicr = epscr / yc
+        phi_cr = epscr / yc
 
         ''' The "Process" '''
         epsc = np.linspace(epsc_prime * 2 / 500, 2 * epsc_prime, 1000)
@@ -263,9 +266,9 @@ class MomentCurvatureRC:
         # Optimize for longitudinal reinforcement at peak capacity
         asinit = np.array([0.001])
         asinit = abs(float(optimize.fsolve(self.max_moment, asinit, epsc_prime, factor=0.1)))
-        if self.check_reinforcement:
+        if check_reinforcement:
             c = np.array([0.01])
-            c = abs(float(optimize.fsolve(self.objective, c, [2 * epsc_prime, epsc_prime, self.reinf_test], factor=0.1)))
+            c = abs(float(optimize.fsolve(self.objective, c, [2 * epsc_prime, epsc_prime, reinf_test], factor=0.1)))
             return self.mi
         else:
             for i in range(len(epsc)):
@@ -298,15 +301,20 @@ class MomentCurvatureRC:
         phi_critical = self.get_softening_slope(rebar_area=asinit, curvature_yield=phiy_first,
                                                 curvature_ductility=mu_phi, axial_load_ratio=nu,
                                                 transverse_steel_ratio=ro_sh)
-        m = np.append(m, 0.0)
-
-        # Identifying fracturing point
-        phi = np.append(phi, phi_critical)
-        fracturing_ductility = phi_critical/phiy_first
 
         # Removing None arguments
-        m = m[~np.isnan(m)]
-        phi = phi[~np.isnan(phi)]
+        if self.k_hard == 1.:
+            m = m[~np.isnan(m)]
+            phi = phi[~np.isnan(phi)]
+        else:
+            idx = min(np.argwhere(np.isnan(m))[0][0], np.argwhere(np.isnan(phi))[0][0])
+            m = m[:idx]
+            phi = phi[:idx]
+
+        # Identifying fracturing point
+        m = np.append(m, 0.0)
+        phi = np.append(phi, phi_critical)
+        fracturing_ductility = phi_critical/phiy_first
 
         # Plotting
         if self.plotting:
@@ -335,21 +343,28 @@ if __name__ == '__main__':
     fc_prime                concrete strength [MPa]
     fy                      reinforcement yield strength [MPa]
     young_modulus_s         reinforcement elastic modulus [MPa]
-    check_reinforcement     check for a given reinforcement [bool]
-    reinf_test              given reinforcement [m2]
     plotting                plot the M-phi [bool]
     """
     # Section properties
     b = 0.25
-    h = 0.25
-    Mtarget = 220.
+    h = 0.4
+    Mtarget = 240.
+    cover = 0.02
 
-    a = MomentCurvatureRC(b, h, Mtarget, nlayers=0, plotting=True, d=0.02, soft_method="Collins")
-    x, r, c = a.get_mphi()
-    aa = a.get_mphi()
-    ro = x['reinforcement'] / b / (h - 20 / 1000) * 100 / 2
-    # print(f"Reinforcement ratio {ro:.2f}%")
-    # print(f"Curvature ductility {x['curvature ductility']:.1f}")
+    mphi = MomentCurvatureRC(b, h, Mtarget, d=cover, plotting=False, soft_method="Haselton")
+
+    #    mphi = MomentCurvatureRC(b, h, Mtarget, nlayers=0, plotting=True, d=cover, soft_method="Haselton")
+    data = mphi.get_mphi()
+    ro = data[0]['reinforcement'] / b / (h - cover) * 100 / 2
+    print(f"Reinforcement ratio {ro:.2f}%")
+
+    plt.plot(data[0]["curvature"], data[0]["moment"])
+    plt.xlim([0, 0.2])
+    plt.ylim([0, 250])
+    plt.scatter(data[0]["first_yield_curvature"], data[0]["first_yield_moment"])
+    plt.scatter(data[0]["first_yield_curvature"] * data[0]["curvature_ductility"],
+                data[0]["first_yield_moment"] * data[0]["peak/yield ratio"])
+
 #    fig, ax = plt.subplots(figsize=(4, 3))
 #    plt.plot(c["Strain"], c["Stress"])
 #

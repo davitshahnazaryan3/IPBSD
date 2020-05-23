@@ -187,9 +187,15 @@ class IPBSD:
 
         """Perform eigenvalue analysis on designed frame"""
         print("[PHASE] Commencing phase 5...")
-        # period, phi = ipbsd.run_ma(opt_sol, t_lower, t_upper, sections)
-        # ipbsd.verify_period(round(period, 2), t_lower, t_upper)
-        # ductility_hard = csd.get_system_ductility(opt_sol, period, say[0], mphi_sections)
+        # Estimates period which is based on calculated EI values from M-phi relationships. Not a mandatory step.
+        period_stf, phi = ipbsd.run_ma(opt_sol, t_lower, t_upper, sections)
+
+        # Note: stiffness based off first yield point, at nominal point the stiffness is actually lower, and might act
+        # as a more realistic value. Notably Haselton, 2016 limits the secant yield stiffness between 0.2EIg and 0.6EIg.
+        ipbsd.verify_period(round(period_stf, 2), t_lower, t_upper)
+        print("[SUCCESS] Fundamental period has been verified.")
+
+        # ductility_hard = ipbsd.get_system_ductility(opt_sol, period, say, sections)
         # print("[PHASE] 5 completed!")
 
         print("[END] IPBSD was performed successfully")
