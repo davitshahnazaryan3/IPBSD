@@ -265,7 +265,8 @@ class Detailing:
                 m_target = myc[st][bay]
                 nc_design = nci[st][bay]
                 nlayers = 0 if h <= 0.35 else 1 if (0.35 < h <= 0.55) else 2
-                # Assuming contraflexure at 0.6 of height   todo, may add better estimation of contraflexure point based on Muto's approach
+                # Assuming contraflexure at 0.6 of height
+                # todo, may add better estimation of contraflexure point based on Muto's approach
                 z = 0.6*self.heights[st]
                 mphi = MomentCurvatureRC(b, h, m_target, length=z, p=nc_design, nlayers=nlayers, d=self.rebar_cover,
                                          young_mod_s=self.young_mod_s, k_hard=self.k_hard)
@@ -277,7 +278,7 @@ class Detailing:
                     data["Columns"][f"S{st+1}B{bay+1}"] = d_temp
 
         mu_c = self.get_hardening_ductility(data)
-        mu_f = self.get_fracturing_ductility(mu_c, )
+        # mu_f = self.get_fracturing_ductility(mu_c, )
 
         return data, mu_c
 

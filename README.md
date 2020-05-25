@@ -71,7 +71,9 @@ Additional explanations of each file are provided within the relevant directorie
         - r -                    	Residual strength ratio with respect to yield strength
         - mf -                    	Fracturing ductility
         - pw -                    	Pinching weight (default 1.0)
-    
+   
+9. **mc_my** - System peak to yield strength ratio<br/>
+
 </a><font color=blue><div style="text-align: right">[up](#contents)
 
 ### Step by step procedure<a id='process'>
@@ -157,7 +159,7 @@ Additional explanations of each file are provided within the relevant directorie
 
 * [ ] Add class of reinforcement and concrete as input arguments
 
-* [ ] Add softening slope by Vecchio and Collins 1986
+* [x] Add softening slope by Vecchio and Collins 1986
 
 * [x] All input xlsx, csv etc. files will be modified to be more flexible
 

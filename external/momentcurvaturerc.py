@@ -22,7 +22,7 @@ warnings.filterwarnings('ignore')
 
 class MomentCurvatureRC:
     def __init__(self, b, h, m_target, length=0, nlayers=0, p=0, d=.04, fc_prime=25, fy=415, young_mod_s=200e3,
-                 plotting=False, soft_method="Haselton", k_hard=1.0):
+                 plotting=False, soft_method="Haselton", k_hard=1.0, fstiff=0.5):
         """
         init Moment curvature tool
         :param b: float                         Element sectional width
@@ -38,6 +38,7 @@ class MomentCurvatureRC:
         :param plotting: bool                   Plotting flag
         :param soft_method: str                 Method for the softening slope calculation
         :param k_hard: float                    Hardening slope of reinforcement (i.e. fu/fy)
+        :param fstiff: float                    Stiffness reduction factor (50% per Eurocode 8), for the model only
         """
         self.b = b
         self.h = h
@@ -54,6 +55,7 @@ class MomentCurvatureRC:
         self.k_hard = k_hard
         self.plotting = plotting
         self.soft_method = soft_method
+        self.fstiff = fstiff
         self.mi = np.nan
         self.epss = np.nan
         self.fst = np.nan
@@ -287,13 +289,24 @@ class MomentCurvatureRC:
 
             yield_index = self.checkMy(self.fy, sigmat)
 
+            # Removing None arguments
+            if self.k_hard == 1.:
+                m = m[~np.isnan(m)]
+                phi = phi[~np.isnan(phi)]
+            else:
+                idx = min(np.argwhere(np.isnan(m))[0][0], np.argwhere(np.isnan(phi))[0][0])
+                m = m[:idx]
+                phi = phi[:idx]
+            idx_max = -1
+            m_max = m[idx_max]
+
             my_first = m[yield_index]
             phiy_first = phi[yield_index]
             m = np.array(m)
-            rpeak = max(m) / my_first
+            rpeak = m_max / my_first
             ei_cracked = my_first / phiy_first
-            mu_phi = phi[np.nanargmax(m)] / phiy_first
-            ei_cracked = ei_cracked/(young_modulus_rc*self.b*self.h**3/12*1000)
+            mu_phi = phi[idx_max] / phiy_first
+            ei_cracked = ei_cracked / (young_modulus_rc * self.b * self.h ** 3 / 12 * 1000)
 
         # Softening slope
         nu = abs(self.p)/area/self.fc_prime/1000
@@ -301,15 +314,6 @@ class MomentCurvatureRC:
         phi_critical = self.get_softening_slope(rebar_area=asinit, curvature_yield=phiy_first,
                                                 curvature_ductility=mu_phi, axial_load_ratio=nu,
                                                 transverse_steel_ratio=ro_sh)
-
-        # Removing None arguments
-        if self.k_hard == 1.:
-            m = m[~np.isnan(m)]
-            phi = phi[~np.isnan(phi)]
-        else:
-            idx = min(np.argwhere(np.isnan(m))[0][0], np.argwhere(np.isnan(phi))[0][0])
-            m = m[:idx]
-            phi = phi[:idx]
 
         # Identifying fracturing point
         m = np.append(m, 0.0)
@@ -321,6 +325,7 @@ class MomentCurvatureRC:
             self.plot_mphi(phi, m)
 
         # Storing the results
+        # The values are relative to the point of yield definition (herein to first yield)
         data = {'curvature': phi, 'moment': m, 'curvature_ductility': mu_phi, 'peak/yield ratio': rpeak,
                 'reinforcement': asinit, 'cracked EI': ei_cracked, 'first_yield_moment': my_first,
                 'first_yield_curvature': phiy_first, 'phi_critical': phi_critical,
@@ -328,7 +333,16 @@ class MomentCurvatureRC:
         reinforcement = {"Strain": eps_tensile, "Stress": sigmat}
         concrete = {"Strain": epsc, "Stress": sigma_c}
 
-        return data, reinforcement, concrete
+        # Hysteretic behaviour of all structural elements for model creation in OpenSees (M-curvature)
+        # Assuming 50% of gross cross-section (the actual M-phi is calculated without the necessity of defining fstiff)
+        # todo, add accounting for residual strength here
+        curv_yield = self.m_target/young_modulus_rc/1000/inertia/self.fstiff
+        curv_ult = mu_phi*phiy_first
+        model = {"yield": {"curvature": curv_yield, "moment": self.m_target},
+                 "ultimate": {"curvature": curv_ult, "moment": m_max},
+                 "fracturing": {"curvature": phi_critical, "moment": 0}}
+
+        return data, reinforcement, concrete, model
 
     
 if __name__ == '__main__':
@@ -348,8 +362,8 @@ if __name__ == '__main__':
     # Section properties
     b = 0.25
     h = 0.4
-    Mtarget = 240.
-    cover = 0.02
+    Mtarget = 155.
+    cover = 0.03
 
     mphi = MomentCurvatureRC(b, h, Mtarget, d=cover, plotting=False, soft_method="Haselton")
 
@@ -358,12 +372,12 @@ if __name__ == '__main__':
     ro = data[0]['reinforcement'] / b / (h - cover) * 100 / 2
     print(f"Reinforcement ratio {ro:.2f}%")
 
-    plt.plot(data[0]["curvature"], data[0]["moment"])
-    plt.xlim([0, 0.2])
-    plt.ylim([0, 250])
-    plt.scatter(data[0]["first_yield_curvature"], data[0]["first_yield_moment"])
-    plt.scatter(data[0]["first_yield_curvature"] * data[0]["curvature_ductility"],
-                data[0]["first_yield_moment"] * data[0]["peak/yield ratio"])
+    # plt.plot(data[0]["curvature"], data[0]["moment"])
+    # plt.xlim([0, 0.2])
+    # plt.ylim([0, 250])
+    # plt.scatter(data[0]["first_yield_curvature"], data[0]["first_yield_moment"])
+    # plt.scatter(data[0]["first_yield_curvature"] * data[0]["curvature_ductility"],
+    #             data[0]["first_yield_moment"] * data[0]["peak/yield ratio"])
 
 #    fig, ax = plt.subplots(figsize=(4, 3))
 #    plt.plot(c["Strain"], c["Stress"])

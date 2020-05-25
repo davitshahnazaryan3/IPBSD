@@ -382,7 +382,7 @@ class Master:
                       ductility_class=ductility_class)
         data, mu_c = d.design_elements()
 
-        return data
+        return data, mu_c
 
     def run_ma(self, solution, tlower, tupper, sections):
         """

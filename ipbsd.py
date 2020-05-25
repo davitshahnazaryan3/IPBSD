@@ -224,27 +224,25 @@ class IPBSD:
         self.store_results(case_directory/"ipbsd", ipbsd_outputs, "pkl")
 
         # todo, store details necessary for constructing the model in OpenSees
-        # """Design the structural elements"""
-        # sections, hard_ductility = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper, dy)
-        # """Estimate parameters for SPO curve and compare with assumed shape"""
-        # design_results = {"details": sections, "hardening ductility": hard_ductility}
-        # self.store_results(case_directory / "details", design_results, "pkl")
-        #
-        # print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
-        #
-        # """Perform eigenvalue analysis on designed frame"""
-        # print("[PHASE] Commencing phase 5...")
-        # # Estimates period which is based on calculated EI values from M-phi relationships. Not a mandatory step.
-        # period_stf, phi = ipbsd.run_ma(opt_sol, t_lower, t_upper, sections)
-        #
-        # # Note: stiffness based off first yield point, at nominal point the stiffness is actually lower, and might act
-        # # as a more realistic value. Notably Haselton, 2016 limits the secant yield stiffness between 0.2EIg and 0.6EIg.
-        # ipbsd.verify_period(round(period_stf, 2), t_lower, t_upper)
-        # print("[SUCCESS] Fundamental period has been verified.")
-        #
-        # # print("[PHASE] 5 completed!")
-        #
-        # print("[END] IPBSD was performed successfully")
+        """Design the structural elements"""
+        details, hard_ductility = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper, dy)
+        """Estimate parameters for SPO curve and compare with assumed shape"""
+        design_results = {"details": details, "hardening ductility": hard_ductility}
+        self.store_results(case_directory / "details", design_results, "pkl")
+        print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
+
+        """Perform eigenvalue analysis on designed frame"""
+        print("[PHASE] Commencing phase 5...")
+        # Estimates period which is based on calculated EI values from M-phi relationships. Not a mandatory step.
+        # the closer 'period_stf' to 'period' the better the accuracy of the assumption of 50% inertia reduction
+        period_stf, phi = ipbsd.run_ma(opt_sol, t_lower, t_upper, details)
+
+        # Note: stiffness based off first yield point, at nominal point the stiffness is actually lower, and might act
+        # as a more realistic value. Notably Haselton, 2016 limits the secant yield stiffness between 0.2EIg and 0.6EIg.
+        ipbsd.verify_period(round(period_stf, 2), t_lower, t_upper)
+        print("[SUCCESS] Fundamental period has been verified.")
+
+        print("[END] IPBSD was performed successfully")
 
 
 if __name__ == "__main__":
