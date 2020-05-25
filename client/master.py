@@ -116,7 +116,7 @@ class Master:
         table, phi, deltas = t.table_generator()
         g, m = t.get_modal_parameters(phi)
         delta, alpha = t.get_design_values(deltas)
-        return table, g, delta, alpha
+        return table, delta, alpha
 
     def get_period_range(self, d, a, sd, sa):
         """
@@ -184,7 +184,7 @@ class Master:
         Hs, sa_hazard = self.get_hazard_sa(period, hazard)
         m = MAFCCheck(r, mafc_target, g, Hs, sa_hazard, omega, hazard)
         fsolve(m.objective, x0=np.array([0.05]))
-        dy = (m.say*omega)*9.81*(period/2/np.pi)**2
+        dy = (float(m.say)*omega)*9.81*(period/2/np.pi)**2
         say = float(m.say)
         return say, dy
 
@@ -366,30 +366,32 @@ class Master:
             response = op.define_recorders(beams, columns, analysis)
         return response
 
-    def design_elements(self, demands, sections, tlower, tupper, ductility_class="DCM"):
+    def design_elements(self, demands, sections, tlower, tupper, dy, ductility_class="DCM"):
         """
         Runs M-phi to optimize for reinforcement for each section
         :param demands: DataFrame or dict           Demands identified from a structural analysis (lateral+gravity)
         :param sections: DataFrame                  Solution including section information
         :param tlower: float                        Lower period limit
         :param tupper: float                        Upper period limit
+        :param dy: float                            System yield displacement in m
         :param ductility_class: str                 Ductility class (DCM or DCH, following Eurocode 8 recommendations)
         :return: dict                               Designed element properties from the moment-curvature relationship
         """
         d = Detailing(demands, self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
-                      self.data.h, self.data.n_seismic, self.data.masses, tlower, tupper, sections,
+                      self.data.h, self.data.n_seismic, self.data.masses, tlower, tupper, dy, sections,
                       ductility_class=ductility_class)
-        data = d.design_elements()
+        data, mu_c = d.design_elements()
+
         return data
 
     def run_ma(self, solution, tlower, tupper, sections):
         """
         runs modal analysis for a single solution
-        :param solution: dataframe
-        :param tlower: float
-        :param tupper: float
-        :param sections: dataframe
-        :return: float, list
+        :param solution: pandas Series              Cross-section dimensions
+        :param tlower: float                        Lower period limit
+        :param tupper: float                        Upper period limit
+        :param sections: DataFrame                  Designed section properties, M-phi relationships etc.
+        :return: float, list                        Fundamental period and first mode shape
         """
         fstiff_beam = [sections["Beams"][i][0]["cracked EI"] for i in sections["Beams"]]
         fstiff_col = [sections["Columns"][i][0]["cracked EI"] for i in sections["Columns"]]
@@ -405,19 +407,3 @@ class Master:
 
         period, phi = cs.run_ma(props)
         return period, phi
-
-    def get_system_ductility(self, sections, period, say, details):
-        """
-        estimates system ductility
-        :param sections: Series
-        :param period: float
-        :param say: float
-        :param details: dict
-        :return: float
-        """
-        d = Detailing(None, self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x, self.data.h,
-                      self.data.n_seismic, self.data.masses, 0, 0, sections)
-        lp_args = [20, self.data.fy]
-        ductility_hard = d.get_hardening_ductility(period, say, details, sections, lp_args)
-        print(f"Estimated system hardening ductility: {ductility_hard:.2f}")
-        return ductility_hard

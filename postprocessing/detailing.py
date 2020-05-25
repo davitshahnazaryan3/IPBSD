@@ -3,12 +3,13 @@ defines detailing conditions (code-based) for element design
 The detailing phase comes as a phase before an iteration where the SPO curve needs to be updated
 """
 from external.momentcurvaturerc import MomentCurvatureRC
+from postprocessing.plasticity import Plasticity
 import numpy as np
 
 
 class Detailing:
-    def __init__(self, demands, nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, tlower, tupper, sections,
-                 rebar_cover=0.03, ductility_class="DCM", young_mod_s=200e3):
+    def __init__(self, demands, nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, tlower, tupper, dy, sections,
+                 rebar_cover=0.03, ductility_class="DCM", young_mod_s=200e3, k_hard=1.0):
         # todo, add design based on M+N and M-N (currently only M-N)
         """
         initializes detailing phase
@@ -23,10 +24,12 @@ class Detailing:
         :param mi: list                     Lumped storey masses
         :param tlower: float                Lower period bound
         :param tupper: float                Upper period bound
+        :param dy: float                    System yield displacement in m
         :param sections: DataFrame          Cross-sections of elements of the solution
         :param rebar_cover: float           Reinforcement cover in m
         :param ductility_class: str         Ductility class (DCM or DCH, following Eurocode 8 recommendations)
-        :param young_mod_s: float               Young modulus of reinforcement
+        :param young_mod_s: float           Young modulus of reinforcement
+        :param k_hard: float                Hardening slope of reinforcement (i.e. fu/fy)
         """
         self.demands = demands
         self.nst = nst
@@ -40,11 +43,13 @@ class Detailing:
         self.mi = mi
         self.tlower = tlower
         self.tupper = tupper
+        self.dy = dy
         self.sections = sections
         self.rebar_cover = rebar_cover
         self.ductility_class = ductility_class
         # Reinforcement characteristic yield strength in MPa
         self.FYK = 500.
+        self.k_hard = k_hard
 
     def capacity_design(self, Mbi, Mci):
         """
@@ -215,7 +220,7 @@ class Detailing:
     def design_elements(self):
         """
         designs elements using demands from ELFM and optimal solution, uses moment_curvature_rc
-        :return: dict                           Designed element properties from the moment-curvature relationship
+        :return: dict                           Designed element details from the moment-curvature relationship
         """
         # Ensure symmetry of strength distribution along the widths of the frame
         mbi, mci, nci = self.ensure_symmetry()
@@ -228,7 +233,8 @@ class Detailing:
                     m_target = myb[st][bay]
                     b = self.sections[f"b{st+1}"]
                     h = self.sections[f"h{st+1}"]
-                    mphi = MomentCurvatureRC(b, h, m_target, d=self.rebar_cover, young_mod_s=self.young_mod_s)
+                    mphi = MomentCurvatureRC(b, h, m_target, d=self.rebar_cover, young_mod_s=self.young_mod_s,
+                                             k_hard=self.k_hard)
                     data["Beams"][f"S{st+1}B{bay+1}"] = mphi.get_mphi()
                     '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
                     d_temp = self.ensure_local_ductility(b, h, data["Beams"][f"S{st+1}B{bay+1}"][0]["reinforcement"]/2,
@@ -240,7 +246,8 @@ class Detailing:
                 m_target = myb[st][0]
                 b = self.sections[f"b{st + 1}"]
                 h = self.sections[f"h{st + 1}"]
-                mphi = MomentCurvatureRC(b, h, m_target, d=self.rebar_cover, young_mod_s=self.young_mod_s)
+                mphi = MomentCurvatureRC(b, h, m_target, d=self.rebar_cover, young_mod_s=self.young_mod_s,
+                                         k_hard=self.k_hard)
                 data["Beams"][f"S{st+1}B{1}"] = mphi.get_mphi()
                 '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
                 d_temp = self.ensure_local_ductility(b, h, data["Beams"][f"S{st+1}B{1}"][0]["reinforcement"]/2, mphi,
@@ -258,9 +265,10 @@ class Detailing:
                 m_target = myc[st][bay]
                 nc_design = nci[st][bay]
                 nlayers = 0 if h <= 0.35 else 1 if (0.35 < h <= 0.55) else 2
-                z = self.heights[st]
+                # Assuming contraflexure at 0.6 of height   todo, may add better estimation of contraflexure point based on Muto's approach
+                z = 0.6*self.heights[st]
                 mphi = MomentCurvatureRC(b, h, m_target, length=z, p=nc_design, nlayers=nlayers, d=self.rebar_cover,
-                                         young_mod_s=self.young_mod_s)
+                                         young_mod_s=self.young_mod_s, k_hard=self.k_hard)
                 data["Columns"][f"S{st+1}B{bay+1}"] = mphi.get_mphi()
                 '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
                 d_temp = self.ensure_local_ductility(b, h, data["Columns"][f"S{st+1}B{bay+1}"][0]["reinforcement"], mphi,
@@ -268,4 +276,32 @@ class Detailing:
                 if d_temp is not None:
                     data["Columns"][f"S{st+1}B{bay+1}"] = d_temp
 
-        return data
+        mu_c = self.get_hardening_ductility(data)
+        mu_f = self.get_fracturing_ductility(mu_c, )
+
+        return data, mu_c
+
+    def get_hardening_ductility(self, details):
+        """
+        Gets hardening ductility
+        :param dy: float                        System yield displacement
+        :param details: dict                    Moment-curvature relationships of the elements
+        :return: float                          Hardening ductility
+        """
+        p = Plasticity(lp_name="Priestley", db=20, fy=self.fy, fu=self.fy*self.k_hard, lc=self.heights)
+        mu_c = p.get_hardening_ductility(self.dy, details)
+        return mu_c
+
+    def get_fracturing_ductility(self, mu_c, sa_c, sa_f, theta_pc, theta_y):
+        """
+        Gets fracturing ductility
+        :param mu_c: float                      System hardening ductility
+        :param sa_c: float                      System peak spectral acceleration capacity
+        :param sa_f: float                      System residual spectral acceleration capacity
+        :param theta_pc: float                  Column post-capping rotation capacity
+        :param theta_y: float                   Column yield rotation capacity
+        :return: float                          System fracturing ductility
+        """
+        p = Plasticity(lp_name="Priestley", db=20, fy=self.fy, fu=self.fy * self.k_hard, lc=self.heights)
+        mu_f = p.get_fracturing_ductility(mu_c, sa_c, sa_f, theta_pc, theta_y)
+        return mu_f

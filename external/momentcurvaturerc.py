@@ -188,7 +188,7 @@ class MomentCurvatureRC:
                 theta_pc = min(0.76*0.031**nu*(0.02 + 40*ro_sh)**1.02, 0.1)
             else:
                 theta_pc = 0.1
-            lp = Plasticity().get_lp(lp_name="Priestley", db=20, fy=self.fy, fu=self.fy*self.k_hard, lc=self.length)
+            lp = Plasticity(lp_name="Priestley", db=20, fy=self.fy, fu=self.fy*self.k_hard, lc=self.length).get_lp()
             # todo, fix phi_pc formula, the accuracy needs to be increased as it does not account for elastic portion
             phi_pc = theta_pc/lp
             phi_critical = phiy*mu_phi + phi_pc

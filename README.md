@@ -141,6 +141,8 @@ Additional explanations of each file are provided within the relevant directorie
         	2. Estimate system hardening ductility - Detailing
         		a. System hardening ductility
         	***3. todo, add estimations of other parameters of SPO curve***<br/>
+        	i.e. Hardening ductility; Fracturing ductility; Ultimate strength; Overstrength -> all to be used to update
+        	Estimate MAFC based on the new SPO, see if an iteration is needed, establish tolerance
         	X. Check for conditions met, if non met, return to 3.1 and repeat until conditions are met - Detailing
 		
 -> ***Phase 6 - Modifications and Rerunning of Phases if necessary:***<br/>
@@ -182,6 +184,9 @@ Additional explanations of each file are provided within the relevant directorie
 * [ ] Considerations for shear design, will be useful also in identifying inelastic rotation capacities, then input ro_sh based on that for Haselton platic hinge length definition
 
 * [ ] Test all input argument effects for bugs and default arguments for functions as well
+
+* [ ] Different methods of estimating collapse capacity distribution in case the user is not willing to guess the SPO curve
+
 
 </a><font color=blue><div style="text-align: right">[up](#contents)
   
