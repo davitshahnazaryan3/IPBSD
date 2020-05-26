@@ -230,8 +230,8 @@ class IPBSD:
 
         # todo, estimation of global peak to yield ratio to be added
         """Design the structural elements"""
-        details, hard_ductility, fract_ductility = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper, dy)
-
+        details, hard_ductility, fract_ductility = ipbsd.design_elements(demands, opt_sol, opt_modes, t_lower, t_upper,
+                                                                         dy)
         """Estimate parameters for SPO curve and compare with assumed shape"""
         if self.record:
             design_results = {"details": details, "hardening ductility": hard_ductility}
@@ -280,7 +280,7 @@ if __name__ == "__main__":
     damping = .05
 
     method = IPBSD(input_file, hazard_file, slf_file, spo_file, limit_eal, mafc_target, analysis_type,
-                   damping=damping, num_modes=2, record=False)
+                   damping=damping, num_modes=2, record=True)
     start_time = method.get_init_time()
     method.run_ipbsd()
     method.get_time(start_time)

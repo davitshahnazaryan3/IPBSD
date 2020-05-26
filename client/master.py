@@ -366,11 +366,12 @@ class Master:
             response = op.define_recorders(beams, columns, analysis)
         return response
 
-    def design_elements(self, demands, sections, tlower, tupper, dy, ductility_class="DCM"):
+    def design_elements(self, demands, sections, modes, tlower, tupper, dy, ductility_class="DCM"):
         """
         Runs M-phi to optimize for reinforcement for each section
         :param demands: DataFrame or dict           Demands identified from a structural analysis (lateral+gravity)
         :param sections: DataFrame                  Solution including section information
+        :param modes: dict                          Periods and modal shapes obtained from modal analysis
         :param tlower: float                        Lower period limit
         :param tupper: float                        Upper period limit
         :param dy: float                            System yield displacement in m
@@ -380,7 +381,7 @@ class Master:
         d = Detailing(demands, self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
                       self.data.h, self.data.n_seismic, self.data.masses, tlower, tupper, dy, sections,
                       ductility_class=ductility_class)
-        data, mu_c = d.design_elements()
+        data, mu_c = d.design_elements(modes)
 
         # mu_f = d.get_fracturing_ductility(mu_c, )
         mu_f = 0

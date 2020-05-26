@@ -14,17 +14,19 @@ class Plasticity:
         self.lp_name = lp_name
         self.kwargs = kwargs
 
-    def get_hardening_ductility(self, dy, details):
+    def get_hardening_ductility(self, dy, details, modes):
         """
         estimates system hardening ductility, based on the knowledge of deltaY, details of columns
         :param dy: float                        System yield displacement
         :param details: dict                    Moment-curvature relationships of the elements
+        :param modes: dict                      Periods and modal shapes obtained from modal analysis
         :return: float                          System hardening ductility
         """
         for i in details["Columns"].keys():
             nst = int(i[1])
         phi_p_list = np.zeros(nst) + 1000.
-
+        # Selecting first modal shape
+        modal_shape = modes["Modes"][0]
         for i in details["Columns"].keys():
             phi_y = details["Columns"][i][3]["yield"]["curvature"]
             mu_phi = details["Columns"][i][3]["ultimate"]["curvature"] / phi_y
@@ -35,11 +37,12 @@ class Plasticity:
         phi_p = min(phi_p_list)
         lc_list = self.kwargs.get('lc', None)
         lc = lc_list[np.argmin(phi_p_list)]
-        self.kwargs["lc"] = lc
+        drift_factor = modal_shape[np.argmin(phi_p_list)]
+        self.kwargs["lc"] = 0.6*lc              # Assuming contraflexure at 0.6 of height
         lp = self.get_lp()
         dp = phi_p*lp*lc
-        du = dp + dy
-        ductility = du/dy
+        du = dp + dy*drift_factor
+        ductility = du/dy/drift_factor
         return ductility
 
     def get_theta_pc(self, **kwargs):

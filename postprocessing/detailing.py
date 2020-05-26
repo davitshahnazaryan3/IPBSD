@@ -218,9 +218,10 @@ class Detailing:
         else:
             return None
 
-    def design_elements(self):
+    def design_elements(self, modes=None):
         """
         designs elements using demands from ELFM and optimal solution, uses moment_curvature_rc
+        :param modes: dict                      Periods and modal shapes obtained from modal analysis
         :return: dict                           Designed element details from the moment-curvature relationship
         """
         # Ensure symmetry of strength distribution along the widths of the frame
@@ -278,19 +279,19 @@ class Detailing:
                 if d_temp is not None:
                     data["Columns"][f"S{st+1}B{bay+1}"] = d_temp
 
-        mu_c = self.get_hardening_ductility(data)
+        mu_c = self.get_hardening_ductility(data, modes)
 
         return data, mu_c
 
-    def get_hardening_ductility(self, details):
+    def get_hardening_ductility(self, details, modes):
         """
         Gets hardening ductility
-        :param dy: float                        System yield displacement
         :param details: dict                    Moment-curvature relationships of the elements
+        :param modes: dict                      Periods and modal shapes obtained from modal analysis
         :return: float                          Hardening ductility
         """
         p = Plasticity(lp_name="Priestley", db=20, fy=self.fy, fu=self.fy*self.k_hard, lc=self.heights)
-        mu_c = p.get_hardening_ductility(self.dy, details)
+        mu_c = p.get_hardening_ductility(self.dy, details, modes)
         return mu_c
 
     def get_fracturing_ductility(self, mu_c, sa_c, sa_f, theta_pc, theta_y):
