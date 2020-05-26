@@ -1,11 +1,9 @@
 """
 verifies fundamental period (T1) condition
 """
-from external.crossSection import CrossSection
 
 
 class PeriodCheck:
-    # todo, check if this check is necessary, currently it is underutilized
     def __init__(self, t, t_lower, t_upper, tol=1e-3):
         """
         initialize period check
@@ -26,6 +24,6 @@ class PeriodCheck:
         :return: None
         """
         if self.t_lower-self.tol <= self.t <= self.t_upper+self.tol:
-            print(f"T1 of {self.t} is in a range of {round(self.t_lower,2)} and {round(self.t_upper,2)}")
+            print(f"[SUCCESS] T1 of {self.t} is in a range of {round(self.t_lower,2)} and {round(self.t_upper,2)}")
         else:
-            print(f"T1 of {self.t} is NOT in a range of {round(self.t_lower,2)} and {round(self.t_upper,2)}")
+            print(f"[WARNING] T1 of {self.t} is NOT in a range of {round(self.t_lower,2)} and {round(self.t_upper,2)}")

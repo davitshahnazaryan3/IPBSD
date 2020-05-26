@@ -125,6 +125,7 @@ class Detailing:
                     raise ValueError("[EXCEPTION] Wrong option for ensuring symmetry, must be max, mean or min")
         else:
             for st in range(self.nst):
+
                 if option == "max":
                     Mbi[st][0] = Mbi[st][self.nbays-1] = np.max((Mbi[st][0], Mbi[st][self.nbays-1]))
                     Mbi[st][1:self.nbays-1] = np.max(Mbi[st][1:self.nbays-1])
@@ -135,7 +136,7 @@ class Detailing:
                     for bay in range(1, int((self.nbays-1)/2)):
                         Nci[st][bay] = Nci[st][-bay-1] = np.max((Nci[st][bay], Nci[st][-bay-1]))
 
-                if option == "mean":
+                elif option == "mean":
                     Mbi[st][0] = Mbi[st][self.nbays-1] = np.mean((Mbi[st][0], Mbi[st][self.nbays-1]))
                     Mbi[st][1:self.nbays-1] = np.mean(Mbi[st][1:self.nbays-1])
                     Mci[st][0] = Mci[st][self.nbays] = np.mean((Mci[st][0], Mci[st][self.nbays]))
@@ -145,7 +146,7 @@ class Detailing:
                     for bay in range(1, int((self.nbays-1)/2)):
                         Nci[st][bay] = Nci[st][-bay-1] = np.mean((Nci[st][bay], Nci[st][-bay-1]))
 
-                if option == "min":
+                elif option == "min":
                     Mbi[st][0] = Mbi[st][self.nbays-1] = np.min((Mbi[st][0], Mbi[st][self.nbays-1]))
                     Mbi[st][1:self.nbays-1] = np.min(Mbi[st][1:self.nbays-1])
                     Mci[st][0] = Mci[st][self.nbays] = np.min((Mci[st][0], Mci[st][self.nbays]))
@@ -223,13 +224,13 @@ class Detailing:
         :return: dict                           Designed element details from the moment-curvature relationship
         """
         # Ensure symmetry of strength distribution along the widths of the frame
-        mbi, mci, nci = self.ensure_symmetry()
+        mbi, mci, nci = self.ensure_symmetry(option="max")
         myb, myc = self.capacity_design(mbi, mci)
         data = {"Beams": {}, "Columns": {}}
         # Design of beams
         for st in range(self.nst):
-            if self.nbays >= 2:
-                for bay in range(int(round(self.nbays/2, 0))):
+            if self.nbays > 2:
+                for bay in range(int(round(self.nbays/2, 0))):      # todo, check whether it should be round up or down
                     m_target = myb[st][bay]
                     b = self.sections[f"b{st+1}"]
                     h = self.sections[f"h{st+1}"]
@@ -278,7 +279,6 @@ class Detailing:
                     data["Columns"][f"S{st+1}B{bay+1}"] = d_temp
 
         mu_c = self.get_hardening_ductility(data)
-        # mu_f = self.get_fracturing_ductility(mu_c, )
 
         return data, mu_c
 
@@ -303,6 +303,6 @@ class Detailing:
         :param theta_y: float                   Column yield rotation capacity
         :return: float                          System fracturing ductility
         """
-        p = Plasticity(lp_name="Priestley", db=20, fy=self.fy, fu=self.fy * self.k_hard, lc=self.heights)
+        p = Plasticity()
         mu_f = p.get_fracturing_ductility(mu_c, sa_c, sa_f, theta_pc, theta_y)
         return mu_f

@@ -21,16 +21,20 @@ class Plasticity:
         :param details: dict                    Moment-curvature relationships of the elements
         :return: float                          System hardening ductility
         """
-        phi_p_list = []
         for i in details["Columns"].keys():
-            phi_y = details["Columns"][i][0]["first_yield_curvature"]
-            mu_phi = details["Columns"][i][0]["curvature_ductility"]
+            nst = int(i[1])
+        phi_p_list = np.zeros(nst) + 1000.
+
+        for i in details["Columns"].keys():
+            phi_y = details["Columns"][i][3]["yield"]["curvature"]
+            mu_phi = details["Columns"][i][3]["ultimate"]["curvature"] / phi_y
             phi_u = phi_y * mu_phi
             phi_p = phi_u - phi_y
-            phi_p_list.append(phi_p)
+            if phi_p < phi_p_list[int(i[1])-1]:
+                phi_p_list[int(i[1])-1] = phi_p
         phi_p = min(phi_p_list)
         lc_list = self.kwargs.get('lc', None)
-        lc = 0.6*lc_list[np.argmin(phi_p)+1]
+        lc = lc_list[np.argmin(phi_p_list)]
         self.kwargs["lc"] = lc
         lp = self.get_lp()
         dp = phi_p*lp*lc
@@ -131,14 +135,16 @@ class Plasticity:
             fy = self.kwargs.get('fy', None)
             fu = self.kwargs.get('fu', None)
             lsp = 0.022*fy*db
-            k = min(0.2*(fu/fy - 1), 0.08)
-            lp = max(2*lsp, k*lc + lsp)
+            if fu != fy:
+                k = min(0.2*(fu/fy - 1), 0.08)
+            else:
+                k = 0.08
+            lp = max(2*lsp, k*lc*1000 + lsp)
         else:
             db = self.kwargs.get('db', None)
             fy = self.kwargs.get('fy', None)
             lsp = 0.022 * fy * db
             lp = 2 * lsp
-
         return lp/1000
 
     def verify_match(self, x, target, tol=0.05):

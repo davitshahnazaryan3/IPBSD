@@ -1,7 +1,8 @@
 # IPBSD
 Integrated Performance-Based Seismic Design
 
-Design framework based on limiting economic losses, i.e. expected annual loss (EAL) and targetting a probability of collapse, i.e. mean annual frequency of collapse (MAFC).
+Design framework based on limiting economic losses, i.e. expected annual loss (EAL) and targeting a probability of collapse, i.e. mean annual frequency of collapse (MAFC).
+As long as there are no Failures and/or Warnings, then the framework has successfully completed.
 
 **Contents**<a id='contents'></a>
 1. [Literature](#lit)
@@ -71,8 +72,6 @@ Additional explanations of each file are provided within the relevant directorie
         - r -                    	Residual strength ratio with respect to yield strength
         - mf -                    	Fracturing ductility
         - pw -                    	Pinching weight (default 1.0)
-   
-9. **mc_my** - System peak to yield strength ratio<br/>
 
 </a><font color=blue><div style="text-align: right">[up](#contents)
 
@@ -90,7 +89,7 @@ Additional explanations of each file are provided within the relevant directorie
 			a. EAL calculated
 			b. EAL verification
 		* if EAL < EAL limit, continue, otherwise update performance objectives in Step 3
-		4. Supply storey loss functions, or relevant parameters (e.g. HAZUS) - SLF
+		4. Supply storey loss functions - SLF
 		and Get design engineering demand parameters (EDPs) - DesignLimits
 			a. Peak storey drift, PSD
 			b. Peak floor acceleration, PFA
@@ -121,18 +120,19 @@ Additional explanations of each file are provided within the relevant directorie
 		3. Perform optimization for MAFC - MAFCCheck
 		    	a. Spectral acceleration at yield
 		    	b. Yield displacement
+		    	
 -> **Phase 4 - Design:**<br/>
 
         	1. Identify design actions on the structure - Action
            		a. Lateral forces
-        	2. Perform ELFM and identify demands on the structural members - OpenSeesRun
+        	2. Perform structural analysis and identify demands on the structural members - OpenSeesRun
 		    	a. Demands
         	3. Perform moment-curvature sectional analysis to identify the necessary reinforcement, includes capacity design
 		requirements per Eurocode - MPhi, Detailing
 		    	a. Reinforcement ratios
 		    	b. Moment capacities
 		    	c. Curvature ductility
-		    	d. Cracked section propertis
+		    	d. Cracked section properties
 			
 -> **Phase 5 - Detailing:**<br/>
 
@@ -157,7 +157,7 @@ Additional explanations of each file are provided within the relevant directorie
 
 * [ ] Design of structural elements based on critical combination of M+N, M-N etc.
 
-* [ ] Add class of reinforcement and concrete as input arguments
+* [ ] **Add class of reinforcement and concrete as input arguments**
 
 * [x] Add softening slope by Vecchio and Collins 1986
 
@@ -169,7 +169,7 @@ Additional explanations of each file are provided within the relevant directorie
 
 * [ ] 3 Performance objective limit states -> flexible for inclusion
 
-* [ ] Variable storey-loss-functions along the height -> flexible for inclusion
+* [ ] **Variable storey-loss-functions along the height** -> flexible for inclusion
 
 * [ ] SPO2IDA tool for collapse fragility definition -> ML algorithms to avoid being limited to using SPO2IDA, needs extensive studies and analysis, possible data collection
 
@@ -179,7 +179,7 @@ Additional explanations of each file are provided within the relevant directorie
 
 * [x] Conversion factor regression based on number of stories for PFA
 
-* [ ] Code-based overstrength factors indirectly accounted for -> flexible to include
+* [x] Code-based overstrength factors indirectly accounted for -> flexible to include
 
 * [x] Same beam cross-sections along the height/no grouping for beams -> partially done, more will be added when necessary
  

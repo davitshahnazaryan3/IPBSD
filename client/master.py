@@ -184,7 +184,7 @@ class Master:
         Hs, sa_hazard = self.get_hazard_sa(period, hazard)
         m = MAFCCheck(r, mafc_target, g, Hs, sa_hazard, omega, hazard)
         fsolve(m.objective, x0=np.array([0.05]))
-        dy = (float(m.say)*omega)*9.81*(period/2/np.pi)**2
+        dy = float(m.say)*9.81*(period/2/np.pi)**2
         say = float(m.say)
         return say, dy
 
@@ -382,7 +382,9 @@ class Master:
                       ductility_class=ductility_class)
         data, mu_c = d.design_elements()
 
-        return data, mu_c
+        # mu_f = d.get_fracturing_ductility(mu_c, )
+        mu_f = 0
+        return data, mu_c, mu_f
 
     def run_ma(self, solution, tlower, tupper, sections):
         """

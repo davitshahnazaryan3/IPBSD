@@ -12,8 +12,8 @@ from client.master import Master
 
 
 class IPBSD:
-    def __init__(self, input_file, hazard_file, slf_file, spo_file, limit_eal, target_mafc, mc_my, analysis_type=1,
-                 damping=.05, num_modes=3):
+    def __init__(self, input_file, hazard_file, slf_file, spo_file, limit_eal, target_mafc, analysis_type=1,
+                 damping=.05, num_modes=3, record=True):
         """
         Initializes IPBSD
         :param input_file: str              Input filename as '*.csv'
@@ -22,7 +22,6 @@ class IPBSD:
         :param spo_file: str                SPO filename '*.csv'
         :param limit_eal: float             Liming value of EAL
         :param target_mafc: float           Target value of MAFC
-        :param mc_my: float                 Peak to yield ratio
         :param analysis_type: int           Analysis type:
                                             1: Simplified ELF - no analysis is run, calculations based on
                                             simplified expressions, actions based on 1st mode shape (default)
@@ -34,6 +33,7 @@ class IPBSD:
                                             5: RMSA & gravity - analysis under RMSA and gravity loads
         :param damping: float               Ratio of critical damping
         :param num_modes: int               Number of modes to consider for SRSS (for analysis type 4 and 5)
+        :param record: bool                 Flag for storing the results
         """
         self.dir = Path.cwd()
         self.input_file = input_file
@@ -42,10 +42,10 @@ class IPBSD:
         self.spo_file = spo_file
         self.limit_EAL = limit_eal
         self.target_MAFC = target_mafc
-        self.mc_my = mc_my
         self.analysis_type = analysis_type
         self.num_modes = num_modes
         self.damping = damping
+        self.record = record
 
     @staticmethod
     def get_init_time():
@@ -123,7 +123,8 @@ class IPBSD:
         self.create_folder(case_directory)
         ipbsd.data.i_d["MAFC"] = self.target_MAFC
         ipbsd.data.i_d["EAL"] = self.limit_EAL
-        self.store_results(case_directory / "input", ipbsd.data.i_d, "json")
+        if self.record:
+            self.store_results(case_directory / "input", ipbsd.data.i_d, "json")
         print("[SUCCESS] Input arguments have been read and successfully stored")
 
         """Get EAL"""
@@ -149,8 +150,9 @@ class IPBSD:
 
         """Get all section combinations satisfying period bound range"""
         sols, opt_sol, opt_modes = ipbsd.get_all_section_combinations(t_lower, t_upper)
-        self.store_results(case_directory/"section_combos", sols, "csv")
-        self.store_results(case_directory/"optimal_solution", opt_sol, "csv")
+        if self.record:
+            self.store_results(case_directory/"section_combos", sols, "csv")
+            self.store_results(case_directory/"optimal_solution", opt_sol, "csv")
         print("[SUCCESS] All section combinations were identified")
 
         """Perform SPO2IDA"""
@@ -158,20 +160,22 @@ class IPBSD:
         period = round(float(opt_sol['T']), 1)
         spo_data = ipbsd.data.initial_spo_data(period, self.dir/"client"/self.spo_file)
         spo2ida_data = ipbsd.perform_spo2ida(spo_data)
-        self.store_results(case_directory/"spo2ida_results", spo2ida_data, "pkl")
+        if self.record:
+            self.store_results(case_directory/"spo2ida_results", spo2ida_data, "pkl")
         print("[SUCCESS] SPO2IDA was performed")
 
         """Yield strength optimization for MAFC and verification"""
         # Based on available literature, depending on perimeter or space frame, inclusion of gravity loads
         if ipbsd.data.n_gravity > 0:
             if self.analysis_type == 3 or self.analysis_type == 5:
-                overstrength = 1.6
-            else:
                 overstrength = 1.3
+            else:
+                overstrength = 1.0
         else:
             overstrength = 2.5
 
         part_factor = opt_sol["Part Factor"]
+        m_star = opt_sol["Mstar"]
         say, dy = ipbsd.verify_mafc(period, spo2ida_data, part_factor, self.target_MAFC, overstrength, hazard="True")
         print("[SUCCESS] MAFC was validated")
 
@@ -213,22 +217,25 @@ class IPBSD:
         else:
             raise ValueError("[EXCEPTION] Incorrect analysis type...")
 
-        self.store_results(case_directory/"demands", demands, "pkl")
         print("[SUCCESS] Analysis completed and demands on structural elements were estimated.")
 
         # Storing the IPBSD outputs
-        ipbsd_outputs = {"MAFC": lam_ls, "EAL": eal, "theta_max": theta_max, "alpha_max": alpha_max,
-                         "part_factor": part_factor, "delta_spectral": delta_spectral, "alpha_spectral": alpha_spectral,
-                         "Period range": [t_lower, t_upper], "overstrength": overstrength, "yield": [say, dy],
-                         "lateral loads": forces}
-        self.store_results(case_directory/"ipbsd", ipbsd_outputs, "pkl")
+        if self.record:
+            ipbsd_outputs = {"MAFC": self.target_MAFC, "EAL": eal, "theta_max": theta_max, "alpha_max": alpha_max,
+                             "part_factor": part_factor, "Mstar": m_star, "delta_spectral": delta_spectral,
+                             "alpha_spectral": alpha_spectral, "Period range": [t_lower, t_upper],
+                             "overstrength": overstrength, "yield": [say, dy], "lateral loads": forces}
+            self.store_results(case_directory/"demands", demands, "pkl")
+            self.store_results(case_directory/"ipbsd", ipbsd_outputs, "pkl")
 
-        # todo, store details necessary for constructing the model in OpenSees
+        # todo, estimation of global peak to yield ratio to be added
         """Design the structural elements"""
-        details, hard_ductility = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper, dy)
+        details, hard_ductility, fract_ductility = ipbsd.design_elements(demands, opt_sol, t_lower, t_upper, dy)
+
         """Estimate parameters for SPO curve and compare with assumed shape"""
-        design_results = {"details": details, "hardening ductility": hard_ductility}
-        self.store_results(case_directory / "details", design_results, "pkl")
+        if self.record:
+            design_results = {"details": details, "hardening ductility": hard_ductility}
+            self.store_results(case_directory / "details", design_results, "pkl")
         print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
 
         """Perform eigenvalue analysis on designed frame"""
@@ -268,13 +275,12 @@ if __name__ == "__main__":
     hazard_file = "Hazard-LAquila-Soil-C.pkl"
     slf_file = "slf.xlsx"
     spo_file = "spo.csv"
-    limit_eal = 0.5
-    mafc_target = 1.e-4
+    limit_eal = 0.55
+    mafc_target = 5.e-4
     damping = .05
-    mc_my = 1.13                                # Following Haselton, 2016
 
-    method = IPBSD(input_file, hazard_file, slf_file, spo_file, limit_eal, mafc_target, mc_my, analysis_type,
-                   damping=damping, num_modes=2)
+    method = IPBSD(input_file, hazard_file, slf_file, spo_file, limit_eal, mafc_target, analysis_type,
+                   damping=damping, num_modes=2, record=False)
     start_time = method.get_init_time()
     method.run_ipbsd()
     method.get_time(start_time)
