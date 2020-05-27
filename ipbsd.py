@@ -232,9 +232,11 @@ class IPBSD:
         """Design the structural elements"""
         details, hard_ductility, fract_ductility = ipbsd.design_elements(demands, opt_sol, opt_modes, t_lower, t_upper,
                                                                          dy)
+        print(hard_ductility, fract_ductility)
         """Estimate parameters for SPO curve and compare with assumed shape"""
         if self.record:
-            design_results = {"details": details, "hardening ductility": hard_ductility}
+            design_results = {"details": details, "hardening ductility": hard_ductility,
+                              "fracturing ductility": fract_ductility}
             self.store_results(case_directory / "details", design_results, "pkl")
         print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
 

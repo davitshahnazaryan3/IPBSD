@@ -14,7 +14,7 @@ class Plasticity:
         self.lp_name = lp_name
         self.kwargs = kwargs
 
-    def get_hardening_ductility(self, dy, details, modes):
+    def estimate_ductilities(self, dy, details, modes):
         """
         estimates system hardening ductility, based on the knowledge of deltaY, details of columns
         :param dy: float                        System yield displacement
@@ -25,25 +25,39 @@ class Plasticity:
         for i in details["Columns"].keys():
             nst = int(i[1])
         phi_p_list = np.zeros(nst) + 1000.
+        phi_y_list = np.zeros(nst)
+        phi_f_list = np.zeros(nst)
         # Selecting first modal shape
         modal_shape = modes["Modes"][0]
         for i in details["Columns"].keys():
             phi_y = details["Columns"][i][3]["yield"]["curvature"]
             mu_phi = details["Columns"][i][3]["ultimate"]["curvature"] / phi_y
+            phi_f = details["Columns"][i][3]["fracturing"]["curvature"]
             phi_u = phi_y * mu_phi
             phi_p = phi_u - phi_y
             if phi_p < phi_p_list[int(i[1])-1]:
                 phi_p_list[int(i[1])-1] = phi_p
+                phi_y_list[int(i[1])-1] = phi_y
+                phi_f_list[int(i[1])-1] = phi_f
         phi_p = min(phi_p_list)
         lc_list = self.kwargs.get('lc', None)
         lc = lc_list[np.argmin(phi_p_list)]
+        phi_y = phi_y_list[np.argmin(phi_p_list)]
+        phi_f = phi_f_list[np.argmin(phi_p_list)]
         drift_factor = modal_shape[np.argmin(phi_p_list)]
         self.kwargs["lc"] = 0.6*lc              # Assuming contraflexure at 0.6 of height
         lp = self.get_lp()
+        # Getting the hardening ductility
         dp = phi_p*lp*lc
         du = dp + dy*drift_factor
-        ductility = du/dy/drift_factor
-        return ductility
+        hard_duct = du/dy/drift_factor
+        # Getting the fracturing ductility
+        theta_pc = (phi_f - phi_y)*lp - phi_y*lc*0.6
+        theta_u = du/lc
+        theta_f = theta_u + theta_pc
+        theta_y = dy*drift_factor/lc
+        fract_duct = theta_f / theta_y
+        return hard_duct, fract_duct
 
     def get_theta_pc(self, **kwargs):
         """
@@ -59,6 +73,7 @@ class Plasticity:
             theta_pc = 0.10
         return theta_pc
 
+    # todo, remove get_fracturing_ductility
     def get_fracturing_ductility(self, mu_c, sa_c, sa_f, theta_pc, theta_y):
         """
         gets fracturing ductility

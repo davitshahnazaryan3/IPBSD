@@ -381,10 +381,8 @@ class Master:
         d = Detailing(demands, self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
                       self.data.h, self.data.n_seismic, self.data.masses, tlower, tupper, dy, sections,
                       ductility_class=ductility_class)
-        data, mu_c = d.design_elements(modes)
+        data, mu_c, mu_f = d.design_elements(modes)
 
-        # mu_f = d.get_fracturing_ductility(mu_c, )
-        mu_f = 0
         return data, mu_c, mu_f
 
     def run_ma(self, solution, tlower, tupper, sections):

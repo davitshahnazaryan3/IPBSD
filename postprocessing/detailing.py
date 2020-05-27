@@ -279,11 +279,11 @@ class Detailing:
                 if d_temp is not None:
                     data["Columns"][f"S{st+1}B{bay+1}"] = d_temp
 
-        mu_c = self.get_hardening_ductility(data, modes)
+        mu_c, mu_f = self.estimate_ductilities(data, modes)
 
-        return data, mu_c
+        return data, mu_c, mu_f
 
-    def get_hardening_ductility(self, details, modes):
+    def estimate_ductilities(self, details, modes):
         """
         Gets hardening ductility
         :param details: dict                    Moment-curvature relationships of the elements
@@ -291,8 +291,8 @@ class Detailing:
         :return: float                          Hardening ductility
         """
         p = Plasticity(lp_name="Priestley", db=20, fy=self.fy, fu=self.fy*self.k_hard, lc=self.heights)
-        mu_c = p.get_hardening_ductility(self.dy, details, modes)
-        return mu_c
+        mu_c, mu_f = p.estimate_ductilities(self.dy, details, modes)
+        return mu_c, mu_f
 
     def get_fracturing_ductility(self, mu_c, sa_c, sa_f, theta_pc, theta_y):
         """
