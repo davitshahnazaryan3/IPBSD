@@ -78,6 +78,8 @@ Additional explanations of each file are provided within the relevant directorie
 ### Step by step procedure<a id='process'>
 
 -> **Phase 1 - Performance objectives:**<br/>
+Iterations: 1a. if EAL is not below the objecctive EAL limit (software outputs an Error message)
+			1b. if period lower limit works out higher than the upper limit (software outputs an Error message)
 
 		1. Define limit EAL (economic loss) and target MAFC (collapse safety) - Input
 		and supply other input arguments; methods: read_inputs
@@ -88,7 +90,8 @@ Additional explanations of each file are provided within the relevant directorie
 		3. Get the loss curve - LossCurve, EALCheck
 			a. EAL calculated
 			b. EAL verification
-		* if EAL < EAL limit, continue, otherwise update performance objectives in Step 3
+		* if EAL < EAL limit, continue, otherwise update performance objectives
+		* and perform iteration 1a (phase 1)
 		4. Supply storey loss functions - SLF
 		and Get design engineering demand parameters (EDPs) - DesignLimits
 			a. Peak storey drift, PSD
@@ -106,50 +109,58 @@ Additional explanations of each file are provided within the relevant directorie
 		2. Get feasible period range - PeriodRange
 			a. Lower period bound
 			b. Upper period bound
+		* perform iteration 1b (phase 1 and 2)
 		3. Optimization for fundamental period to identify all possible structural solutions within the period range -
 		CrossSection, GetT1
 			a. All solutions meeting the period range condition
 			b. Optimal solution based on least weight
 			
 -> **Phase 3 - Collapse safety consideration:** <br/>
+Iterations: 3a. Actual SPO shape differs from assumed one
 
 		1. Identify possible static pushover curve (SPO) information as input for SPO2IDA - Input
 		2. Perform SPO2IDA and derive collapse fragility function
-		    	a. IDA curves<br/>
+		    	a. IDA curves
 		    	b. Fractiles of R at collapse
 		3. Perform optimization for MAFC - MAFCCheck
 		    	a. Spectral acceleration at yield
 		    	b. Yield displacement
 		    	
--> **Phase 4 - Design:**<br/>
+-> **Phase 4 - Design and Detailing:**<br/>
+Iterations:  4a. if local ductility requirements are not met
 
         	1. Identify design actions on the structure - Action
            		a. Lateral forces
         	2. Perform structural analysis and identify demands on the structural members - OpenSeesRun
 		    	a. Demands
-        	3. Perform moment-curvature sectional analysis to identify the necessary reinforcement, includes capacity design
-		requirements per Eurocode - MPhi, Detailing
+        	3. Perform moment-curvature sectional analysis to identify the necessary reinforcement, includes capacity design and local ductility requirements
+			requirements per Eurocode - MPhi, Detailing
 		    	a. Reinforcement ratios
 		    	b. Moment capacities
 		    	c. Curvature ductility
 		    	d. Cracked section properties
+		    	e. Hardening slope
+		    	f. Softening slope and fracturing point
+		    * perform iteration 4a if local ductility requirements are not met (phase 2.3 to 4)
+		    * that is max reinforcement ratio is exceeded and secion redimensioning is necessitated
+		    4. Estimate global hardening and fracturing ductility, peak to yield strength ratio, overstrength ratio - Detailing, Plasticity
+		    * perform iteration 3a if SPO shape characteristics vary (phase 3 to 4)
 			
--> **Phase 5 - Detailing:**<br/>
+todo: merge phase 5 and 6 into an iterative phase
+-> **Phase 5 - From Detailing to Global:**<br/>
 
         	1. Use the optimal solution and estimate Period based on cracked section properties of 4.3d - Detailing,
 			CrossSection
         		a. Fundamental period
         		b. Verify that the period is within the bounds
-        	2. Estimate system hardening ductility - Detailing
-        		a. System hardening ductility
-        	***3. todo, add estimations of other parameters of SPO curve***<br/>
-        	i.e. Hardening ductility; Fracturing ductility; Ultimate strength; Overstrength -> all to be used to update
-        	Estimate MAFC based on the new SPO, see if an iteration is needed, establish tolerance
+        	X. Estimate MAFC based on the new SPO, see if an iteration is needed, establish tolerance
         	X. Check for conditions met, if non met, return to 3.1 and repeat until conditions are met - Detailing
 		
 -> ***Phase 6 - Modifications and Rerunning of Phases if necessary:***<br/>
 
         	1.
+
+Note: *Iterations 1a and 1b are manual, while iterations 3a and 4a may be manual or automatic.*
 
 </a><font color=blue><div style="text-align: right">[up](#contents)
   
@@ -175,9 +186,7 @@ Additional explanations of each file are provided within the relevant directorie
 
 * [ ] Symmetric structures only -> add considerations for 3D models, partially done
 
-* [ ] Single conversion factor for peak floor accelerations -> study based on Antonio's work to include regressions
-
-* [x] Conversion factor regression based on number of stories for PFA
+* [ ] **Single conversion factor for peak floor accelerations** -> study based on Antonio's work to include regressions
 
 * [x] Code-based overstrength factors indirectly accounted for -> flexible to include
 
@@ -188,6 +197,8 @@ Additional explanations of each file are provided within the relevant directorie
 * [ ] Test all input argument effects for bugs and default arguments for functions as well
 
 * [ ] Different methods of estimating collapse capacity distribution in case the user is not willing to guess the SPO curve
+
+* [ ] SLF generator -> based on Sebastiano's work
 
 
 </a><font color=blue><div style="text-align: right">[up](#contents)

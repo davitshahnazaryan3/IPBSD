@@ -50,6 +50,10 @@ class Detailing:
         # Reinforcement characteristic yield strength in MPa
         self.FYK = 500.
         self.k_hard = k_hard
+        # if warning 0, then no iterations are necessary for 4a, otherwise it equals to 1
+        self.WARNING = 0
+        # Warning for each element
+        self.WARN_ELE = 0
 
     def capacity_design(self, Mbi, Mci):
         """
@@ -208,14 +212,18 @@ class Detailing:
                 rebar = (b * (h - self.rebar_cover)) * ro_prime
             m_target = relation.get_mphi(check_reinforcement=True, reinf_test=rebar)
             data = relation.get_mphi(m_target=m_target)
+            self.WARN_ELE = 0
             return data
 
         elif ro_max < ro_prime:
             print(f"[WARNING] Cross-section of {eletype} element at storey {st} and bay {bay} should be increased! "
                   f"ratio: {ro_prime*100:.2f}%")
+            self.WARN_ELE = 1
+            self.WARNING = 1
             return None
 
         else:
+            self.WARN_ELE = 0
             return None
 
     def design_elements(self, modes=None):
@@ -228,6 +236,7 @@ class Detailing:
         mbi, mci, nci = self.ensure_symmetry(option="max")
         myb, myc = self.capacity_design(mbi, mci)
         data = {"Beams": {}, "Columns": {}}
+        warnings = {"Beams": {}, "Columns": {}}
         # Design of beams
         for st in range(self.nst):
             if self.nbays > 2:
@@ -241,6 +250,7 @@ class Detailing:
                     '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
                     d_temp = self.ensure_local_ductility(b, h, data["Beams"][f"S{st+1}B{bay+1}"][0]["reinforcement"]/2,
                                                          mphi, st+1, bay+1, eletype="Beam")
+                    warnings["Beams"][f"S{st+1}B{bay+1}"] = self.WARN_ELE
                     if d_temp is not None:
                         data["Beams"][f"S{st+1}B{bay+1}"] = d_temp
 
@@ -254,6 +264,7 @@ class Detailing:
                 '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
                 d_temp = self.ensure_local_ductility(b, h, data["Beams"][f"S{st+1}B{1}"][0]["reinforcement"]/2, mphi,
                                                      st+1, 1, eletype="Beam")
+                warnings["Beams"][f"S{st + 1}B{1}"] = self.WARN_ELE
                 if d_temp is not None:
                     data["Beams"][f"S{st+1}B{1}"] = d_temp
 
@@ -276,12 +287,13 @@ class Detailing:
                 '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
                 d_temp = self.ensure_local_ductility(b, h, data["Columns"][f"S{st+1}B{bay+1}"][0]["reinforcement"], mphi,
                                                      st+1, bay+1, eletype="Column")
+                warnings["Columns"][f"S{st+1}B{bay+1}"] = self.WARN_ELE
                 if d_temp is not None:
                     data["Columns"][f"S{st+1}B{bay+1}"] = d_temp
 
         mu_c, mu_f = self.estimate_ductilities(data, modes)
 
-        return data, mu_c, mu_f
+        return data, mu_c, mu_f, warnings
 
     def estimate_ductilities(self, details, modes):
         """

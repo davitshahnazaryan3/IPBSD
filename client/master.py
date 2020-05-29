@@ -134,20 +134,30 @@ class Master:
         pr.period_range_verification(t_lower, t_upper)
         return t_lower, t_upper
 
-    def get_all_section_combinations(self, t_lower, t_upper, fstiff=0.5):
+    def get_all_section_combinations(self, t_lower, t_upper, fstiff=0.5, solution=None, data=None):
         """
         gets all section combinations satisfying period bound range
         :param t_lower: float                       Lower period limit
         :param t_upper: float                       Upper period limit
         :param fstiff: float                        Stiffness reduction factor
+        :param solution: Series                     Solution to run analysis instead (for iterations)
+        :param data: object                         Input arguments
         :return cs.solutions: DataFrame             Solution combos
         :return opt_sol: DataFrame                  Optimal solution
         :return opt_modes: dict                     Periods and normalized modal shapes of the optimal solution
         """
-        cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
-                          self.data.h, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper)
-        opt_sol, opt_modes = cs.find_optimal_solution()
-        return cs.solutions, opt_sol, opt_modes
+        if solution is None:
+            cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
+                              self.data.h, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper)
+            opt_sol, opt_modes = cs.find_optimal_solution()
+            return cs.solutions, opt_sol, opt_modes
+        else:
+            self.data = data
+            cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
+                              self.data.h, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
+                              iteration=True)
+            opt_sol, opt_modes = cs.find_optimal_solution(solution)
+            return opt_sol, opt_modes
 
     def perform_spo2ida(self, spo_pars):
         """
@@ -381,9 +391,9 @@ class Master:
         d = Detailing(demands, self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
                       self.data.h, self.data.n_seismic, self.data.masses, tlower, tupper, dy, sections,
                       ductility_class=ductility_class)
-        data, mu_c, mu_f = d.design_elements(modes)
-
-        return data, mu_c, mu_f
+        data, mu_c, mu_f, warnings = d.design_elements(modes)
+        warn = d.WARNING
+        return data, mu_c, mu_f, warn, warnings
 
     def run_ma(self, solution, tlower, tupper, sections):
         """

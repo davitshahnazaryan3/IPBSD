@@ -8,7 +8,7 @@ import pandas as pd
 
 
 class CrossSection:
-    def __init__(self, nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, fstiff, tlower, tupper):
+    def __init__(self, nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, fstiff, tlower, tupper, iteration=False):
         """
         Initializes the optimization function for the cross-section for a target fundamental period
         :param nst: int                                     Number of stories
@@ -22,6 +22,7 @@ class CrossSection:
         :param fstiff: float                                todo, remove this, is it necessary?
         :param tlower: float                                Lower period bound
         :param tupper: float                                Upper period bound
+        :param iteration: bool                              Whether an iterative analysis is being performed
         """
         self.nst = nst
         self.nbays = nbays
@@ -35,8 +36,9 @@ class CrossSection:
         self.tlower = tlower
         self.tupper = tupper
         self.SWEIGHT = 25.
-        self.elements = self.constraint_function()
-        self.solutions = self.get_all_solutions()
+        if not iteration:
+            self.elements = self.constraint_function()
+            self.solutions = self.get_all_solutions()
 
     def get_all_solutions(self):
         """
@@ -127,29 +129,28 @@ class CrossSection:
         constraint function for identifying combinations of all possible cross-sections
         :return: DataFrame                                      All solutions with element cross-sections
         """
-
         def storey_constraint(x, y):
             x = round(x, 2)
             y = round(y, 2)
-            if x >= y >= x - 0.05:
+            if x + 10**-5 >= y >= x - 0.05 - 10**-5:
                 return True
 
         def bay_constraint(x, y):
             x = round(x, 2)
             y = round(y, 2)
-            if y + 0.2 >= x >= y:
+            if y + 0.2 + 10**-5 >= x >= y - 10**-5:
                 return True
 
         def eq_constraint(x, y):
             x = round(x, 2)
             y = round(y, 2)
-            if x == y:
+            if x + 10**-5 >= y >= x - 10**-5:
                 return True
 
         def beam_constraint(x, y):
             x = round(x, 2)
             y = round(y, 2)
-            if y <= x + 0.3:
+            if x + 0.1 - 10**-5 <= y <= x + 0.3 + 10**-5:
                 return True
 
         ele_types = []
@@ -209,15 +210,19 @@ class CrossSection:
                                  (self.nbays - 1) + props[4][st] * sum(self.bay_widths))
         return w
 
-    def find_optimal_solution(self):
+    def find_optimal_solution(self, solution=None):
         """
         finds optimal solution based on minimizing weight
+        :param solution: Series                                 Solution to run analysis instead (for iterations)
         :return optimal: Series                                 Optimal solution based on minimizing weight
         :return opt_modes: dict                                 Periods and normalized modal shapes of the optimal
                                                                 solution
         """
         # todo, currently using optimal as series, transform into a dataframe and then store
-        optimal = self.solutions[self.solutions["Weight"] == self.solutions["Weight"].min()].iloc[0]
+        if solution is None:
+            optimal = self.solutions[self.solutions["Weight"] == self.solutions["Weight"].min()].iloc[0]
+        else:
+            optimal = solution
         hce, hci, b, h = self.get_section(optimal)
         properties = self.create_props(hce, hci, b, h)
         period, phi = self.run_ma(properties, single_mode=False)
