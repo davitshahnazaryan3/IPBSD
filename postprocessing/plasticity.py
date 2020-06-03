@@ -2,6 +2,7 @@
 Defines post-yield properties of structural elements
 """
 import numpy as np
+import math
 
 
 class Plasticity:
@@ -24,6 +25,8 @@ class Plasticity:
         """
         for i in details["Columns"].keys():
             nst = int(i[1])
+        for i in details["Columns"].keys():
+            nbays = int(i[3])
         phi_p_list = np.zeros(nst) + 1000.
         phi_y_list = np.zeros(nst)
         phi_f_list = np.zeros(nst)
@@ -39,6 +42,8 @@ class Plasticity:
                 phi_p_list[int(i[1])-1] = phi_p
                 phi_y_list[int(i[1])-1] = phi_y
                 phi_f_list[int(i[1])-1] = phi_f
+            if i[3] == str(math.ceil(nbays/2)):
+                break
         phi_p = min(phi_p_list)
         lc_list = self.kwargs.get('lc', None)
         lc = lc_list[np.argmin(phi_p_list)]
@@ -48,9 +53,11 @@ class Plasticity:
         self.kwargs["lc"] = 0.6*lc              # Assuming contraflexure at 0.6 of height
         lp = self.get_lp()
         # Getting the hardening ductility
-        dp = phi_p*lp*lc
-        du = dp + dy*drift_factor
-        hard_duct = du/dy/drift_factor
+        hard_duct = 1 + 3*phi_p*lp/phi_y/lc/0.6
+        du = hard_duct*dy
+        # dp = phi_p*lp*lc
+        # du = dp + dy*drift_factor
+        # hard_duct = du/dy/drift_factor
         # Getting the fracturing ductility
         theta_pc = (phi_f - phi_y)*lp - phi_y*lc*0.6
         theta_u = du/lc

@@ -361,6 +361,7 @@ class IPBSD:
         warn, warnings = next(phase_4)
 
         if self.iterate and warn == 1:
+            # todo, add maxiter variable
             print("[ITERATION 4a] Commencing iteration...")
             cnt = 1
             while warn == 1:
@@ -432,7 +433,7 @@ if __name__ == "__main__":
     slf_file = "slf.xlsx"
     spo_file = "spo.csv"
     limit_eal = 0.5
-    mafc_target = 1.e-4
+    mafc_target = 5.e-4
     damping = .05
 
     method = IPBSD(input_file, hazard_file, slf_file, spo_file, limit_eal, mafc_target, analysis_type,
