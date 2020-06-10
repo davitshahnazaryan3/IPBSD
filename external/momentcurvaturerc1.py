@@ -13,6 +13,7 @@
 
 Adopted from the matlab script by D.S.
 """
+import timeit
 import numpy as np
 from scipy.interpolate import interp1d
 
@@ -112,6 +113,36 @@ class MomentCurvatureRC1:
         # defines strain hardening curve in the Raynor model [2-6]
         self.C1 = 3.3
 
+    @staticmethod
+    def get_init_time():
+        """
+        Records initial time
+        :return: float                      Initial time
+        """
+        start_time = timeit.default_timer()
+        return start_time
+
+    @staticmethod
+    def truncate(n, decimals=0):
+        """
+        Truncates time with given decimal points
+        :param n: float                     Time
+        :param decimals: int                Decimal points
+        :return: float                      Truncated time
+        """
+        multiplier = 10 ** decimals
+        return int(n * multiplier) / multiplier
+
+    def get_time(self, start_time):
+        """
+        Prints running time in seconds and minutes
+        :param start_time: float            Initial time
+        :return: None
+        """
+        elapsed = timeit.default_timer() - start_time
+        print('Running time: ', self.truncate(elapsed, 1), ' seconds')
+        print('Running time: ', self.truncate(elapsed / float(60), 2), ' minutes')
+
     def get_MLR(self, area):
         """
         Gets longitudinal reinforcement details (assumes one diameter only)
@@ -152,9 +183,11 @@ class MomentCurvatureRC1:
             D = diameter[get_idx_high(np.sqrt(4*area[0]/np.pi/n[0]), diameter)]
             if D not in diameter:
                 print(f"[WARNING] Diameter of {D} is larger than 32mm...")
-            z = np.array([self.h - self.clb - D/2,
-                          ((self.h - 2 * (self.clb + D/2)) / (1 + self.nlayers) + self.clb + D/2) * 2 - (self.clb + D/2),
-                          ((self.h - 2 * (self.clb + D/2)) / (1 + self.nlayers) + (self.clb + D/2)), (self.clb + D/2)])
+            z = np.array([round(self.h - self.clb - D/2, 0),
+                          round(((self.h - 2 * (self.clb + D/2)) / (1 + self.nlayers) + self.clb + D/2) * 2 -
+                                (self.clb + D/2), 0),
+                          round(((self.h - 2 * (self.clb + D/2)) / (1 + self.nlayers) + (self.clb + D/2)), 0),
+                          round((self.clb + D/2), 0)])
             D = np.array([D]*len(n))
         else:
             raise ValueError(f"[EXCEPTION] wrong input {self.nlayers} of number of reinforcement layers")
@@ -487,7 +520,7 @@ class MomentCurvatureRC1:
         :param TransvSteelRatioAverage: float               Average transverse steel ratio
         :param Lp: float                                    Plastic hinge length
         :param LBE: float                                   Buckling length
-        :return:
+        :return: ndarray                                    Curvature ductilities
         """
         # Moyer - Kowalsky Buckling model
         bucritMK = 0
@@ -515,6 +548,10 @@ class MomentCurvatureRC1:
                 failCuDuMK = interp1d(fail, CuDu)(0)
                 failesfl = interp1d(fail, esfl)(0)
                 failss = -interp1d(fail, steelstrain)(0)
+            else:
+                failCuDuMK = None
+        else:
+            failCuDuMK = None
 
         # Berry - Eberhard buckling model
         bucritBE = 0
@@ -539,6 +576,165 @@ class MomentCurvatureRC1:
             failBE = plrot - rotb
             failplrot = interp1d(failBE, plrot)(0)
             failCuDuBE = interp1d(failBE, CuDu)(0)
+        else:
+            failCuDuBE = None
+
+        return CuDu, bucritMK, bucritBE, failCuDuMK, failCuDuBE
+
+    def get_shear_strength(self, LongSteelRatio, cMn, displ, dyf, alpha):
+        """
+        Calculates shear strength of element
+        :param LongSteelRatio: float                    Longitudinal steel ratio
+        :param cMn: float                               Nominal yield strength
+        :param displ: ndarray                           Total displacement from shear and flexure contributions
+        :param dyf: float                               Nominal yield displacement
+        :param alpha: float                             Factor for shear strength calculation
+        :return: floats                                 Unfactored and factored shear strengths
+        """
+        # Shear strength
+        Vs = (ncy * 0.25 * np.pi * self.Dh ** 2 * self.fy * (self.h - self.clb + 0.5 * self.Dh - cMn) /
+              np.tan(np.pi / 6) / self.s) / 1000
+        Vsd = (ncy * 0.25 * np.pi * self.Dh ** 2 * self.fy * (h - self.clb + 0.5 * self.Dh - cMn) /
+               np.tan(35 / 180 * np.pi) / self.s) / 1000
+        beta = min(0.5 + 20 * LongSteelRatio, 1)
+        Dductf = displ / dyf
+
+        if self.bending == "single":
+            alpha = min([max([1, 3 - self.L / self.h]), 1.5])
+            if self.P > 0:
+                Vp = (self.P * (self.h - cMn) / (2 * self.L)) / 1000
+            else:
+                Vp = 0
+        elif self.bending == "double":
+            alpha = min([max([1, 3 - self.L / 2 / self.h]), 1.5])
+            if self.P > 0:
+                Vp = (self.P * (self.h - cMn) / self.L) / 1000
+            else:
+                Vp = 0
+
+        Vc = np.zeros(len(Dductf))
+        if self.ductility_mode == "uniaxial":
+            for i in range(len(Dductf)):
+                Vc[i] = alpha * beta * min(max(0.05, 0.37 - 0.04 * Dductf[i]), 0.29) * 0.8 * self.fc_prime ** 0.5 * \
+                        self.b * self.h / 1000
+        elif self.ductility_mode == "biaxial":
+            for i in range(len(Dductf)):
+                Vc[i] = alpha * beta * min(max(0.05, 0.33 - 0.04 * Dductf[i]), 0.29) * 0.8 * self.fc_prime ** 0.5 * \
+                        self.b * self.h / 1000
+        Vcd = 0.862 * Vc
+        Vpd = 0.85 * Vp
+        V = Vc + Vs + Vp
+        Vd = 0.85 * (Vcd + Vsd + Vpd)
+        return V, Vd
+
+    def check_failures(self, Force, V, displ, Dduct, mom, curv, CuDu, dy):
+        """
+        Calculates parameters of interest at failure
+        :param Force: ndarray                       Force
+        :param V: ndarray                           Shear strength
+        :param displ: ndarray                       Total displacement
+        :param Dduct: ndarray                       Ductilities (displ/dy)
+        :param mom: ndarray                         Bending moment
+        :param curv: ndarray                        Curvature
+        :param CuDu: ndarray                        Curvature ductilities
+        :param dy: float                            Yield displacement
+        :return: ndarray                            Criteria of failure and values of parameters associated with failure
+        """
+        criteria = 1
+        if V[-1] < Force[-1]:
+            failure = V - Force
+            faildispl = interp1d(failure, displ)(0)
+            failforce = interp1d(displ, Force)(faildispl)
+            failduct = interp1d(displ, Dduct)(faildispl)
+            failmom = interp1d(displ, mom)(faildispl)
+            failcurv = interp1d(displ, curv)(faildispl)
+            failCuDu = interp1d(displ, CuDu)(faildispl)
+
+            if self.bending == "single":
+                if faildispl <= 2 * dy:
+                    criteria = 2
+                elif faildispl < 8 * dy:
+                    criteria = 3
+                else:
+                    criteria = 4
+            elif self.bending == "double":
+                if faildispl <= 1 * dy:
+                    criteria = 2
+                elif faildispl < 7 * dy:
+                    criteria = 3
+                else:
+                    criteria = 4
+        else:
+            faildispl = None
+            failforce = None
+            failduct = None
+            failmom = None
+            failcurv = None
+            failCuDu = None
+
+        return np.array([criteria, faildispl, failforce, failduct, failmom, failcurv, failCuDu])
+
+    def get_pars_limit_state(self, ecdam, esser, esdam, coverstrain, steelstrain, displ, Dduct, curv, mom, Force, CuDu):
+        """
+        Gets parameters associated with the limit states of interest
+        :param ecdam: float                             Deformation limit state (concrete)
+        :param esser: float                             Deformation limit states (steel)
+        :param esdam: float                             Deformation limit states (steel)
+        :param coverstrain: ndarray                     Concrete cover strains
+        :param steelstrain: ndarray                     Steel strains
+        :param displ: ndarray                           Total displacements
+        :param Dduct: ndarray                           Ductilities
+        :param curv: ndarray                            Curvatures
+        :param mom: ndarray                             Bending moments
+        :param Force: ndarray                           Forces
+        :param CuDu: ndarray                            Curvature ductilities
+        :return: ndarray
+        """
+        displdam = 0
+        displser = 0
+        Dductdam = 0
+        Dductser = 0
+        curvdam = 0
+        curvser = 0
+        CuDudam = 0
+        CuDuser = 0
+        coverstraindam = 0
+        coverstrainser = 0
+        steelstraindam = 0
+        steelstrainser = 0
+        momdam = 0
+        momser = 0
+        Forcedam = 0
+        Forceser = 0
+
+        if max(coverstrain) > self.ECSER or max(abs(steelstrain)) > abs(esser):
+            if max(coverstrain) > ecdam or max(abs(steelstrain)) > abs(esdam):
+                displdamc = interp1d(coverstrain, displ)(ecdam)
+                displdams = interp1d(steelstrain, displ)(esdam)
+                displdam = min(displdamc, displdams)
+                Dductdam = interp1d(displ, Dduct)(displdam)
+                curvdam = interp1d(displ, curv)(displdam)
+                coverstraindam = interp1d(displ, coverstrain)(displdam)
+                steelstraindam = interp1d(displ, steelstrain)(displdam)
+                momdam = interp1d(displ, mom)(displdam)
+                Forcedam = interp1d(displ, Force)(displdam)
+
+            displserc = interp1d(coverstrain, displ)(self.ECSER)
+            displsers = interp1d(steelstrain, displ)(esser)
+            displser = min(displserc, displsers)
+            Dductser = interp1d(displ, Dduct)(displser)
+            curvser = interp1d(displ, curv)(displser)
+            CuDuser = interp1d(displ, CuDu)(displser)
+            coverstrainser = interp1d(displ, coverstrain)(displser)
+            steelstrainser = interp1d(displ, steelstrain)(displser)
+            momser = interp1d(displ, mom)(displser)
+            Forceser = interp1d(displ, Force)(displser)
+
+        outputlimit = np.array([coverstrainser, steelstrainser, momser, Forceser, curvser, CuDuser, displser, Dductser,
+                                coverstraindam, steelstraindam, momdam, Forcedam, curvdam, CuDudam, displdam, Dductdam,
+                                max(coverstrain), min(steelstrain), mom[-1], Force[-1], max(curv), max(CuDu),
+                                max(displ), max(Dduct)])
+        return outputlimit
 
     def master(self, Ast):
 
@@ -599,6 +795,8 @@ class MomentCurvatureRC1:
 
         if self.ECDAM == "twth":
             ecdam = ecumander
+        else:
+            ecdam = self.ECDAM
 
         # vector with strains of confined concrete
         ec = np.hstack((-1e10, ec, np.array(ec[-1] + self.DELS), 1e10))
@@ -759,8 +957,9 @@ class MomentCurvatureRC1:
             raise ValueError("[EXCEPTION] Bending should be specified as single or dobule")
 
         # Buckling models
-        self.get_buckling(curv, fycurv, eqcurv, curvature_ductility, steelstrain, diam, TransvSteelRatioAverage, Lp,
-                          LBE)
+        CuDu, bucritMK, bucritBE, failCuDuMK, failCuDuBE = self.get_buckling(curv, fycurv, eqcurv, curvature_ductility,
+                                                                             steelstrain, diam, TransvSteelRatioAverage,
+                                                                             Lp, LBE)
 
         # Flexure deflection
         displf = np.zeros(len(curv))
@@ -838,6 +1037,263 @@ class MomentCurvatureRC1:
         displ = displsh + displf
 
         # --- BILINEAR APPROXIMATION
+        dy1 = interp1d(curv, displ)(fycurv)
+        dy = Mn/fyM*dy1
+        du = displ[-1]
+        displbilin = np.array([0, dy, du])
+        Dduct = displ/dy
+        DisplDuct = max(Dduct)
+
+        dylf = interp1d(curv, displf)(fycurv)
+        dyf = Mn/fyM*dylf
+        
+        # Shear strength
+        V, Vd = self.get_shear_strength(LongSteelRatio, cMn, displ, dyf, alpha)
+
+        # Checking for failures
+        failures = self.check_failures(Force, V, displ, Dduct, mom, curv, CuDu, dy)
+        criteria = failures[0]
+
+        # Equivalent I for NLTHA
+        Ieq = (Mn / (eqcurv * self.Ec)) / 1000
+        Bi = 1 / (((mombilin[1]) / (curvbilin[1])) / ((mombilin[2] - mombilin[1]) / (curvbilin[2] - curvbilin[1])))
+
+        # Limit states
+        outputlimit = self.get_pars_limit_state(ecdam, esser, esdam, coverstrain, steelstrain, displ, Dduct, curv, mom,
+                                                Force, CuDu)
+        displdam = outputlimit[14]
+        displser = outputlimit[6]
+
+        if self.pflag:
+            # todo, add plots
+            pass
+
+        dummy1 = np.linspace(0, round(max(displ) * 1000), round(max(displ) * 1000) + 1)
+        dummy2 = interp1d(displ * 1000, Force)(dummy1)
+
+        DV = np.hstack((dummy1, dummy2))
+
+        pointsdam = (displ <= displdam).nonzero()[0]
+        pointsser = (displ <= displser).nonzero()[0]
+
+        if criteria != 1 and (bucritMK == 1 and bucritBE == 0):
+            buckldispl = interp1d(CuDu, displ)(failCuDuMK)
+            bucklforce = interp1d(CuDu, Force)(failCuDuMK)
+
+        if criteria != 1 and (bucritMK == 1 and bucritBE == 1):
+            buckldispl = interp1d(CuDu, displ)(failCuDuMK)
+            bucklforce = interp1d(CuDu, Force)(failCuDuMK)
+            buckldisplBE = interp1d(CuDu, displ)(failCuDuMK)
+            bucklforceBE = interp1d(CuDu, Force)(failCuDuMK)
+
+        if criteria != 1 and (bucritMK == 0 and bucritBE == 1):
+            buckldisplBE = interp1d(CuDu, displ)(failCuDuBE)
+            bucklforceBE = interp1d(CuDu, Force)(failCuDuBE)
+
+        if criteria != 1 and (bucritMK == 0 and bucritBE == 0):
+            pass
+
+        if criteria == 1 and (bucritMK == 1 and bucritBE == 0):
+            buckldispl = interp1d(CuDu, displ)(failCuDuMK)
+            bucklforce = interp1d(CuDu, Force)(failCuDuMK)
+
+        if criteria == 1 and (bucritMK == 1 and bucritBE == 1):
+            buckldispl = interp1d(CuDu, displ)(failCuDuMK)
+            bucklforce = interp1d(CuDu, Force)(failCuDuMK)
+            buckldisplBE = interp1d(CuDu, displ)(failCuDuMK)
+            bucklforceBE = interp1d(CuDu, Force)(failCuDuMK)
+
+        if criteria == 1 and (bucritMK == 0 and bucritBE == 1):
+            buckldisplBE = interp1d(CuDu, displ)(failCuDuBE)
+            bucklforceBE = interp1d(CuDu, Force)(failCuDuBE)
+
+        if criteria == 1 and (bucritMK == 0 and bucritBE == 0):
+            pass
+
+        # --- OUTPUTS
+        output = np.array([coverstrain, corestrain, ejen, steelstrain, mom, curv, Force, displsh, displf, displ, V, Vd])
+        outputbilin = np.array([curvbilin, mombilin, displbilin, forcebilin])
+
+        Acore = Hcore * Bcore
+        # Compression force for yielding
+        PCY = interp1d(ec, fc)(self.fy / self.Es) * (Acore - AsLong) + interp1d(ecun, fcun)(self.fy / self.Es) * (
+                Agross - Acore) + AsLong * self.fy
+        # axial force for yielding
+        PTY = AsLong * self.fy
+
+        # todo, print out results
+
+        # --- Moment axial force interaction
+        control = min(self.CSID, self.SSID)
+
+        # compression force for first yielding
+        PCid = interp1d(ec, fc)(control) * (Acore - AsLong) + interp1d(ecun, fcun)(control) * (
+                    Agross - Acore) + AsLong * interp1d(es, fs)(control)
+        # axial force for first yielding
+        PTid = AsLong * interp1d(es, fs)(control)
+
+        # Vector with axial loads for interaction diagram
+        PP = np.hstack((np.arange(-0.9 * PTid, 0 + 0.3 * PTid, 0.3 * PTid),
+                        np.arange(0.05 * self.fc_prime * Agross, 0.6 * PCid, 0.05 * self.fc_prime * Agross),
+                        0.7 * PCid, 0.8 * PCid, 0.9 * PCid))
+
+        nPP = len(PP)
+        Mni = np.zeros(nPP)
+        eci = np.zeros(nPP)
+        esi = np.zeros(nPP)
+        mess = np.zeros(nPP)
+        for i in range(nPP):
+            message = 0
+            # todo, combine with get_disp function
+            if ecu <= 0.0018:
+                disp = np.arange(0.0001, 20 * ecu + 0.0001, 0.0001)
+            elif 0.0018 < ecu <= 0.0025:
+                disp = np.hstack((np.arange(0.0001, 0.0017, 0.0001), np.arange(0.0018, 20 * ecu + 0.0002, 0.0002)))
+            elif 0.0025 < ecu <= 0.006:
+                disp = np.hstack((np.arange(0.0001, 0.0017, 0.0001), np.arange(0.0018, 0.0022, 0.0002),
+                                  np.arange(0.0025, 20 * ecu + 0.0005, 0.0005)))
+            elif 0.006 < ecu <= 0.012:
+                disp = np.hstack((np.arange(0.0001, 0.0017, 0.0001), np.arange(0.0018, 0.0022, 0.0002),
+                                  np.arange(0.0025, 0.0055, 0.0005), np.arange(0.006, 20 * ecu + 0.001, 0.001)))
+            elif ecu > 0.012:
+                disp = np.hstack((np.arange(0.0001, 0.0017, 0.0001), np.arange(0.0018, 0.0022, 0.0002),
+                                  np.arange(0.0025, 0.0055, 0.0005), np.arange(0.006, 0.011, 0.001),
+                                  np.arange(0.012, 20 * ecu + 0.002, 0.002)))
+
+            ndisp = len(disp)
+
+            if PP[i] > 0:
+                for j in range(ndisp):
+                    compch = sum(interp1d(ecun, fcun)(disp[0] * np.ones(len(yl))) * conclay[1, :]) + \
+                             sum(interp1d(ec, fc)(disp[0] * np.ones(len(yl))) * conclay[2, :]) + \
+                             Ast * interp1d(es, fs)(disp[0])
+
+                    if compch < PP[i]:
+                        disp = disp[1:]
+
+            ndisp = len(disp)
+
+            # curvature
+            curv = np.array([0])
+            # moments
+            mom = np.array([0])
+            # neutral axis
+            ejen = np.array([0])
+            # forcce equilibrium
+            DF = np.array([0])
+            # iterations
+            vniter = np.array([0])
+
+            coverstrain = np.array([0])
+            corestrain = np.array([0])
+            steelstrain = np.array([0])
+
+            tol = self.TOL * self.h * self.b * self.fc_prime
+            x = np.array([self.h / 2])
+
+            for k in range(ndisp):
+                F = 10 * tol
+                niter = -1
+                while abs(F) > tol:
+                    niter += 1
+
+                    if x[niter] <= h:
+                        eec = (disp[k] / x[niter]) * (conclay[0, :] - (self.h - x[niter]))
+                        ees = (disp[k] / x[niter]) * (distld - (self.h - x[niter]))
+                    elif x[niter] > h:
+                        eec = (disp[k] / x[niter]) * (x[niter] - self.h + conclay[0, :])
+                        ees = (disp[k] / x[niter]) * (x[niter] - self.h + distld)
+
+                    eec[eec < min(ecun)] = min(ecun)
+                    eec[eec > max(ecun)] = max(ecun)
+                    fcunconf = interp1d(ecun, fcun)(eec)
+                    eec[eec < min(ec)] = min(ec)
+                    eec[eec > max(ec)] = max(ec)
+                    fcconf = interp1d(ec, fc)(eec)
+                    ees[ees < min(es)] = min(es)
+                    ees[ees > max(es)] = max(es)
+                    fsteel = interp1d(es, fs)(ees)
+                    FUNCON = fcunconf * conclay[1, :]
+                    FCONF = fcconf * conclay[2, :]
+                    FST = Asbs * fsteel
+                    F = sum(FUNCON) + sum(FCONF) + sum(FST) - PP[i]
+                    if F > 0:
+                        x = np.append(x, x[niter] - 0.05 * x[niter])
+                    elif F < 0:
+                        x = np.append(x, x[niter] + 0.05 * x[niter])
+                    if niter > self.ITERMAX:
+                        message = 3
+                        break
+                cores = (disp[k] / x[niter]) * abs(x[niter] - dcore)
+                TF = (self.confined == self.unconfined)
+                if not TF:
+                    if cores >= ecu:
+                        message = 1
+                        break
+                if TF:
+                    if disp[k] >= ecu:
+                        message = 1
+                        break
+
+                if abs(ees[0]) > esu:
+                    message = 2
+                    break
+
+                ejen = np.append(ejen, x[niter])
+                DF = np.append(DF, F)
+                vniter = np.append(vniter, niter)
+                mom = np.append(mom, (sum(FUNCON * conclay[0, :]) + sum(FCONF * conclay[0, :]) + sum(FST * distld) - PP[
+                    i] * h / 2) / 10 ** 6)
+                curv = np.append(curv, 1000 * disp[k] / x[niter])
+                coverstrain = np.append(coverstrain, disp[k])
+                corestrain = np.append(corestrain, cores)
+                steelstrain = np.append(steelstrain, ees[0])
+                x = np.array([x[niter]])
+                if message != 0:
+                    break
+
+            try:
+                Mni[i] = interp1d(coverstrain, mom)(self.CSID)
+            except:
+                Mni[i] = np.nan
+            try:
+                esaux = interp1d(coverstrain, steelstrain)(self.CSID)
+            except:
+                esaux = np.nan
+            # concrete control
+            cr = 0
+            if abs(esaux) > abs(self.SSID) or Mni[i] == np.nan:
+                # steel control
+                cr = 1
+                Mni[i] = interp1d(steelstrain, mom)(-self.SSID)
+            if cr == 0:
+                eci[i] = self.CSID
+                esi[i] = esaux
+            elif cr == 1:
+                esi[i] = -self.SSID
+                eci[i] = interp1d(steelstrain, coverstrain)(-self.SSID)
+
+            mess[i] = message
+
+        Mni = np.hstack((0, Mni, 0))
+
+        PPn = np.hstack((-PTid, PP, PCid))
+
+        MB = max(Mni)
+        PB = PPn[Mni == MB]
+
+        PB13 = 1 / 3 * PB
+        MB13 = interp1d(PPn, Mni)(PB13)
+
+        PB23 = 2 / 3 * PB
+        MB23 = interp1d(PPn, Mni)(PB23)
+
+        MB0 = interp1d(PPn, Mni)(0)
+
+        PPL = np.hstack((-PTid, 0, PB13, PB23, PB, PCid))
+        MnL = np.hstack((0, MB0, MB13, MB23, MB, 0))
+
+        outputi = np.vstack((Mni, PPn / 1000))
 
 
 if __name__ == '__main__':
@@ -852,4 +1308,6 @@ if __name__ == '__main__':
     Ast = 1200
 
     mphi = MomentCurvatureRC1(b, h, ncx, ncy, cover, Mtarget, L, P=700, nlayers=2)
+    start_time = mphi.get_init_time()
     mphi.master(Ast)
+    mphi.get_time(start_time)
