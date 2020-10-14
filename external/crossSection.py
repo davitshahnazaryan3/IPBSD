@@ -19,7 +19,7 @@ class CrossSection:
         :param heights: array                               Storey heights
         :param n_seismic: int                               Number of seismic frames
         :param mi: array                                    Lumped storey masses
-        :param fstiff: float                                todo, remove this, is it necessary?
+        :param fstiff: float                                Stiffness reduction factor
         :param tlower: float                                Lower period bound
         :param tupper: float                                Upper period bound
         :param iteration: bool                              Whether an iterative analysis is being performed
@@ -101,7 +101,7 @@ class CrossSection:
         :param h: array                                         Beam height
         :return: arrays                                         Areas and moments of inertia of all possible elements
         """
-        # todo, different beam sections along the height, once the OpenSees model can accommodate it, no grouping
+        # TODO, different beam sections along the height, once the OpenSees model can accommodate it, no grouping
         #  for now
         a_cols = [hce[i]*hce[i] for i in range(self.nst)]
         i_cols = [hce[i]*hce[i]**3/12 for i in range(self.nst)]
@@ -218,7 +218,6 @@ class CrossSection:
         :return opt_modes: dict                                 Periods and normalized modal shapes of the optimal
                                                                 solution
         """
-        # todo, currently using optimal as series, transform into a dataframe and then store
         if solution is None:
             optimal = self.solutions[self.solutions["Weight"] == self.solutions["Weight"].min()].iloc[0]
         else:

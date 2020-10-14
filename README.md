@@ -78,7 +78,7 @@ Additional explanations of each file are provided within the relevant directorie
 ### Step by step procedure<a id='process'>
 
 -> **Phase 1 - Performance objectives:**<br/>
-Iterations: 1a. if EAL is not below the objecctive EAL limit (software outputs an Error message)
+Iterations: 1a. if EAL is not below the objective EAL limit (software outputs an Error message)
 			1b. if period lower limit works out higher than the upper limit (software outputs an Error message)
 
 		1. Define limit EAL (economic loss) and target MAFC (collapse safety) - Input
@@ -198,7 +198,7 @@ Note: *Iterations 1a and 1b are manual, while iterations 3a and 4a may be manual
 
 * [ ] Different methods of estimating collapse capacity distribution in case the user is not willing to guess the SPO curve
 
-* [ ] SLF generator -> based on Sebastiano's work
+* [x] SLF generator -> based on Sebastiano's work
 
 
 </a><font color=blue><div style="text-align: right">[up](#contents)

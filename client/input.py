@@ -16,7 +16,8 @@ class Input:
         """
         initializes the input functions
         """
-        # todo, separate definition of structure type into a different method
+        # TODO, separate definition of structure type into a different method
+        # TODO, add dead structural weights to input loads as well?
         # input arguments
         self.i_d = None                             # Dictionary containing the original input arguments    dict
         self.case_id = None                         # Case ID for storing the data                          str
@@ -30,7 +31,8 @@ class Input:
         self.o_th = None                            # Higher mode reduction factor                          float
         self.y_conv = None                          # PFA conversion factor                                 float
         self.n_bays = None                          # Number of bays                                        int
-        self.spans_x = None                         # Bay widths in m                                       list(float)
+        self.spans_x = None                         # Bay widths in m in X direction                        list(float)
+        self.spans_y = None                         # Bay widths in m in Y direction                        list(float)
         self.fy = None                              # Steel yield strength in MPa                           float
         self.eps_y = None                           # Steel yield strain                                    float
         self.fc = None                              # Concrete compressive strength in MPa                  float
@@ -38,7 +40,7 @@ class Input:
         self.n_gravity = None                       # Number of gravity frames                              int
         self.bay_perp = None                        # Bay width (approximate) in the y direction            float
         self.w_seismic = None                       # Seismic weights in kN/m2                              dict
-        self.ELASTIC_MODULUS_STEEL = 200000.        # Steel elastic modulus in MPa                          float
+        self.elastic_modulus_steel = 200000.        # Steel elastic modulus in MPa                          float
 
     def read_inputs(self, filename):
         """
@@ -72,11 +74,15 @@ class Input:
         self.y_conv = self.i_d['PFA_convert'][0]
         self.o_th = self.i_d['mode_red'][0]
         self.spans_x = []
+        self.spans_y = []
         for bay in self.i_d['spans_X']:
             self.spans_x.append(self.i_d['spans_X'][bay])
+        for bay in self.i_d['spans_Y']:
+            self.spans_y.append(self.i_d['spans_Y'][bay])
         self.n_bays = len(self.spans_x)
         self.fy = self.i_d['fy'][0]
-        self.eps_y = self.fy / self.ELASTIC_MODULUS_STEEL
+        self.elastic_modulus_steel = self.i_d['Es'][0]
+        self.eps_y = self.fy / self.elastic_modulus_steel
         self.fc = self.i_d['fc'][0]
         self.n_seismic = self.i_d['n_seismic_frames'][0]
         self.n_gravity = self.i_d['n_gravity_frames'][0]

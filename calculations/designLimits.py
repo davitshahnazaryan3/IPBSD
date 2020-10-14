@@ -18,7 +18,7 @@ class DesignLimits:
 
         self.slf = SLF(self.slf_filename, self.y)
         self.provided()
-
+        
     def provided(self):
         """
         provided as input SLF function

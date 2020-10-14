@@ -30,7 +30,6 @@ class Master:
         self.hazard_data = None
         self.original_hazard = None
         self.data = None
-        self.REBAR_COVER = 0.03
         self.g = 9.81
 
     def read_input(self, input_file, hazard_file):
@@ -237,7 +236,7 @@ class Master:
         corr = np.zeros([num_modes, num_modes])
         for j in range(num_modes):
             for i in range(num_modes):
-                 corr[i, j] = (8*damping**2*(periods[j]/periods[i])**(3/2)) / \
+                corr[i, j] = (8*damping**2*(periods[j]/periods[i])**(3/2)) / \
                               ((1+(periods[j]/periods[i]))*((1-(periods[j]/periods[i]))**2 +
                                                             4*damping**2*(periods[j]/periods[i])))
         return corr
@@ -301,7 +300,7 @@ class Master:
         :param modal_sa: list                       Spectral acceleration to be used for RMSA
         :return: DataFrame                          Acting forces
         """
-        # todo, consider phi shape from CrossSection for opt_sol
+        # todo, consider phi shape for forces from CrossSection for opt_sol, 1st mode-proportional
         a = Action(solution, self.data.n_seismic, self.data.n_bays, self.data.nst, self.data.masses, say, df, analysis,
                    gravity_loads, num_modes, opt_modes, modal_sa)
         d = a.forces()
@@ -315,7 +314,7 @@ class Master:
         elf = ELF(solution, loads, heights, widths)
         return elf.response
 
-    def run_analysis(self, analysis, solution, lat_action=None, grav_loads=None, sls=None, yield_sa=None):
+    def run_analysis(self, analysis, solution, lat_action=None, grav_loads=None, sls=None, yield_sa=None, fstiff=0.5):
         """
         runs elfm to identify demands on the structural elements
         :param analysis: int                        Analysis type
@@ -324,6 +323,7 @@ class Master:
         :param grav_loads: list                     Acting gravity loads in kN/m
         :param sls: dict                            Table at SLS, necessary for simplified computations only
         :param yield_sa: float                      Spectral acceleration at yield
+        :param fstiff: float                        Stiffness reduction factor
         :return: dict                               Demands on the structural elements
         """
         if analysis == 1:       # redundant, unnecessary, but will be left here as a placeholder for future changes
@@ -361,7 +361,7 @@ class Master:
                 response['Mci'][st] = 0.6 * self.data.h[st] * shear_internal
                 response['Mce'][st] = 0.6 * self.data.h[st] * shear_external
         else:
-            op = OpenSeesRun(self.data, solution, analysis)
+            op = OpenSeesRun(self.data, solution, analysis, fstiff=fstiff)
             beams, columns = op.create_model()
             if lat_action is not None:
                 op.elfm_loads(lat_action)
@@ -374,9 +374,11 @@ class Master:
             if grav_loads is not None:
                 analysis = 3
             response = op.define_recorders(beams, columns, analysis)
+
         return response
 
-    def design_elements(self, demands, sections, modes, tlower, tupper, dy, ductility_class="DCM"):
+    def design_elements(self, demands, sections, modes, tlower, tupper, dy, ductility_class="DCM", fstiff=0.5,
+                        cover=0.03):
         """
         Runs M-phi to optimize for reinforcement for each section
         :param demands: DataFrame or dict           Demands identified from a structural analysis (lateral+gravity)
@@ -387,10 +389,12 @@ class Master:
         :param dy: float                            System yield displacement in m
         :param ductility_class: str                 Ductility class (DCM or DCH, following Eurocode 8 recommendations)
         :return: dict                               Designed element properties from the moment-curvature relationship
+        :param fstiff: float                        Stiffness reduction factor
+        :param cover: float                         Reinforcement cover in m
         """
         d = Detailing(demands, self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
                       self.data.h, self.data.n_seismic, self.data.masses, tlower, tupper, dy, sections,
-                      ductility_class=ductility_class)
+                      ductility_class=ductility_class, fstiff=fstiff, rebar_cover=cover)
         data, mu_c, mu_f, warnings = d.design_elements(modes)
         warn = d.WARNING
         return data, mu_c, mu_f, warn, warnings

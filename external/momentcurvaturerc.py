@@ -21,8 +21,8 @@ warnings.filterwarnings('ignore')
 
 
 class MomentCurvatureRC:
-    def __init__(self, b, h, m_target, length=0, nlayers=0, p=0, d=.04, fc_prime=25, fy=415, young_mod_s=200e3,
-                 plotting=False, soft_method="Haselton", k_hard=1.0, fstiff=0.5):
+    def __init__(self, b, h, m_target, length=0, nlayers=0, p=0, d=.03, fc_prime=25, fy=415, young_mod_s=200e3,
+                 plotting=False, soft_method="Haselton", k_hard=1.0, fstiff=0.5, AsTotal=None, distAs=None):
         """
         init Moment curvature tool
         :param b: float                         Element sectional width
@@ -39,6 +39,8 @@ class MomentCurvatureRC:
         :param soft_method: str                 Method for the softening slope calculation
         :param k_hard: float                    Hardening slope of reinforcement (i.e. fu/fy)
         :param fstiff: float                    Stiffness reduction factor (50% per Eurocode 8), for the model only
+        :param AsTotal: float                   Total reinforcement area (for beams only)
+        :param distAs: list                     Relative distributions of reinforcement (for beams only)
         """
         self.b = b
         self.h = h
@@ -60,6 +62,10 @@ class MomentCurvatureRC:
         self.epss = np.nan
         self.fst = np.nan
         self.phii = np.nan
+        self.AsTotal = AsTotal
+        self.distAs = distAs
+        if self.distAs is None:
+            self.distAs = [0.5, 0.5]
         # Transverse reinforcement spacing in [m]
         self.TRANSVERSE_SPACING = 0.1
         # Transverse reinforcement diameter in [m]
@@ -93,7 +99,7 @@ class MomentCurvatureRC:
         plt.ylabel('Resisting moment [kNm]')
         plt.xlabel('Curvature [1/m]')
         plt.grid(True, which="both", ls="--", lw=0.5)
-
+        
     def objective(self, c, data):
         """
         Objective function solving for compressed concrete height
@@ -104,6 +110,7 @@ class MomentCurvatureRC:
         epsc = data[0]
         epsc_prime = data[1]
         rebar = data[2]
+        
         # reinforcement properties
         ey = self.fy / self.young_mod_s
         fu = self.k_hard * self.fy
@@ -115,7 +122,7 @@ class MomentCurvatureRC:
         # assumption, equal compressive and tensile reinforcement
         if self.nlayers == 0:
             z = np.array([self.h - self.d, self.d])
-            rebar = np.array([rebar / 2, rebar / 2])
+            rebar = np.array([rebar*self.distAs[1], rebar*self.distAs[0]])
         elif self.nlayers == 1:
             z = np.array([self.h - self.d, self.h / 2, self.d])
             rebar = np.array([rebar * 3 / 8, rebar * 2 / 8, rebar * 3 / 8])
@@ -160,7 +167,7 @@ class MomentCurvatureRC:
         self.epss = abs(epss[-1])
         self.phii = epsc / c
         return abs(nint + self.p)
-
+        
     def max_moment(self, asi, epsc_prime):
         """
         Gets the maximum moment capacity
@@ -223,7 +230,8 @@ class MomentCurvatureRC:
             raise ValueError("[EXCEPTION] Wrong method for the definition of softening slope!")
         return phi_critical, lp
     
-    def get_mphi(self, check_reinforcement=False, reinf_test=0, m_target=None):
+    def get_mphi(self, check_reinforcement=False, reinf_test=0, m_target=None, reinforcements=None):
+        # TODO, a bit too rigid, make it more flexible, easier to manipulate within IPBSD to achieve optimized designs
         """
         Gives the Moment-curvature relationship
         :param check_reinforcement: bool            Gets moment for reinforcement provided (True) or applied
@@ -231,8 +239,12 @@ class MomentCurvatureRC:
         :param reinf_test: int                      Reinforcement for test
         :param m_target: float                      Target bending moment. This is a value that may be increased
                                                     depending on local ductility requirements
+        :param reinforcements: list                 Positive and negative reinforcements (for beams only)
         :return: dict                               M-phi response data, reinforcement and concrete data for detailing
         """
+        if reinforcements is not None:
+            self.AsTotal = sum(reinforcements)
+            self.distAs = reinforcements / self.AsTotal
         if m_target is not None:
             self.m_target = m_target
 
@@ -266,7 +278,11 @@ class MomentCurvatureRC:
         eps_tensile = np.zeros(len(epsc))
 
         # Optimize for longitudinal reinforcement at peak capacity
-        asinit = np.array([0.001])
+        if self.AsTotal is not None:
+            asinit = np.array([self.AsTotal])
+        else:
+            asinit = np.array([0.001])
+            
         asinit = abs(float(optimize.fsolve(self.max_moment, asinit, epsc_prime, factor=0.1)))
         if check_reinforcement:
             c = np.array([0.01])
@@ -316,6 +332,7 @@ class MomentCurvatureRC:
         # Softening slope
         nu = abs(self.p)/area/self.fc_prime/1000
         ro_sh = self.TRANSVERSE_LEGS*np.pi*self.TRANSVERSE_DIAMETER**2/4 / self.TRANSVERSE_SPACING / self.b
+        A_sh = self.TRANSVERSE_LEGS*np.pi*self.TRANSVERSE_DIAMETER**2/4
         phi_critical, lp = self.get_softening_slope(rebar_area=asinit, curvature_yield=phiy_first,
                                                     curvature_ductility=mu_phi, axial_load_ratio=nu,
                                                     transverse_steel_ratio=ro_sh)
@@ -330,10 +347,14 @@ class MomentCurvatureRC:
 
         # Storing the results
         # The values are relative to the point of yield definition (herein to first yield)
+        # If columns are designed, full reinforcement is recorded, if beams, then the direction of interest is recorded
+        As_factor = 1. if self.AsTotal is None else self.distAs[0]
+
         data = {'curvature': phi, 'moment': m, 'curvature_ductility': mu_phi, 'peak/yield ratio': rpeak,
-                'reinforcement': asinit, 'cracked EI': ei_cracked, 'first_yield_moment': my_first,
+                'reinforcement': asinit*As_factor, 'cracked EI': ei_cracked, 'first_yield_moment': my_first,
                 'first_yield_curvature': phiy_first, 'phi_critical': phi_critical,
-                'fracturing_ductility': fracturing_ductility, "lp": lp}
+                'fracturing_ductility': fracturing_ductility, "lp": lp, "cover": self.d, "A_sh": A_sh,
+                "spacing": self.TRANSVERSE_SPACING}
         reinforcement = {"Strain": eps_tensile, "Stress": sigmat}
         concrete = {"Strain": epsc, "Stress": sigma_c}
 
@@ -365,17 +386,17 @@ if __name__ == '__main__':
     """
     # Section properties
     b = 0.25
-    h = 0.4
-    Mtarget = 155.
+    h = 0.45
+    Mtarget = 98.12
     cover = 0.03
 
-    mphi = MomentCurvatureRC(b, h, Mtarget, d=cover, plotting=False, soft_method="Haselton")
+    mphi = MomentCurvatureRC(b, h, Mtarget, d=cover, plotting=False, soft_method="Haselton", AsTotal=0.0005, distAs=[0.5, 0.5])
 
     #    mphi = MomentCurvatureRC(b, h, Mtarget, nlayers=0, plotting=True, d=cover, soft_method="Haselton")
     data = mphi.get_mphi()
-    ro = data[0]['reinforcement'] / b / (h - cover) * 100 / 2
+    ro = data[0]['reinforcement'] / b / (h - cover) * 100
     print(f"Reinforcement ratio {ro:.2f}%")
-
+    
     # plt.plot(data[0]["curvature"], data[0]["moment"])
     # plt.xlim([0, 0.2])
     # plt.ylim([0, 250])

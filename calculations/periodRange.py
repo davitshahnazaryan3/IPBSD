@@ -5,7 +5,6 @@ from scipy.interpolate import interp1d
 import numpy as np
 
 
-# todo, if tlower > tupper, add warning, and update initial conditions
 class PeriodRange:
     def __init__(self, delta_d, alpha_d, sd, sa):
         """

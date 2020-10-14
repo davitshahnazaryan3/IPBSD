@@ -1,4 +1,6 @@
 """
+NOTE: This version includes nodes in the middle of the beams / which are not necessary, since in EFLM+gravity, the local
+peaks are expected at the ends of the beams, rather than near the middle
 Runs OpenSees software for structural analysis (in future may be changed with anastruct or other software)
 For now only ELFM, pushover to be added later if necessary.
 The idea is to keep it as simple as possible, and with fewer runs of this class.
@@ -10,16 +12,16 @@ import numpy as np
 
 
 class OpenSeesRun:
-    def __init__(self, i_d, cs, analysis, fstiff=0.5, pflag=False):
+    def __init__(self, data, cs, analysis, fstiff=0.5, pflag=False):
         """
         initializes model creation for analysing
-        :param i_d: dict                        Provided input arguments for the framework
+        :param data: dict                       Provided input arguments for the framework
         :param cs: DataFrame                    Cross-sections of the solution
         :param analysis: int                    Analysis type
         :param fstiff: float                    Stiffness reduction factor
         :param pflag: bool                      Print info
         """
-        self.i_d = i_d
+        self.data = data
         self.cs = cs
         self.analysis = analysis
         self.fstiff = fstiff
@@ -70,33 +72,42 @@ class OpenSeesRun:
         :return: None
         """
         xloc = 0.
-        for bay in range(0, int(self.i_d.n_bays+1)):
+        for bay in range(0, int(self.data.n_bays + 1)):
             zloc = 0.
+            # Base nodes, nodetag = f"{bay}{st}
             nodetag = int(str(1+bay)+'0')
             ops.node(nodetag, xloc, 0, zloc)
             ops.fix(nodetag, 1, 1, 1, 1, 1, 1)
-            for st in range(1, self.i_d.nst + 1):
-                zloc += self.i_d.h[st-1]
-                nodetag = int(str(1+bay)+str(st))
+            for st in range(1, self.data.nst + 1):
+                zloc += self.data.h[st - 1]
+                nodetag = int(str(1+bay) + str(st))
+                # Nodes, y is taken as zero, if 2D frame is modelled in a 3D model space
                 ops.node(nodetag, xloc, 0, zloc)
-            if bay == int(self.i_d.n_bays):
+                # Create mid-beam nodes to capture mid-beam moments
+                if bay != int(self.data.n_bays):
+                    midX = xloc + self.data.i_d["spans_X"][bay] / 2
+                    nodetag = int(str(1+bay) + str(st) + "00")
+                    ops.node(nodetag, midX, 0, zloc)
+            if bay == int(self.data.n_bays):
                 pass
             else:
-                xloc += self.i_d.spans_x[bay]
+                xloc += self.data.spans_x[bay]
+        # Fix out of plane modes, if 2D frame is modelled in a 3D model space
         if fix_out_of_plane:
             ops.fixY(0.0, 0, 1, 0, 0, 0, 1)
         if self.pflag:
             print("[NODE] Nodes created!")
 
     def lumped_hinge_element(self, et, gt, inode, jnode, my1, my2, lp, fc, b, h, ap=1.25, app=0.05,
-                             r=0.1, mu_phi=10, pinch_x=0.8, pinch_y=0.5, damage1=0.0, damage2=0.0, beta=0.0):
+                             r=0.1, mu_phi=10, pinch_x=0.8, pinch_y=0.5, damage1=0.0, damage2=0.0, beta=0.0,
+                             mnode=None):
         # TODO, add other possible element models
         """
         creates a lumped hinge element
         :param et: int                          Element tag
         :param gt: int                          Geometric transformation tag
-        :param inode: int                       i node
-        :param jnode: int                       j node
+        :param inode: int                       i node (start node)
+        :param jnode: int                       j node (end node)
         :param my1: float                       Yield moment at end i
         :param my2: float                       Yield moment at end j
         :param lp: float                        Plastic hinge length
@@ -113,6 +124,7 @@ class OpenSeesRun:
         :param damage2: float                   Damage due to energy
         :param beta: float                      Power used to determine the degraded unloading stiffness based on
                                                 ductility
+        :param mnode: int                       Mid node, None for columns
         :return: None
         """
         elastic_modulus = (3320*np.sqrt(fc/1000) + 6900)*1000*self.fstiff
@@ -153,7 +165,19 @@ class OpenSeesRun:
         ops.section("Uniaxial", ph_tag2, hingeMTag2, 'Mz')
 
         ops.beamIntegration("HingeRadau", integration_tag, ph_tag1, lp, ph_tag2, lp, int_tag)
-        ops.element("forceBeamColumn", et, inode, jnode, gt, integration_tag)
+
+        if mnode is not None:
+            # For beams
+            # Create id for the second beam segment (starting with 3)
+            et2 = int(200 + et)
+
+            # Sub-element 1
+            ops.element("forceBeamColumn", et, inode, mnode, gt, integration_tag)
+            # Sub-element 2
+            ops.element("forceBeamColumn", et2, mnode, jnode, gt, integration_tag)
+        else:
+            # For columns
+            ops.element("forceBeamColumn", et, inode, jnode, gt, integration_tag)
 
     def create_elements(self):
         """
@@ -161,8 +185,8 @@ class OpenSeesRun:
         consideration given only for ELFM, so capacities are arbitrary
         :return: list                               Element tags
         """
-        n_beams = self.i_d.nst*self.i_d.n_bays
-        n_cols = self.i_d.nst*(self.i_d.n_bays + 1)
+        n_beams = self.data.nst * self.data.n_bays
+        n_cols = self.data.nst * (self.data.n_bays + 1)
         capacities_beam = [1000.0]*n_beams
         capacities_col = [1000.0]*n_cols
 
@@ -172,8 +196,8 @@ class OpenSeesRun:
         h_beam = self.cs['h1']
         lp = 1.0*h_beam         # not important for linear static analysis
         beams = []
-        for bay in range(1, int(self.i_d.n_bays+1)):
-            for st in range(1, int(self.i_d.nst+1)):
+        for bay in range(1, int(self.data.n_bays + 1)):
+            for st in range(1, int(self.data.nst + 1)):
                 next_bay = bay + 1
                 my = capacities_beam[beam_id]
                 beam_id += 1
@@ -181,7 +205,8 @@ class OpenSeesRun:
                 gt = self.BEAM_TRANSF_TAG
                 inode = int(f"{bay}{st}")
                 jnode = int(f"{next_bay}{st}")
-                self.lumped_hinge_element(et, gt, inode, jnode, my, my, lp, self.i_d.fc, b_beam, h_beam)
+                mnode = int(inode*100)
+                self.lumped_hinge_element(et, gt, inode, jnode, my, my, lp, self.data.fc, b_beam, h_beam, mnode=mnode)
                 beams.append(et)
         if self.pflag:
             print("[ELEMENT] Beams created!")
@@ -189,12 +214,12 @@ class OpenSeesRun:
         # column generation
         col_id = 0
         columns = []
-        for bay in range(1, int(self.i_d.n_bays+2)):
-            for st in range(1, int(self.i_d.nst+1)):
+        for bay in range(1, int(self.data.n_bays + 2)):
+            for st in range(1, int(self.data.nst + 1)):
                 previous_st = st - 1
                 my = capacities_col[col_id]
                 col_id += 1
-                if bay == 1 or bay == 1 + int(self.i_d.n_bays):
+                if bay == 1 or bay == 1 + int(self.data.n_bays):
                     b_col = h_col = self.cs[f'he{st}']
                 else:
                     b_col = h_col = self.cs[f'hi{st}']
@@ -203,7 +228,7 @@ class OpenSeesRun:
                 gt = self.COL_TRANSF_TAG
                 inode = int(f"{bay}{previous_st}")
                 jnode = int(f"{bay}{st}")
-                self.lumped_hinge_element(et, gt, inode, jnode, my, my, lp, self.i_d.fc, b_col, h_col)
+                self.lumped_hinge_element(et, gt, inode, jnode, my, my, lp, self.data.fc, b_col, h_col)
                 columns.append(et)
         if self.pflag:
             print("[ELEMENT] Columns created!")
@@ -231,9 +256,9 @@ class OpenSeesRun:
         """
         ops.timeSeries("Linear", 1)
         ops.pattern("Plain", 1, 1)
-        for st in range(1, int(self.i_d.nst+1)):
-            for bay in range(1, int(self.i_d.n_bays+2)):
-                ops.load(int(f"{bay}{st}"), action[st-1]/(self.i_d.n_bays+1), 0, 0, 0, 0, 0)
+        for st in range(1, int(self.data.nst + 1)):
+            for bay in range(1, int(self.data.n_bays + 2)):
+                ops.load(int(f"{bay}{st}"), action[st-1] / (self.data.n_bays + 1), 0, 0, 0, 0, 0)
 
     def static_analysis(self):
         """
@@ -259,39 +284,41 @@ class OpenSeesRun:
         :return: ndarray                            Demands on beams and columns
         """
         if analysis != 4 and analysis != 5:
-            b = np.zeros((self.i_d.nst, self.i_d.n_bays))
-            c = np.zeros((self.i_d.nst, self.i_d.n_bays + 1))
+            b = np.zeros((self.data.nst, self.data.n_bays))
+            c = np.zeros((self.data.nst, self.data.n_bays + 1))
 
-            results = {"Beams": {"M": {"Pos": b.copy(), "Neg": b.copy()}, "N": b.copy(), "V": b.copy()},
+            results = {"Beams": {"M": b.copy(), "N": b.copy(), "V": b.copy()},
                        "Columns": {"M": c.copy(), "N": c.copy(), "V": c.copy()}}
 
-            # Beams, counting: bottom to top, left to right
+            # Beams
             ele = 0
-            for bay in range(self.i_d.n_bays):
-                for st in range(self.i_d.nst):
-                    results["Beams"]["M"]["Pos"][st][bay] = abs(ops.eleForce(beams[ele], 11))
-                    results["Beams"]["M"]["Neg"][st][bay] = abs(ops.eleForce(beams[ele], 5))
-                    results["Beams"]["N"][st][bay] = max(ops.eleForce(beams[ele], 1),
-                                                         ops.eleForce(beams[ele], 7), key=abs)
-                    results["Beams"]["V"][st][bay] = max(ops.eleForce(beams[ele], 3),
-                                                         ops.eleForce(beams[ele], 9), key=abs)
+            print(ops.eleForce(beams[ele]))
+            for bay in range(self.data.n_bays):
+                for st in range(self.data.nst):
+                    results["Beams"]["M"][st][bay] = abs(max(ops.eleForce(beams[ele], 5),
+                                                             ops.eleForce(beams[ele], 11), key=abs))
+                    results["Beams"]["N"][st][bay] = abs(max(ops.eleForce(beams[ele], 1),
+                                                             ops.eleForce(beams[ele], 7), key=abs))
+                    results["Beams"]["V"][st][bay] = abs(max(ops.eleForce(beams[ele], 3),
+                                                             ops.eleForce(beams[ele], 9), key=abs))
                     ele += 1
 
             # Columns
             ele = 0
-            for bay in range(self.i_d.n_bays + 1):
-                for st in range(self.i_d.nst):
-                    results["Columns"]["M"][st][bay] = max(ops.eleForce(columns[ele], 5),
-                                                           ops.eleForce(columns[ele], 11), key=abs)
-                    results["Columns"]["N"][st][bay] = max(ops.eleForce(columns[ele], 3),
-                                                           ops.eleForce(columns[ele], 9), key=abs)
-                    results["Columns"]["V"][st][bay] = max(ops.eleForce(columns[ele], 1),
-                                                           ops.eleForce(columns[ele], 7), key=abs)
+            print(ops.eleForce(columns[ele]))
+            for bay in range(self.data.n_bays + 1):
+                for st in range(self.data.nst):
+                    results["Columns"]["M"][st][bay] = abs(max(ops.eleForce(columns[ele], 5),
+                                                               ops.eleForce(columns[ele], 11), key=abs))
+                    results["Columns"]["N"][st][bay] = abs(max(ops.eleForce(columns[ele], 3),
+                                                               ops.eleForce(columns[ele], 9), key=abs))
+                    results["Columns"]["V"][st][bay] = abs(max(ops.eleForce(columns[ele], 1),
+                                                               ops.eleForce(columns[ele], 7), key=abs))
                     ele += 1
         else:
             # TODO, fix recording when applying RMSA, analysis type if condition seems incorrect
-            n_beams = self.i_d.nst * self.i_d.n_bays
-            n_cols = self.i_d.nst * (self.i_d.n_bays + 1)
+            n_beams = self.data.nst * self.data.n_bays
+            n_cols = self.data.nst * (self.data.n_bays + 1)
             results = {"Beams": {}, "Columns": {}}
             if analysis != 4 and analysis != 5:
                 for i in range(n_beams):
@@ -328,13 +355,13 @@ if __name__ == "__main__":
 
     cs = {'he1': 0.35, 'hi1': 0.4, 'b1': 0.25, 'h1': 0.45, 'he2': 0.3, 'hi2': 0.35, 'b2': 0.25,
           'h2': 0.45, 'he3': 0.25, 'hi3': 0.3, 'b3': 0.25, 'h3': 0.45, 'T': 0.936}
-    analysis = 3
-    op = OpenSeesRun(csd.data, cs, analysis=analysis, fstiff=1.0)
+
+    op = OpenSeesRun(csd.data, cs, analysis=3, fstiff=1.0)
     beams, columns = op.create_model()
     action = [160, 200, 200]
     gravity = [16.2, 13.5, 13.5]
     op.gravity_loads(gravity, beams)
     op.elfm_loads(action)
     op.static_analysis()
-    response = op.define_recorders(beams, columns, analysis=analysis)
-    print(response)
+    response = op.define_recorders(beams, columns, analysis=1)
+    # print(response)

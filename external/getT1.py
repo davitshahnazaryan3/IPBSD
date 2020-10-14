@@ -26,7 +26,7 @@ class GetT1:
         :param fstiff: float                        Stiffness reduction factor (0.5 default)
         :param just_period: bool                    Check for period or also perform pushover
         :param w_seismic: array                     Seismic masses
-        :param mcy: array                           Yield strength of columns todo, into kwargs
+        :param mcy: array                           Yield strength of columns
         :param mby: array                           Yield strength of beams
         :param single_mode: bool                    Whether to run only for 1st mode or multiple modes
                                                     1st mode only concerns the definition of solutions

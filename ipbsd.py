@@ -13,7 +13,8 @@ from client.master import Master
 
 class IPBSD:
     def __init__(self, input_file, hazard_file, slf_file, spo_file, limit_eal, target_mafc, analysis_type=1,
-                 damping=.05, num_modes=3, record=True, iterate=False):
+                 damping=.05, num_modes=3, record=True, iterate=False, system="Perimeter", maxiter=20, fstiff=0.5,
+                 rebar_cover=0.03):
         """
         Initializes IPBSD
         :param input_file: str              Input filename as '*.csv'
@@ -35,6 +36,10 @@ class IPBSD:
         :param num_modes: int               Number of modes to consider for SRSS (for analysis type 4 and 5)
         :param record: bool                 Flag for storing the results
         :param iterate: bool                Perform iterations or not (refers to iterations 4a and 3a)
+        :param system: str                  Structural system of the building (Perimeter or Space)
+        :param maxiter: int                 Maximum number of iterations for seeking a solution
+        :param fstiff: float                Stiffness reduction factor
+        :param rebar_cover: float           Reinforcement cover in m
         """
         self.dir = Path.cwd()
         self.input_file = input_file
@@ -48,6 +53,10 @@ class IPBSD:
         self.damping = damping
         self.record = record
         self.iterate = iterate
+        self.system = system                # TODO, currently it does nothing, IPBSD is only working with Perimeter frames, Space (loads etc. to be updated) frames to be added
+        self.maxiter = maxiter
+        self.fstiff = fstiff
+        self.rebar_cover = rebar_cover
 
     @staticmethod
     def get_init_time():
@@ -178,16 +187,19 @@ class IPBSD:
         if self.analysis_type == 1:
             demands = ipbsd.run_muto_approach(solution, list(forces["Fi"]), ipbsd.data.h, ipbsd.data.spans_x)
         elif self.analysis_type == 2:
-            demands = ipbsd.run_analysis(self.analysis_type, solution, list(forces["Fi"]))
+            demands = ipbsd.run_analysis(self.analysis_type, solution, list(forces["Fi"]), fstiff=self.fstiff)
         elif self.analysis_type == 3:
-            demands = ipbsd.run_analysis(self.analysis_type, solution, list(forces["Fi"]), list(forces["G"]))
+            demands = ipbsd.run_analysis(self.analysis_type, solution, list(forces["Fi"]), list(forces["G"]),
+                                         fstiff=self.fstiff)
         elif self.analysis_type == 4 or self.analysis_type == 5:
             demands = {}
             for mode in range(self.num_modes):
-                demands[f"Mode{mode+1}"] = ipbsd.run_analysis(self.analysis_type, solution, list(forces["Fi"][mode]))
+                demands[f"Mode{mode+1}"] = ipbsd.run_analysis(self.analysis_type, solution, list(forces["Fi"][mode]),
+                                                              fstiff=self.fstiff)
             demands = ipbsd.perform_cqc(corr, demands)
             if self.analysis_type == 5:
-                demands_gravity = ipbsd.run_analysis(self.analysis_type, solution, grav_loads=list(forces["G"]))
+                demands_gravity = ipbsd.run_analysis(self.analysis_type, solution, grav_loads=list(forces["G"]),
+                                                     fstiff=self.fstiff)
                 # Combining gravity and RSMA results
                 for eleType in demands_gravity.keys():
                     for dem in demands_gravity[eleType].keys():
@@ -201,7 +213,9 @@ class IPBSD:
         # todo, estimation of global peak to yield ratio to be added
         """Design the structural elements"""
         details, hard_ductility, fract_ductility, warn, warnings = ipbsd.design_elements(demands, solution, modes,
-                                                                                         t_lower, t_upper, dy)
+                                                                                         t_lower, t_upper, dy,
+                                                                                         fstiff=self.fstiff,
+                                                                                         cover=self.rebar_cover)
         yield details, hard_ductility, fract_ductility
         yield warn, warnings
 
@@ -294,6 +308,213 @@ class IPBSD:
                                                                  data=data)
             return solution, modes
 
+    def cacheRCMRF(self, ipbsd, ipbsd_outputs, case_directory, details, sol, demands):
+        """
+        Creates cache to be used by RCMRF
+        :param ipbsd: object                            Master class
+        :param ipbsd_outputs: dict                      IPBSD outputs
+        :param case_directory: str                      Directory of the case
+        :param details: dict                            Details of design
+        :param sol: dict                                Optimal solution
+        :param demands: dict                            Demands on structural components
+        :return: None
+        """
+        # Loads
+        floorLoad = ipbsd.data.i_d["bldg_ch"][0]
+        roofLoad = ipbsd.data.i_d["bldg_ch"][1]
+        area = ipbsd.data.i_d["bldg_ch"][2]
+
+        nst = len(ipbsd.data.i_d["h_storeys"])
+        nGravity = int(ipbsd.data.i_d["n_gravity_frames"][0])
+        nSeismic = int(ipbsd.data.i_d["n_seismic_frames"][0])
+
+        spansX = np.array([ipbsd.data.i_d["spans_X"][x] for x in ipbsd.data.i_d["spans_X"]])
+        spansY = np.array([ipbsd.data.i_d["spans_Y"][x] for x in ipbsd.data.i_d["spans_Y"]])
+        heights = np.array([ipbsd.data.i_d["h_storeys"][x] for x in ipbsd.data.i_d["h_storeys"]])
+
+        X = sum(spansX)
+        Y = sum(spansY)
+
+        if self.system == "Perimeter":
+            distLength = spansY[0] / 2
+        else:
+            distLength = spansY[0]
+
+        # Distributed loads
+        distLoads = [floorLoad * distLength, roofLoad * distLength]
+
+        # Point loads, for now will be left as zero
+        pLoads = 0.0
+
+        # PDelta loads/ essentially loads going to the gravity frames
+        if nGravity > 0:
+            distLength = spansY[0]
+            pDeltaLoad = [floorLoad * distLength * X, roofLoad * distLength * X]
+        else:
+            pDeltaLoad = 0.0
+
+        # Masses
+        masses = np.array(ipbsd_outputs["lateral loads"]["m"])
+
+        # Creating a DataFrame for loads
+        loads = pd.DataFrame(columns=["Storey", "Pattern", "Load"])
+
+        for st in range(1, nst + 1):
+            l = distLoads[1] if st == nst else distLoads[0]
+            loads = loads.append({"Storey": st,
+                                  "Pattern": "distributed",
+                                  "Load": l}, ignore_index=True)
+
+            # Point loads will be left as zeros for now
+            loads = loads.append({"Storey": st,
+                                  "Pattern": "point internal",
+                                  "Load": pLoads}, ignore_index=True)
+            loads = loads.append({"Storey": st,
+                                  "Pattern": "point external",
+                                  "Load": pLoads}, ignore_index=True)
+
+            # PDelta loads
+            if nGravity > 0:
+                l = pDeltaLoad[1] if st == nst else pDeltaLoad[0]
+                loads = loads.append({"Storey": st,
+                                      "Pattern": "pdelta",
+                                      "Load": l}, ignore_index=True)
+            else:
+                loads = loads.append({"Storey": st,
+                                      "Pattern": "pdelta",
+                                      "Load": pDeltaLoad}, ignore_index=True)
+
+            # Masses
+            loads = loads.append({"Storey": st,
+                                  "Pattern": "mass",
+                                  "Load": masses[st - 1]}, ignore_index=True)
+
+        # Storing loads
+        filepath = case_directory / "loads"
+        loads.to_csv(f"{filepath}.csv", index=False)
+
+        # Materials
+        fc = ipbsd.data.i_d["fc"][0]
+        fy = ipbsd.data.i_d["fy"][0]
+        Es = ipbsd.data.i_d["Es"][0]
+        # Elastic modulus of uncracked concrete
+        Ec = (3320 * np.sqrt(fc) + 6900) * self.fstiff
+
+        materials = pd.DataFrame({"fc": fc,
+                                  "fy": fy,
+                                  "Es": Es,
+                                  "Ec": Ec}, index=[0])
+
+        # Storing the materials file
+        filepath = case_directory / "materials"
+        materials.to_csv(f"{filepath}.csv", index=False)
+
+        """Section properties"""
+        def get_sections(i, sections, details, sol, demands, ele, iterator, st, bay, nbays, bayName):
+            # TODO, remove constraint on beams being uniform along the building
+            eleType = "Beam" if ele == "Beams" else "Column"
+            pos = "External" if bay == 1 else "Internal"
+            p0 = pos[0].lower() if eleType == "Column" else ""
+
+            # C-S dimensions
+            if eleType == "Beam":
+                b = sol.loc[f"b{st}"]
+                h = sol.loc[f"h{st}"]
+                Ptotal = max(demands[ele]["N"][st - 1][bay - 1], demands[ele]["N"][st - 1][nbays - bay], key=abs)
+                length = spansX[bay - 1]
+                MyPos = details["details"][ele]["Pos"][i][3]["yield"]["moment"]
+                MyNeg = details["details"][ele]["Neg"][i][3]["yield"]["moment"]
+                coverPos = details["details"][ele]["Pos"][i][0]["cover"]
+                coverNeg = details["details"][ele]["Neg"][i][0]["cover"]
+                roPos = details["details"][ele]["Pos"][i][0]["reinforcement"] / \
+                        (b * (h - coverPos))
+                roNeg = details["details"][ele]["Neg"][i][0]["reinforcement"] / \
+                        (b * (h - coverNeg))
+
+            else:
+                b = h = sol.loc[f"h{p0}{st}"]
+                Ptotal = max(demands[ele]["N"][st - 1][bay - 1], demands[ele]["N"][st - 1][nbays - bay + 1],
+                             key=abs)
+                length = heights[st - 1]
+                MyPos = MyNeg = details["details"][ele][i][3]["yield"]["moment"]
+                coverPos = coverNeg = details["details"][ele][i][0]["cover"]
+                roPos = roNeg = details["details"][ele][i][0]["reinforcement"] / (b * (h - coverPos))
+
+            # Residual strength of component
+            res = iterator[i][3]["fracturing"]["moment"] / iterator[i][3]["yield"]["moment"]
+
+            # TODO, record beam + and - moments in IPBSD, also for ro and db
+            # Appending into the DataFrame
+            sections = sections.append({"Element": eleType,
+                                        "Bay": bayName,
+                                        "Storey": st,
+                                        "Position": pos,
+                                        "b": float(b),
+                                        "h": float(h),
+                                        "coverPos": float(coverPos),
+                                        "coverNeg": float(coverNeg),
+                                        "Ptotal": Ptotal,
+                                        "MyPos": float(MyPos),
+                                        "MyNeg": float(MyNeg),
+                                        "asl": asl,
+                                        "Ash": float(iterator[i][0]["A_sh"]),
+                                        "spacing": float(iterator[i][0]["spacing"]),
+                                        "db": db,
+                                        "c": c,
+                                        "D": D,
+                                        "Res": float(res),
+                                        "Length": length,
+                                        "ro_long_pos": float(roPos),
+                                        "ro_long_neg": float(roNeg)}, ignore_index=True)
+            return sections
+
+        # Constants - assumptions - to be made more flexible
+        asl = 0
+        c = 1
+        D = 1
+        db = 20
+        nbays = len(spansY)
+
+        # Initialize sections
+        sections = pd.DataFrame(columns=["Element", "Bay", "Storey", "Position", "b", "h", "coverPos", "coverNeg",
+                                         "Ptotal", "MyPos", "MyNeg", "asl", "Ash", "spacing", "db", "c", "D", "Res",
+                                         "Length", "ro_long_pos", "ro_long_neg"])
+
+        for ele in details["details"]:
+            if ele == "Beams":
+                iterator = details["details"][ele]["Pos"]
+            else:
+                iterator = details["details"][ele]
+
+            for i in iterator:
+                st = int(i[1])
+                bay = int(i[3])
+                sections = get_sections(i, sections, details, sol, demands, ele, iterator, st, bay, nbays, bayName=bay)
+
+        # Add symmetric columns
+        if bay < nbays:
+            bayName = bay
+            for bb in range(nbays - bay + 1, 0, -1):
+                bayName += 1
+                for st in range(1, nst + 1):
+                    ele = "Columns"
+                    i = f"S{st}B{bb}"
+                    iterator = details["details"][ele]
+                    sections = get_sections(i, sections, details, sol, demands, ele, iterator, st, bb, nbays, bayName)
+
+            bayName = bay
+            for bb in range(nbays - bay, 0, -1):
+                bayName += 1
+                for st in range(1, nst + 1):
+                    ele = "Beams"
+                    i = f"S{st}B{bb}"
+                    iterator = details["details"][ele]["Pos"]
+                    sections = get_sections(i, sections, details, sol, demands, ele, iterator, st, bb, nbays, bayName)
+
+        # Storing the materials file
+        filepath = case_directory / "sections"
+        sections.to_csv(f"{filepath}.csv", index=False)
+
     def run_ipbsd(self):
 
         """Calling the master file"""
@@ -335,7 +556,7 @@ class IPBSD:
         print("[SUCCESS] Feasible period range identified")
 
         """Get all section combinations satisfying period bound range"""
-        sols, opt_sol, opt_modes = ipbsd.get_all_section_combinations(t_lower, t_upper)
+        sols, opt_sol, opt_modes = ipbsd.get_all_section_combinations(t_lower, t_upper, fstiff=self.fstiff)
         print("[SUCCESS] All section combinations were identified")
 
         """Perform SPO2IDA"""
@@ -357,14 +578,14 @@ class IPBSD:
                                        opt_modes, table_sls, t_lower, t_upper)
         forces = next(phase_4)
         demands = next(phase_4)
+
         details, hard_ductility, fract_ductility = next(phase_4)
         warn, warnings = next(phase_4)
 
         if self.iterate and warn == 1:
-            # todo, add maxiter variable
             print("[ITERATION 4a] Commencing iteration...")
             cnt = 1
-            while warn == 1:
+            while warn == 1 and cnt <= self.maxiter + 1:
                 """Look for a different solution"""
                 print(f"[ITERATION 4a] Iteration: {cnt}")
                 opt_sol, opt_modes = self.seek_solution(ipbsd.data, warnings, sols)
@@ -393,8 +614,13 @@ class IPBSD:
             design_results = {"details": details, "hardening ductility": hard_ductility,
                               "fracturing ductility": fract_ductility}
             self.store_results(case_directory / "details", design_results, "pkl")
+
+            """Creating DataFrames to store for RCMRF input"""
+            self.cacheRCMRF(ipbsd, ipbsd_outputs, case_directory, design_results, opt_sol, demands)
+
         print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
 
+        # TODO, add iteration for SPO, I don't think it is yet added
         # """Perform eigenvalue analysis on designed frame"""
         # print("[PHASE] Commencing phase 5...")
         # # Estimates period which is based on calculated EI values from M-phi relationships. Not a mandatory step.
@@ -427,7 +653,7 @@ if __name__ == "__main__":
     :param mafc_target: float                   MAFC target performance objective    
     """
     # Add input arguments
-    analysis_type = 2
+    analysis_type = 3
     input_file = "input.csv"
     hazard_file = "Hazard-LAquila-Soil-C.pkl"
     slf_file = "slf.xlsx"
@@ -435,9 +661,12 @@ if __name__ == "__main__":
     limit_eal = 0.5
     mafc_target = 5.e-4
     damping = .05
+    system = "Perimeter"
+    maxiter = 20
+    fstiff = 0.5
 
     method = IPBSD(input_file, hazard_file, slf_file, spo_file, limit_eal, mafc_target, analysis_type,
-                   damping=damping, num_modes=2, record=True, iterate=True)
+                   damping=damping, num_modes=2, record=True, iterate=True, system=system, maxiter=20, fstiff=0.5)
     start_time = method.get_init_time()
     method.run_ipbsd()
     method.get_time(start_time)

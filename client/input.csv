@@ -1,5 +1,4 @@
-design_scenario,PLS,ELR,TR,aleatory,bldg_ch,h_storeys,mode_red,PFA_convert,spans_X,fy,fc,n_seismic_frames,n_gravity_frames
-case5,OLS,0.01,10,0.1,6,3.5,1,0.6,6,415,25,2,2
-,SLS,0.06,60,0.2,5,3,,,6,,,,
-,CLS,1,1600,0.3,162,3,,,6,,,,
-,,,,,,3,,,,,,,
+design_scenario,PLS,ELR,TR,aleatory,bldg_ch,h_storeys,mode_red,PFA_convert,spans_X,spans_Y,fy,fc,Es,n_seismic_frames,n_gravity_frames
+case0,OLS,0.01,10,0.1,6,3.5,1,0.6,6,3,415,25,200000,2,2
+,SLS,0.06,80,0.2,5,3,,,6,3,,,,,
+,CLS,1,1600,0.3,162,3,,,6,3,,,,,
