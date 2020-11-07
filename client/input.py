@@ -29,7 +29,6 @@ class Input:
         self.masses = None                          # Lumped masses at stories in tonne                     list(float)
         self.h = None                               # Storey heights in m                                   list(float)
         self.o_th = None                            # Higher mode reduction factor                          float
-        self.y_conv = None                          # PFA conversion factor                                 float
         self.n_bays = None                          # Number of bays                                        int
         self.spans_x = None                         # Bay widths in m in X direction                        list(float)
         self.spans_y = None                         # Bay widths in m in Y direction                        list(float)
@@ -48,7 +47,9 @@ class Input:
         :param filename: str                        Filename containing input assumptions as path 'path/*.csv'
         :return: None
         """
+        # Read the input file
         data = pd.read_csv(filename)
+        # Check integrity of the input file
         self.i_d = {col: data[col].dropna().to_dict() for col in data}
         ErrorCheck(self.i_d)
         print("[SUCCESS] Integrity of input arguments are verified")
@@ -70,8 +71,6 @@ class Input:
                 self.masses[storey] = q_roof * A_floor / 9.81
             else:
                 self.masses[storey] = q_floor * A_floor / 9.81
-        self.y_conv = {}
-        self.y_conv = self.i_d['PFA_convert'][0]
         self.o_th = self.i_d['mode_red'][0]
         self.spans_x = []
         self.spans_y = []
@@ -91,13 +90,14 @@ class Input:
         q_beam_roof = self.bay_perp / 2 * q_roof
         self.w_seismic = {'roof': q_beam_roof, 'floor': q_beam_floor}
 
-    def read_hazard(self, dir, flname):
+    def read_hazard(self, flname, outputPath):
         """
         reads the provided seismic hazard function
         :param flname: str                              Hazard file name
+        :param outputPath: str                          Outputs path
         :return: dicts                                  Fitted and original hazard information
         """
-        h = Hazard(dir, flname)
+        h = Hazard(flname, outputPath)
         coefs, hazard_data, original_hazard = h.read_hazard()
         return coefs, hazard_data, original_hazard
 

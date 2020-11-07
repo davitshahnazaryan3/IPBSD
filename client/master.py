@@ -21,37 +21,40 @@ from external.elf import ELF
 
 
 class Master:
-    def __init__(self, dir):
+    def __init__(self, mainDirectory):
         """
         initialize IPBSD
+        :param mainDirectory: str                   Main directory of tool
         """
-        self.dir = dir
-        self.coefs = None
-        self.hazard_data = None
-        self.original_hazard = None
-        self.data = None
-        self.g = 9.81
+        self.dir = mainDirectory
+        self.coefs = None                           # Hazard fitting coefficients               dict
+        self.hazard_data = None                     # Hazard information                        dict
+        self.original_hazard = None                 # Original hazard information               dict
+        self.data = None                            # Input data                                dict
+        self.g = 9.81                               # Ground motion acceleration in m/s2        float
 
-    def read_input(self, input_file, hazard_file):
+    def read_input(self, input_file, hazard_file, outputPath):
         """
         reads input data
         :param input_file: str                      Input filename
         :param hazard_file: str                     Hazard filename
+        :param outputPath: str                      Outputs path
         :return None:
         """
         self.data = Input()
-        self.data.read_inputs(self.dir / "client" / input_file)
-        self.coefs, self.hazard_data, self.original_hazard = self.data.read_hazard(self.dir / "external", hazard_file)
+        self.data.read_inputs(input_file)
+        self.coefs, self.hazard_data, self.original_hazard = self.data.read_hazard(hazard_file, outputPath)
 
     def get_hazard_pga(self, lambda_target):
         """
-        gets hazard at pga
+        Gets hazard at pga
         :param lambda_target: float                 Target MAFC
-        :return: array, array
+        :return: array                              Array of mean annual frequency of exceedance of limit states
         """
         coef = self.coefs['PGA']
         h = Hazard(coef, "PGA", return_period=self.data.TR, beta_al=self.data.beta_al)
         lambda_ls = h.lambdaLS
+        # Set MAFE of CLS to target MAFC
         lambda_ls[-1] = lambda_target
         return lambda_ls
 
@@ -78,6 +81,7 @@ class Master:
         """
         gets the loss curve
         :param lambda_ls: array                     MAF of exceeding performance limit states
+        :param eal_limit: float                     EAL limit value
         :return: float                              Computed EAL as the area below the loss curve
         """
         lc = LossCurve(self.data.y, lambda_ls, eal_limit)
@@ -88,28 +92,29 @@ class Master:
         """
         gets spectra at SLS
         :param lam: float                           MAF of exceeding SLS
-        :return: array, array                       Spectral accelerations and spectral displacements at SLS and
-                                                    Period range
+        :return: array, array                       Spectral accelerations [g] and spectral displacements [cm] at SLS
+                                                    and Period range [s]
         """
         s = Spectra(lam, self.coefs, self.hazard_data['T'])
         return s.sa, s.sd, s.T_RANGE
 
-    def get_design_values(self, slf_data):
+    def get_design_values(self, slfDirectory, geometry=0):
         """
         gets the design values of IDR and PFA from the Storey-Loss-Functions
-        :param slf_data: str                        SLF filename as "*.xlsx"
-        :return: float, float                       Peak storey drift [-] and Peak floor acceleration [g]
+        :param slfDirectory: str                    Directory of SLFs derived via SLF Generator
+        :param geometry: int                        0 for "2d", 1 for "3d"
+        :return: float, float                       Peak storey drift, (PSD) [-] and Peak floor acceleration, (PFA) [g]
         """
-        slf_filename = self.dir / "client" / slf_data
-        dl = DesignLimits(slf_filename, self.data.y)
-        return dl.theta_max[0], dl.a_max[0]
+        y_sls = self.data.y[1]
+        dl = DesignLimits(slfDirectory, y_sls, self.data.nst, geometry)
+        return dl.theta_max, dl.a_max
 
     def perform_transformations(self, th, a):
         """
         performs design to spectral value transformations
-        :param th: float                            Peak storey drift [-]
-        :param a: float                             Peak floor acceleration [g]
-        :return: dict, float, float, float
+        :param th: float                            Peak storey drift, PSD, [-]
+        :param a: float                             Peak floor acceleration, PFA, [g]
+        :return: dict, float, float                 DDBD at SLS, Design spectral displacement and acceleration
         """
         t = Transformations(self.data, th, a)
         table, phi, deltas = t.table_generator()
@@ -168,16 +173,6 @@ class Master:
         spo2ida_data = {'R16': R16, 'R50': R50, 'R84': R84, 'idacm': idacm, 'idacr': idacr, 'spom': spom, 'spor': spor}
         return spo2ida_data
 
-    def verify_period(self, period, tlow, tup):
-        """
-        verifies if the target period is within a feasible period range
-        :param period: float
-        :param tlow: float
-        :param tup: float
-        :return: None
-        """
-        PeriodCheck(period, tlow, tup)
-
     def verify_mafc(self, period, spo2ida, g, mafc_target, omega, hazard="True"):
         """
         optimizes for a target mafc
@@ -211,7 +206,7 @@ class Master:
 
     def get_sa_at_period(self, say, sa, periods, periods_of_interest):
         """
-        Generates acceleration based on provided and target data
+        Generates acceleration based on provided period and target yield acceleration
         :param say: float                           Spectral acceleration at yield
         :param sa: list                             List of interest to generate from
         :param periods: list                        List used to get index of target variable

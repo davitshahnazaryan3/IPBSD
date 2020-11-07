@@ -8,20 +8,20 @@ from external.hazardFit import HazardFit
 
 class Hazard:
 
-    def __init__(self, haz_dir, flname):
+    def __init__(self, flname, outputPath):
         """
         initialize hazard definition or fits the hazard function and generates files for reading
-        :param haz_dir: str                                 Hazard directory
         :param flname: str                                  Hazard file name
+        :param outputPath: str                              Outputs path
         :return: None
         """
         self.flname = flname
-        self.haz_dir = haz_dir
+        self.outputPath = outputPath
         self.data_exists = self.check_data()
         if self.data_exists:
             pass
         else:
-            HazardFit(self.haz_dir, self.flname, haz_fit=1, pflag=False, save_data=True)
+            HazardFit(self.flname, self.outputPath, haz_fit=1, pflag=False, save_data=True)
 
     def check_data(self):
         """
@@ -29,7 +29,7 @@ class Hazard:
         :return: bool                                       Hazard data exists or not
         """
         data_exists = False
-        for file in os.listdir(self.haz_dir):
+        for file in os.listdir(self.outputPath):
             if file.startswith("coef"):
                 data_exists = True
                 break
@@ -40,15 +40,16 @@ class Hazard:
     def read_hazard(self):
         """
         reads fitted hazard data
-        :return: dataframe, dict                            Coefficients, intensity measures and probabilities of the
+        :return: Dataframe, dict                            Coefficients, intensity measures and probabilities of the
                                                             Fitted hazard
                                                             Original hazard data
         """
-        with open(self.haz_dir / f"coef_{self.flname}", 'rb') as file:
+        filename = os.path.basename(self.flname)
+        with open(self.outputPath / f"coef_{filename}", 'rb') as file:
             coefs = pickle.load(file)
-        with open(self.haz_dir / f"fit_{self.flname}", 'rb') as file:
+        with open(self.outputPath / f"fit_{filename}", 'rb') as file:
             hazard_data = pickle.load(file)
-        with open(self.haz_dir / self.flname, 'rb') as file:
+        with open(self.flname, 'rb') as file:
             original_hazard = pickle.load(file)
 
         return coefs, hazard_data, original_hazard

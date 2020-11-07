@@ -21,7 +21,7 @@ warnings.filterwarnings('ignore')
 
 
 class MomentCurvatureRC:
-    def __init__(self, b, h, m_target, length=0, nlayers=0, p=0, d=.03, fc_prime=25, fy=415, young_mod_s=200e3,
+    def __init__(self, b, h, m_target, length=0, nlayers=0, p=0., d=.03, fc_prime=25, fy=415, young_mod_s=200e3,
                  plotting=False, soft_method="Haselton", k_hard=1.0, fstiff=0.5, AsTotal=None, distAs=None):
         """
         init Moment curvature tool
@@ -30,7 +30,7 @@ class MomentCurvatureRC:
         :param m_target: float                  Target flexural capacity
         :param length: float                    Distance from critical section to point of contraflexure
         :param nlayers: int                     Number of flexural reinforcement layers
-        :param p: float                         Axial load
+        :param p: float                         Axial load (negative=compression, positive=tension)
         :param d: float                         Flexural reinforcement cover in m
         :param fc_prime: float                  Concrete compressive strength
         :param fy: float                        Reinforcement yield strength
@@ -230,7 +230,7 @@ class MomentCurvatureRC:
             raise ValueError("[EXCEPTION] Wrong method for the definition of softening slope!")
         return phi_critical, lp
     
-    def get_mphi(self, check_reinforcement=False, reinf_test=0, m_target=None, reinforcements=None):
+    def get_mphi(self, check_reinforcement=False, reinf_test=0., m_target=None, reinforcements=None):
         # TODO, a bit too rigid, make it more flexible, easier to manipulate within IPBSD to achieve optimized designs
         """
         Gives the Moment-curvature relationship
@@ -385,17 +385,23 @@ if __name__ == '__main__':
     plotting                plot the M-phi [bool]
     """
     # Section properties
-    b = 0.25
-    h = 0.45
+    b = 0.3
+    h = 0.3
     Mtarget = 98.12
+    N = 100.
     cover = 0.03
 
-    mphi = MomentCurvatureRC(b, h, Mtarget, d=cover, plotting=False, soft_method="Haselton", AsTotal=0.0005, distAs=[0.5, 0.5])
+    mphi = MomentCurvatureRC(b, h, Mtarget, p=N, d=cover, nlayers=0, plotting=False, soft_method="Haselton",
+                             AsTotal=0.0005, distAs=[0.5, 0.5])
 
-    #    mphi = MomentCurvatureRC(b, h, Mtarget, nlayers=0, plotting=True, d=cover, soft_method="Haselton")
-    data = mphi.get_mphi()
-    ro = data[0]['reinforcement'] / b / (h - cover) * 100
-    print(f"Reinforcement ratio {ro:.2f}%")
+    # data = mphi.get_mphi()
+    m = mphi.get_mphi(check_reinforcement=True, reinf_test=0.0016)
+    
+    # ro = data[0]['reinforcement'] / b / (h - cover) * 100
+    # print(f"Reinforcement ratio {ro:.2f}%")
+    # print(data[0]['reinforcement'])
+
+    print(m)
     
     # plt.plot(data[0]["curvature"], data[0]["moment"])
     # plt.xlim([0, 0.2])

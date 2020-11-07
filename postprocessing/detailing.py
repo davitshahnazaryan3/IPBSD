@@ -11,7 +11,6 @@ from scipy import optimize
 class Detailing:
     def __init__(self, demands, nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, tlower, tupper, dy, sections,
                  rebar_cover=0.03, ductility_class="DCM", young_mod_s=200e3, k_hard=1.0, fstiff=0.5):
-        # todo, add design based on M+N and M-N (currently only M-N)
         """
         initializes detailing phase
         :param demands: dict                Demands on structural elements
@@ -60,48 +59,36 @@ class Detailing:
 
     def capacity_design(self, Mbi, Mci):
         """
-        applies capacity design strong column - weak beam concept
+        Applies capacity design strong column - weak beam concept.
+        Assumption: Even though the peak moment might not occur with peak compressive or tension loads, the procedure
+        still applies M+N and M-N with the peak moment, as the peak moment capacity is sometimes dictated by capacity
+        design procedures.
         :param Mbi: ndarray                 Moment demands on beams
         :param Mci: ndarray                 Moment demands on columns
         :return: ndarray                    Beam and column moment demands
         """
-        Myc = np.zeros(Mci.shape)
+        Myc = Mci.copy()
         Myb = Mbi.copy()
+
         for bay in range(self.nbays, -1, -1):
-            for st in range(self.nst-1, -1, -1):
-                # Roof storey level
-                if st == self.nst - 1:
-                    if bay == 0:
-                        if Mci[st][bay] / Myb[st][bay] < 1.3:
-                            Myc[st][bay] = max(1.3*Myb[st][bay], Mci[st][bay])
-                        else:
-                            Myc[st][bay] = Mci[st][bay]
-                    elif bay == self.nbays:
-                        if Mci[st][bay] / Myb[st][bay-1] < 1.3:
-                            Myc[st][bay] = max(1.3*Myb[st][bay-1], Mci[st][bay])
-                        else:
-                            Myc[st][bay] = Mci[st][bay]
-                    else:
-                        if Mci[st][bay] / (Myb[st][bay-1] + Myb[st][bay]) < 1.3:
-                            Myc[st][bay] = max(1.3*(Myb[st][bay-1] + Myb[st][bay]), Mci[st][bay])
-                        else:
-                            Myc[st][bay] = Mci[st][bay]
+            # No capacity design for the top storey
+            for st in range(self.nst-2, -1, -1):
+                if bay == 0:
+                    diff = Myb[st][bay] * 1.3 - (Myc[st][bay] + Myc[st+1][bay])
+                    if diff > 0.0:
+                        Myc[st][bay] += diff/2
+                        Myc[st+1][bay] += diff/2
+                elif bay == self.nbays:
+                    diff = Myb[st][bay-1] * 1.3 - (Myc[st][bay] + Myc[st+1][bay])
+                    if diff > 0.0:
+                        Myc[st][bay] += diff / 2
+                        Myc[st+1][bay] += diff / 2
                 else:
-                    if bay == 0:
-                        if (Mci[st][bay] + Mci[st+1][bay]) / Myb[st][bay] < 1.3:
-                            Myc[st][bay] = 1.3*Myb[st][bay] - Mci[st+1][bay]
-                        else:
-                            Myc[st][bay] = Mci[st][bay]
-                    elif bay == self.nbays:
-                        if (Mci[st][bay] + Mci[st+1][bay]) / Myb[st][bay-1] < 1.3:
-                            Myc[st][bay] = 1.3*Myb[st][bay-1] - Mci[st+1][bay]
-                        else:
-                            Myc[st][bay] = Mci[st][bay]
-                    else:
-                        if (Mci[st][bay] + Mci[st+1][bay]) / (Myb[st][bay-1] + Myb[st][bay]) < 1.3:
-                            Myc[st][bay] = 1.3*(Myb[st][bay-1] + Myb[st][bay]) - Mci[st+1][bay]
-                        else:
-                            Myc[st][bay] = Mci[st][bay]
+                    diff = (Myb[st][bay-1] + Myb[st][bay]) * 1.3 - (Myc[st][bay] + Myc[st+1][bay])
+                    if diff > 0.0:
+                        Myc[st][bay] += diff / 2
+                        Myc[st+1][bay] += diff / 2
+        
         return Myb, Myc
 
     def ensure_symmetry(self, option="max"):
@@ -116,6 +103,7 @@ class Detailing:
         MbiNeg = self.demands["Beams"]["M"]["Neg"]
         Mci = self.demands["Columns"]["M"]
         Nci = self.demands["Columns"]["N"]
+        NciNeg = self.demands["Columns"]["N"].copy()
         if self.nbays <= 2:
             for st in range(self.nst):
                 if option == "max":
@@ -123,16 +111,19 @@ class Detailing:
                     MbiNeg[st][0] = MbiNeg[st][self.nbays-1] = np.max((MbiNeg[st][0], MbiNeg[st][self.nbays-1]))
                     Mci[st][0] = Mci[st][self.nbays] = np.max((Mci[st][0], Mci[st][self.nbays]))
                     Nci[st][0] = Nci[st][self.nbays] = np.max((Nci[st][0], Nci[st][self.nbays]))
+                    NciNeg[st][0] = NciNeg[st][self.nbays] = min(np.min((NciNeg[st][0], NciNeg[st][self.nbays])), 0.0)
                 elif option == "mean":
                     MbiPos[st][0] = MbiPos[st][self.nbays-1] = np.mean((MbiPos[st][0], MbiPos[st][self.nbays-1]))
                     MbiNeg[st][0] = MbiNeg[st][self.nbays-1] = np.mean((MbiNeg[st][0], MbiNeg[st][self.nbays-1]))
                     Mci[st][0] = Mci[st][self.nbays] = np.mean((Mci[st][0], Mci[st][self.nbays]))
                     Nci[st][0] = Nci[st][self.nbays] = np.mean((Nci[st][0], Nci[st][self.nbays]))
+                    NciNeg[st][0] = NciNeg[st][self.nbays] = min(np.min((NciNeg[st][0], NciNeg[st][self.nbays])), 0.0)
                 elif option == "min":
                     MbiPos[st][0] = MbiPos[st][self.nbays-1] = np.min((MbiPos[st][0], MbiPos[st][self.nbays-1]))
                     MbiNeg[st][0] = MbiNeg[st][self.nbays-1] = np.min((MbiNeg[st][0], MbiNeg[st][self.nbays-1]))
                     Mci[st][0] = Mci[st][self.nbays] = np.min((Mci[st][0], Mci[st][self.nbays]))
                     Nci[st][0] = Nci[st][self.nbays] = np.min((Nci[st][0], Nci[st][self.nbays]))
+                    NciNeg[st][0] = NciNeg[st][self.nbays] = min(np.min((NciNeg[st][0], NciNeg[st][self.nbays])), 0.0)
                 else:
                     raise ValueError("[EXCEPTION] Wrong option for ensuring symmetry, must be max, mean or min")
         else:
@@ -144,11 +135,13 @@ class Detailing:
                     MbiNeg[st][0] = MbiNeg[st][self.nbays-1] = np.max((MbiNeg[st][0], MbiNeg[st][self.nbays-1]))
                     MbiNeg[st][1:self.nbays-1] = np.max(MbiNeg[st][1:self.nbays-1])
                     Mci[st][0] = Mci[st][self.nbays] = np.max((Mci[st][0], Mci[st][self.nbays]))
-                    for bay in range(1, int((self.nbays-1)/2)):
+                    for bay in range(1, int((self.nbays-1)/2)+1):
                         Mci[st][bay] = Mci[st][-bay-1] = np.max((Mci[st][bay], Mci[st][-bay-1]))
                     Nci[st][0] = Nci[st][self.nbays] = np.max((Nci[st][0], Nci[st][self.nbays]))
-                    for bay in range(1, int((self.nbays-1)/2)):
+                    NciNeg[st][0] = NciNeg[st][self.nbays] = min(np.min((NciNeg[st][0], NciNeg[st][self.nbays])), 0.0)
+                    for bay in range(1, int((self.nbays-1)/2)+1):
                         Nci[st][bay] = Nci[st][-bay-1] = np.max((Nci[st][bay], Nci[st][-bay-1]))
+                        NciNeg[st][bay] = NciNeg[st][-bay-1] = min(np.min((NciNeg[st][bay], NciNeg[st][-bay-1])), 0.0)
 
                 elif option == "mean":
                     MbiPos[st][0] = MbiPos[st][self.nbays-1] = np.mean((MbiPos[st][0], MbiPos[st][self.nbays-1]))
@@ -156,11 +149,13 @@ class Detailing:
                     MbiNeg[st][0] = MbiNeg[st][self.nbays-1] = np.mean((MbiNeg[st][0], MbiNeg[st][self.nbays-1]))
                     MbiNeg[st][1:self.nbays-1] = np.mean(MbiNeg[st][1:self.nbays-1])
                     Mci[st][0] = Mci[st][self.nbays] = np.mean((Mci[st][0], Mci[st][self.nbays]))
-                    for bay in range(1, int((self.nbays-1)/2)):
+                    for bay in range(1, int((self.nbays-1)/2)+1):
                         Mci[st][bay] = Mci[st][-bay-1] = np.mean((Mci[st][bay], Mci[st][-bay-1]))
                     Nci[st][0] = Nci[st][self.nbays] = np.mean((Nci[st][0], Nci[st][self.nbays]))
-                    for bay in range(1, int((self.nbays-1)/2)):
+                    NciNeg[st][0] = NciNeg[st][self.nbays] = min(np.min((NciNeg[st][0], NciNeg[st][self.nbays])), 0.0)
+                    for bay in range(1, int((self.nbays-1)/2)+1):
                         Nci[st][bay] = Nci[st][-bay-1] = np.mean((Nci[st][bay], Nci[st][-bay-1]))
+                        NciNeg[st][bay] = NciNeg[st][-bay-1] = min(np.min((NciNeg[st][bay], NciNeg[st][-bay-1])), 0.0)
 
                 elif option == "min":
                     MbiPos[st][0] = MbiPos[st][self.nbays-1] = np.min((MbiPos[st][0], MbiPos[st][self.nbays-1]))
@@ -168,14 +163,16 @@ class Detailing:
                     MbiNeg[st][0] = MbiNeg[st][self.nbays-1] = np.min((MbiNeg[st][0], MbiNeg[st][self.nbays-1]))
                     MbiNeg[st][1:self.nbays-1] = np.min(MbiNeg[st][1:self.nbays-1])
                     Mci[st][0] = Mci[st][self.nbays] = np.min((Mci[st][0], Mci[st][self.nbays]))
-                    for bay in range(1, int((self.nbays-1)/2)):
+                    for bay in range(1, int((self.nbays-1)/2)+1):
                         Mci[st][bay] = Mci[st][-bay-1] = np.min((Mci[st][bay], Mci[st][-bay-1]))
                     Nci[st][0] = Nci[st][self.nbays] = np.min((Nci[st][0], Nci[st][self.nbays]))
-                    for bay in range(1, int((self.nbays-1)/2)):
+                    NciNeg[st][0] = NciNeg[st][self.nbays] = min(np.min((NciNeg[st][0], NciNeg[st][self.nbays])), 0.0)
+                    for bay in range(1, int((self.nbays-1)/2)+1):
                         Nci[st][bay] = Nci[st][-bay-1] = np.min((Nci[st][bay], Nci[st][-bay-1]))
+                        NciNeg[st][bay] = NciNeg[st][-bay-1] = min(np.min((NciNeg[st][bay], NciNeg[st][-bay-1])), 0.0)
                 else:
                     raise ValueError("[EXCEPTION] Wrong option for ensuring symmetry, must be max, mean or min")
-        return MbiPos, MbiNeg, Mci, Nci
+        return MbiPos, MbiNeg, Mci, Nci, NciNeg
 
     def ensure_local_ductility(self, b, h, reinforcement, relation, st, bay, eletype, oppReinf=None):
         """
@@ -285,13 +282,13 @@ class Detailing:
         # Ensure symmetry of strength distribution along the widths of the frame
         ''' Assumptions: Beams are designed for both directions: positive and negative, neglecting axial loads
         Columns are designed considering M+N demands; No shear design is carried out'''
-        mbiPos, mbiNeg, mci, nci = self.ensure_symmetry(option="max")
+        mbiPos, mbiNeg, mci, nci, nciNeg = self.ensure_symmetry(option="max")
         mbi = np.maximum(mbiPos, mbiNeg)
 
         ''' Follow the capacity design requirements, currently only Eurocode 8, but it may be adapted for other codes
         as well. Maximum absolute value of positive and negative moment demands on beams is used.'''
         myb, myc = self.capacity_design(mbi, mci)
-
+        
         # Initialize dictionaries for storing details and warnings
         data = {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}
         warnings = {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}
@@ -309,7 +306,8 @@ class Detailing:
                     h = self.sections[f"h{st+1}"]
                     
                     # Initial guess on the distribution and values of the reinforcements
-                    AsTotal, distributions = self.get_rebar_distribution(b, h, self.rebar_cover, m_target_pos, m_target_neg)
+                    AsTotal, distributions = self.get_rebar_distribution(b, h, self.rebar_cover, m_target_pos,
+                                                                         m_target_neg)
                     
                     # Perform moment-curvature analysis, Positive direction
                     mphiPos = MomentCurvatureRC(b, h, m_target_pos, d=self.rebar_cover, young_mod_s=self.young_mod_s,
@@ -384,18 +382,39 @@ class Detailing:
                     b = h = self.sections[f"he{st+1}"]
                 else:
                     b = h = self.sections[f"hi{st+1}"]
+                # Design bending moment
                 m_target = myc[st][bay]
+                # Design compressive internal axial force
                 nc_design = nci[st][bay]
+
+                # Get tensile internal axial forces
+                nc_design_neg = nciNeg[st][bay]
+
+                # Number of reinforcement layers based on section height (may be adjusted manually)
                 nlayers = 0 if h <= 0.35 else 1 if (0.35 < h <= 0.55) else 2
                 # Assuming contraflexure at 0.6 of height
                 # todo, may add better estimation of contraflexure point based on Muto's approach
                 z = 0.6*self.heights[st]
-                mphi = MomentCurvatureRC(b, h, m_target, length=z, p=nc_design, nlayers=nlayers, d=self.rebar_cover,
+                mphi = MomentCurvatureRC(b, h, m_target, length=z, p=-nc_design, nlayers=nlayers, d=self.rebar_cover,
                                          young_mod_s=self.young_mod_s, k_hard=self.k_hard)
-                data["Columns"][f"S{st+1}B{bay+1}"] = mphi.get_mphi()
+                temp = {"Pos": mphi.get_mphi()}
+                if nc_design_neg < 0.0:
+                    mphiNeg = MomentCurvatureRC(b, h, m_target, length=z, p=-nc_design_neg, nlayers=nlayers,
+                                                d=self.rebar_cover, young_mod_s=self.young_mod_s, k_hard=self.k_hard)
+                    temp["Neg"] = mphiNeg.get_mphi()
+                    # Select the design requiring highest reinforcement
+                    if temp["Neg"][0]["reinforcement"] > temp["Pos"][0]["reinforcement"]:
+                        selection = temp["Neg"]
+                        mphi = mphiNeg
+                    else:
+                        selection = temp["Pos"]
+                else:
+                    selection = temp["Pos"]
+
+                data["Columns"][f"S{st+1}B{bay+1}"] = selection
                 '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
-                d_temp = self.ensure_local_ductility(b, h, data["Columns"][f"S{st+1}B{bay+1}"][0]["reinforcement"], mphi,
-                                                     st+1, bay+1, eletype="Column")
+                d_temp = self.ensure_local_ductility(b, h, data["Columns"][f"S{st+1}B{bay+1}"][0]["reinforcement"],
+                                                     mphi, st+1, bay+1, eletype="Column")
                 warnings["Columns"][f"S{st+1}B{bay+1}"] = self.WARN_ELE
                 if d_temp is not None:
                     data["Columns"][f"S{st+1}B{bay+1}"] = d_temp
@@ -434,7 +453,7 @@ if __name__ == "__main__":
 
     from client.master import Master
     from pathlib import Path
-    from  external.openseesrun import OpenSeesRun
+    from external.openseesrun import OpenSeesRun
 
     directory = Path.cwd().parents[0]
 
@@ -448,8 +467,8 @@ if __name__ == "__main__":
     op = OpenSeesRun(csd.data, cs, analysis=analysis, fstiff=1.0)
     beams, columns = op.create_model()
     action = [160, 200, 200]
-    # gravity = [16.2, 13.5, 13.5]
-    # op.gravity_loads(gravity, beams)
+    gravity = [16.2, 13.5, 13.5]
+    op.gravity_loads(gravity, beams)
     op.elfm_loads(action)
     op.static_analysis()
     response = op.define_recorders(beams, columns, analysis=analysis)

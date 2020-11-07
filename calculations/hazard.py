@@ -2,7 +2,6 @@
 defines hazard function
 """
 import numpy as np
-import matplotlib.pyplot as plt
 
 
 class Hazard:
@@ -57,24 +56,3 @@ class Hazard:
         Hs = float(k0)*np.exp(-float(k2) * np.log(self.Sa_Range) ** 2 - float(k1) * np.log(self.Sa_Range))
         MAF = np.sqrt(p) * k0 ** (1 - p) * Hs ** p * np.exp(0.5 * p * k1 ** 2 * (self.beta_al[2] ** 2))
         return Hs
-
-    def plotting(self):
-        """
-        plots the hazard function
-        :return: None
-        """
-        fig, ax = plt.subplots(figsize=(4, 3), dpi=100)
-        plt.plot(self.Sa_Range, self.Hs, 'b', ls='--', label='2nd order fit')
-        # plt.plot(x_real,Hs_real, 'ro', label = 'SHARE model')
-        plt.yscale('log')
-        plt.xscale('log')
-        plt.ylim(10e-7, 1)
-        plt.xlim(0.1, 1.1)
-        plt.xticks([])
-        plt.xticks(np.arange(0.1, 1.1, 0.9))
-        plt.ylabel(r'$H$(s)')
-        plt.xlabel(r'$PGA$ [g]')
-        plt.grid(True, which="both", ls="--", lw=0.5)
-        plt.legend(frameon=False,
-                   loc='upper right',
-                   fontsize=12)

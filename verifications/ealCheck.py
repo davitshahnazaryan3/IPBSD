@@ -7,8 +7,8 @@ class EALCheck:
     def __init__(self, eal, eal_limit):
         """
         Initializes EAL verification
-        :param eal: flaot                                   Actual EAL computed as the area below the loss curve
-        :param eal_limit: flaot                             EAL limit as a performance objective
+        :param eal: float                                   Actual EAL computed as the area below the loss curve
+        :param eal_limit: float                             EAL limit as a performance objective
         """
         self.eal = eal
         self.eal_limit = eal_limit

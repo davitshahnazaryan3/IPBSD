@@ -90,7 +90,6 @@ class OpenSeesRun:
 
     def lumped_hinge_element(self, et, gt, inode, jnode, my1, my2, lp, fc, b, h, ap=1.25, app=0.05,
                              r=0.1, mu_phi=10, pinch_x=0.8, pinch_y=0.5, damage1=0.0, damage2=0.0, beta=0.0):
-        # TODO, add other possible element models
         """
         creates a lumped hinge element
         :param et: int                          Element tag
@@ -273,20 +272,21 @@ class OpenSeesRun:
                     results["Beams"]["M"]["Neg"][st][bay] = abs(ops.eleForce(beams[ele], 5))
                     results["Beams"]["N"][st][bay] = max(ops.eleForce(beams[ele], 1),
                                                          ops.eleForce(beams[ele], 7), key=abs)
-                    results["Beams"]["V"][st][bay] = max(ops.eleForce(beams[ele], 3),
-                                                         ops.eleForce(beams[ele], 9), key=abs)
+                    results["Beams"]["V"][st][bay] = max(abs(ops.eleForce(beams[ele], 3)),
+                                                         abs(ops.eleForce(beams[ele], 9)))
                     ele += 1
 
             # Columns
             ele = 0
             for bay in range(self.i_d.n_bays + 1):
                 for st in range(self.i_d.nst):
-                    results["Columns"]["M"][st][bay] = max(ops.eleForce(columns[ele], 5),
-                                                           ops.eleForce(columns[ele], 11), key=abs)
+                    results["Columns"]["M"][st][bay] = max(abs(ops.eleForce(columns[ele], 5)),
+                                                           abs(ops.eleForce(columns[ele], 11)))
+                    # Negative N is tension, Positive N is compression
                     results["Columns"]["N"][st][bay] = max(ops.eleForce(columns[ele], 3),
                                                            ops.eleForce(columns[ele], 9), key=abs)
-                    results["Columns"]["V"][st][bay] = max(ops.eleForce(columns[ele], 1),
-                                                           ops.eleForce(columns[ele], 7), key=abs)
+                    results["Columns"]["V"][st][bay] = max(abs(ops.eleForce(columns[ele], 1)),
+                                                           abs(ops.eleForce(columns[ele], 7)))
                     ele += 1
         else:
             # TODO, fix recording when applying RMSA, analysis type if condition seems incorrect

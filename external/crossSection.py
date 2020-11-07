@@ -55,23 +55,25 @@ class CrossSection:
             ele = self.elements.iloc[i]
             hce, hci, b, h = self.get_section(ele)
             properties = self.create_props(hce, hci, b, h)
-            weight = self.get_weight(properties)
             period, phi = self.run_ma(properties)
 
-            M = np.zeros((self.nst, self.nst))
-            for st in range(self.nst):
-                M[st][st] = self.mi[st]/self.n_seismic
-            identity = np.ones((1, self.nst))
-            gamma = (phi.transpose().dot(M)).dot(identity.transpose()) / (phi.transpose().dot(M)).dot(phi)
-            mstar = (phi.transpose().dot(M)).dot(identity.transpose())
-
             if self.check_target_t(period):
+
+                weight = self.get_weight(properties)
+                M = np.zeros((self.nst, self.nst))
+                for st in range(self.nst):
+                    M[st][st] = self.mi[st]/self.n_seismic
+                identity = np.ones((1, self.nst))
+                gamma = (phi.transpose().dot(M)).dot(identity.transpose()) / (phi.transpose().dot(M)).dot(phi)
+                mstar = (phi.transpose().dot(M)).dot(identity.transpose())
+
                 solutions = solutions.append(ele, ignore_index=True)
                 solutions["T"].iloc[cnt] = period
                 solutions["Weight"].iloc[cnt] = weight
                 solutions["Part Factor"].iloc[cnt] = gamma
                 solutions["Mstar"].iloc[cnt] = mstar
                 cnt += 1
+
         return solutions
 
     def get_section(self, ele):

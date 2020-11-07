@@ -17,7 +17,7 @@ class LossCurve:
         self.y = y
         self.lam = lam
         self.eal_limit = eal_limit
-        self.EAL = None
+        self.EAL = None                 # Expected annual loss (EAL)
         self.loss_curve()
 
     def loss_curve(self):
@@ -59,6 +59,7 @@ class LossCurve:
 
         for i in range(len(lambda_fit) - 1):
             area.append((lambda_fit[i] + lambda_fit[i + 1]) / 2 * (y_fit[i + 1] - y_fit[i]))
+        # Get EAL in terms of %
         self.EAL = sum(area) * 100
 
     def verify_eal(self):

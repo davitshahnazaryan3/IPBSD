@@ -23,6 +23,8 @@ class Plasticity:
         :param modes: dict                      Periods and modal shapes obtained from modal analysis
         :return: float                          System hardening ductility
         """
+        nst = None
+        nbays = None
         for i in details["Columns"].keys():
             nst = int(i[1])
         for i in details["Columns"].keys():

@@ -12,17 +12,18 @@ from client.master import Master
 
 
 class IPBSD:
-    def __init__(self, input_file, hazard_file, slf_file, spo_file, limit_eal, target_mafc, analysis_type=1,
+    def __init__(self, input_file, hazard_file, slfDir, spo_file, limit_eal, target_mafc, outputPath, analysis_type=1,
                  damping=.05, num_modes=3, record=True, iterate=False, system="Perimeter", maxiter=20, fstiff=0.5,
-                 rebar_cover=0.03):
+                 rebar_cover=0.03, geometry="2D"):
         """
         Initializes IPBSD
         :param input_file: str              Input filename as '*.csv'
         :param hazard_file: str             Hazard filename as '*.pkl' or '*.pickle'
-        :param slf_file: str                SLF filename '*.xlsx'
+        :param slfDir: str                  Directory of SLFs derived via SLF Generator
         :param spo_file: str                SPO filename '*.csv'
         :param limit_eal: float             Liming value of EAL
         :param target_mafc: float           Target value of MAFC
+        :param outputPath: str              Outputs path (where to store the outputs)
         :param analysis_type: int           Analysis type:
                                             1: Simplified ELF - no analysis is run, calculations based on
                                             simplified expressions, actions based on 1st mode shape (default)
@@ -40,14 +41,16 @@ class IPBSD:
         :param maxiter: int                 Maximum number of iterations for seeking a solution
         :param fstiff: float                Stiffness reduction factor
         :param rebar_cover: float           Reinforcement cover in m
+        :param geometry: str                "2d" if a single frame is considered, "3d" if a full building is considered
         """
         self.dir = Path.cwd()
         self.input_file = input_file
         self.hazard_file = hazard_file
-        self.slf_file = slf_file
+        self.slfDir = slfDir
         self.spo_file = spo_file
         self.limit_EAL = limit_eal
         self.target_MAFC = target_mafc
+        self.outputPath = outputPath
         self.analysis_type = analysis_type
         self.num_modes = num_modes
         self.damping = damping
@@ -57,6 +60,13 @@ class IPBSD:
         self.maxiter = maxiter
         self.fstiff = fstiff
         self.rebar_cover = rebar_cover
+        # 2d means, that even if the SLFs are provided for the entire building, only 1 direction (defaulting to dir1)
+        # will be considered. This also entails the use of non-dimensional components, however, during loss assessment
+        # the non-dimensional factor will not be applied (i.e. nd_factor=1.0)
+        if geometry.lower() == "2d":
+            self.geometry = 0
+        else:
+            self.geometry = 1
 
     @staticmethod
     def get_init_time():
@@ -158,7 +168,7 @@ class IPBSD:
         :param modes: dict                              Periods and normalized modal shapes of the solution
         :param table_sls: DataFrame                     Table with SLS parameters
         :param t_lower: float                           Lower period limit
-        :param t_upper: flaot                           Upper period limit
+        :param t_upper: float                           Upper period limit
         :return forces: DataFrame                       Acting forces
         :return demands: dict                           Demands on the structural elements
         :return details: dict                           Designed element properties from the moment-curvature
@@ -180,6 +190,7 @@ class IPBSD:
             corr = None
         forces = ipbsd.get_action(solution, say, pd.DataFrame.from_dict(table_sls),
                                   ipbsd.data.w_seismic, self.analysis_type, self.num_modes, modes, modal_sa=se_rmsa)
+
         print("[SUCCESS] Actions on the structure for analysis were estimated")
         yield forces
 
@@ -420,7 +431,7 @@ class IPBSD:
             if eleType == "Beam":
                 b = sol.loc[f"b{st}"]
                 h = sol.loc[f"h{st}"]
-                Ptotal = max(demands[ele]["N"][st - 1][bay - 1], demands[ele]["N"][st - 1][nbays - bay], key=abs)
+                Ptotal = 0.0
                 length = spansX[bay - 1]
                 MyPos = details["details"][ele]["Pos"][i][3]["yield"]["moment"]
                 MyNeg = details["details"][ele]["Neg"][i][3]["yield"]["moment"]
@@ -521,104 +532,104 @@ class IPBSD:
         ipbsd = Master(self.dir)
 
         """Generating and storing the input arguments"""
-        ipbsd.read_input(self.input_file, self.hazard_file)
-        database_directory = self.dir/"Database"
-        case_directory = database_directory/ipbsd.data.case_id
+        ipbsd.read_input(self.input_file, self.hazard_file, self.outputPath)
+        # Initiate {project name}
         print(f"[INITIATE] Starting IPBSD for {ipbsd.data.case_id}")
 
         print("[PHASE] Commencing phase 1...")
-        self.create_folder(case_directory)
+        self.create_folder(self.outputPath)
         ipbsd.data.i_d["MAFC"] = self.target_MAFC
         ipbsd.data.i_d["EAL"] = self.limit_EAL
+        # Store IPBSD inputs as a json
         if self.record:
-            self.store_results(case_directory / "input", ipbsd.data.i_d, "json")
+            self.store_results(self.outputPath / "input", ipbsd.data.i_d, "json")
         print("[SUCCESS] Input arguments have been read and successfully stored")
 
-        """Get EAL"""
+        # """Get EAL"""
         lam_ls = ipbsd.get_hazard_pga(self.target_MAFC)
         eal = ipbsd.get_loss_curve(lam_ls, self.limit_EAL)
 
         """Get design limits"""
-        theta_max, alpha_max = ipbsd.get_design_values(self.slf_file)
+        theta_max, a_max = ipbsd.get_design_values(self.slfDir, self.geometry)
         print("[SUCCESS] SLF successfully read, and design limits are calculated")
 
-        """Transform design values into spectral coordinates"""
-        table_sls, delta_spectral, alpha_spectral = ipbsd.perform_transformations(theta_max, alpha_max)
-        print("[SUCCESS] Spectral values of design limits are obtained")
+        # """Transform design values into spectral coordinates"""
+        # table_sls, delta_spectral, alpha_spectral = ipbsd.perform_transformations(theta_max, a_max)
+        # print("[SUCCESS] Spectral values of design limits are obtained")
 
-        """Get spectra at SLS"""
-        print("[PHASE] Commencing phase 2...")
-        sa, sd, period_range = ipbsd.get_spectra(lam_ls[1])
-        print("[SUCCESS] Response spectra generated")
-
-        """Get feasible fundamental period range"""
-        t_lower, t_upper = ipbsd.get_period_range(delta_spectral, alpha_spectral, sd, sa)
-        print("[SUCCESS] Feasible period range identified")
-
-        """Get all section combinations satisfying period bound range"""
-        sols, opt_sol, opt_modes = ipbsd.get_all_section_combinations(t_lower, t_upper, fstiff=self.fstiff)
-        print("[SUCCESS] All section combinations were identified")
-
-        """Perform SPO2IDA"""
-        print("[PHASE] Commencing phase 3...")
+        # """Get spectra at SLS"""
+        # print("[PHASE] Commencing phase 2...")
+        # sa, sd, period_range = ipbsd.get_spectra(lam_ls[1])
+        # print("[SUCCESS] Response spectra generated")
+        #
+        # """Get feasible fundamental period range"""
+        # t_lower, t_upper = ipbsd.get_period_range(delta_spectral, alpha_spectral, sd, sa)
+        # print("[SUCCESS] Feasible period range identified")
+        #
+        # """Get all section combinations satisfying period bound range"""
+        # sols, opt_sol, opt_modes = ipbsd.get_all_section_combinations(t_lower, t_upper, fstiff=self.fstiff)
+        # print("[SUCCESS] All section combinations were identified")
+        #
+        # """Perform SPO2IDA"""
+        # print("[PHASE] Commencing phase 3...")
         # Based on available literature, depending on perimeter or space frame, inclusion of gravity loads
-        if ipbsd.data.n_gravity > 0:
-            if self.analysis_type == 3 or self.analysis_type == 5:
-                overstrength = 1.3
-            else:
-                overstrength = 1.0
-        else:
-            overstrength = 2.5
+        # if ipbsd.data.n_gravity > 0:
+        #     if self.analysis_type == 3 or self.analysis_type == 5:
+        #         overstrength = 1.3
+        #     else:
+        #         overstrength = 1.0
+        # else:
+        #     overstrength = 2.5
+        #
+        # part_factor, m_star, say, dy = self.iterate_phase_3(ipbsd, case_directory, opt_sol, overstrength)
+        #
+        # """Get action and demands"""
+        # print("[PHASE] Commencing phase 4...")
+        # phase_4 = self.iterate_phase_4(ipbsd, say, dy, sa, period_range, opt_sol,
+        #                                opt_modes, table_sls, t_lower, t_upper)
+        # forces = next(phase_4)
+        # demands = next(phase_4)
+        #
+        # details, hard_ductility, fract_ductility = next(phase_4)
+        # warn, warnings = next(phase_4)
 
-        part_factor, m_star, say, dy = self.iterate_phase_3(ipbsd, case_directory, opt_sol, overstrength)
-
-        """Get action and demands"""
-        print("[PHASE] Commencing phase 4...")
-        phase_4 = self.iterate_phase_4(ipbsd, say, dy, sa, period_range, opt_sol,
-                                       opt_modes, table_sls, t_lower, t_upper)
-        forces = next(phase_4)
-        demands = next(phase_4)
-
-        details, hard_ductility, fract_ductility = next(phase_4)
-        warn, warnings = next(phase_4)
-
-        if self.iterate and warn == 1:
-            print("[ITERATION 4a] Commencing iteration...")
-            cnt = 1
-            while warn == 1 and cnt <= self.maxiter + 1:
-                """Look for a different solution"""
-                print(f"[ITERATION 4a] Iteration: {cnt}")
-                opt_sol, opt_modes = self.seek_solution(ipbsd.data, warnings, sols)
-
-                # Redo phases 3 and 4
-                part_factor, m_star, say, dy = self.iterate_phase_3(ipbsd, case_directory, opt_sol, overstrength)
-                phase_4 = self.iterate_phase_4(ipbsd, say, dy, sa, period_range, opt_sol,
-                                               opt_modes, table_sls, t_lower, t_upper)
-                forces = next(phase_4)
-                demands = next(phase_4)
-                details, hard_ductility, fract_ductility = next(phase_4)
-                warn = next(phase_4)
-                cnt += 1
-
-        """Storing the outputs"""
-        # Storing the IPBSD outputs
-        if self.record:
-            self.store_results(case_directory/"section_combos", sols, "csv")
-            self.store_results(case_directory/"optimal_solution", opt_sol, "csv")
-            ipbsd_outputs = {"MAFC": self.target_MAFC, "EAL": eal, "theta_max": theta_max, "alpha_max": alpha_max,
-                             "part_factor": part_factor, "Mstar": m_star, "delta_spectral": delta_spectral,
-                             "alpha_spectral": alpha_spectral, "Period range": [t_lower, t_upper],
-                             "overstrength": overstrength, "yield": [say, dy], "lateral loads": forces}
-            self.store_results(case_directory / "demands", demands, "pkl")
-            self.store_results(case_directory / "ipbsd", ipbsd_outputs, "pkl")
-            design_results = {"details": details, "hardening ductility": hard_ductility,
-                              "fracturing ductility": fract_ductility}
-            self.store_results(case_directory / "details", design_results, "pkl")
-
-            """Creating DataFrames to store for RCMRF input"""
-            self.cacheRCMRF(ipbsd, ipbsd_outputs, case_directory, design_results, opt_sol, demands)
-
-        print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
+        # if self.iterate and warn == 1:
+        #     print("[ITERATION 4a] Commencing iteration...")
+        #     cnt = 1
+        #     while warn == 1 and cnt <= self.maxiter + 1:
+        #         """Look for a different solution"""
+        #         print(f"[ITERATION 4a] Iteration: {cnt}")
+        #         opt_sol, opt_modes = self.seek_solution(ipbsd.data, warnings, sols)
+        #
+        #         # Redo phases 3 and 4
+        #         part_factor, m_star, say, dy = self.iterate_phase_3(ipbsd, case_directory, opt_sol, overstrength)
+        #         phase_4 = self.iterate_phase_4(ipbsd, say, dy, sa, period_range, opt_sol,
+        #                                        opt_modes, table_sls, t_lower, t_upper)
+        #         forces = next(phase_4)
+        #         demands = next(phase_4)
+        #         details, hard_ductility, fract_ductility = next(phase_4)
+        #         warn = next(phase_4)
+        #         cnt += 1
+        #
+        # """Storing the outputs"""
+        # # Storing the IPBSD outputs
+        # if self.record:
+        #     self.store_results(case_directory/"section_combos", sols, "csv")
+        #     self.store_results(case_directory/"optimal_solution", opt_sol, "csv")
+        #     ipbsd_outputs = {"MAFC": self.target_MAFC, "EAL": eal, "theta_max": theta_max, "alpha_max": alpha_max,
+        #                      "part_factor": part_factor, "Mstar": m_star, "delta_spectral": delta_spectral,
+        #                      "alpha_spectral": alpha_spectral, "Period range": [t_lower, t_upper],
+        #                      "overstrength": overstrength, "yield": [say, dy], "lateral loads": forces}
+        #     self.store_results(case_directory / "demands", demands, "pkl")
+        #     self.store_results(case_directory / "ipbsd", ipbsd_outputs, "pkl")
+        #     design_results = {"details": details, "hardening ductility": hard_ductility,
+        #                       "fracturing ductility": fract_ductility}
+        #     self.store_results(case_directory / "details", design_results, "pkl")
+        #
+        #     """Creating DataFrames to store for RCMRF input"""
+        #     self.cacheRCMRF(ipbsd, ipbsd_outputs, case_directory, design_results, opt_sol, demands)
+        #
+        # print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
 
         # TODO, add iteration for SPO, I don't think it is yet added
         # """Perform eigenvalue analysis on designed frame"""
@@ -650,23 +661,34 @@ if __name__ == "__main__":
     :param slf_file: str                        File containing SLF curves as '*.xlsx'
     :param spo_file: str                        File containing SPO curve assumptions as '*.csv'
     :param limit_eal: float                     Limit EAL performance objective
-    :param mafc_target: float                   MAFC target performance objective    
+    :param mafc_target: float                   MAFC target performance objective
+    :param damping: float                       Damping (e.g. 0.05)
+    :param system: str                          Lateral load resisting system type (Perimeter or Space)
+    :param maxiter: int                         Maximum number of iterations for detailing optimization
+    :param fstiff: float                        Section stiffness reduction factor
     """
+    # Paths
+    from pathlib import Path
+    path = Path.cwd()
+    outputPath = path.parents[0] / ".applications/case1/Output"
+
     # Add input arguments
     analysis_type = 3
-    input_file = "input.csv"
-    hazard_file = "Hazard-LAquila-Soil-C.pkl"
-    slf_file = "slf.xlsx"
-    spo_file = "spo.csv"
-    limit_eal = 0.5
-    mafc_target = 5.e-4
+    input_file = path.parents[0] / ".applications/case1/ipbsd_input.csv"
+    hazard_file = path.parents[0] / ".applications/case1/Hazard-LAquila-Soil-C.pkl"
+    slfDir = path.parents[0] / ".applications/case1/Output/slfoutput"
+    spo_file = path.parents[0] / ".applications/case1/spo.csv"
+    limit_eal = 0.8
+    mafc_target = 2.e-4
     damping = .05
     system = "Perimeter"
     maxiter = 20
     fstiff = 0.5
+    geometry = "2d"
 
-    method = IPBSD(input_file, hazard_file, slf_file, spo_file, limit_eal, mafc_target, analysis_type,
-                   damping=damping, num_modes=2, record=True, iterate=True, system=system, maxiter=20, fstiff=0.5)
+    method = IPBSD(input_file, hazard_file, slfDir, spo_file, limit_eal, mafc_target, outputPath, analysis_type,
+                   damping=damping, num_modes=2, record=True, iterate=True, system=system, maxiter=20, fstiff=0.5,
+                   geometry=geometry)
     start_time = method.get_init_time()
     method.run_ipbsd()
     method.get_time(start_time)
