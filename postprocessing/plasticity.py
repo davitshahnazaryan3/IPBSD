@@ -17,28 +17,32 @@ class Plasticity:
 
     def estimate_ductilities(self, dy, details, modes):
         """
-        estimates system hardening ductility, based on the knowledge of deltaY, details of columns
+        Estimates system hardening ductility, based on the knowledge of deltaY, details of columns
         :param dy: float                        System yield displacement
         :param details: dict                    Moment-curvature relationships of the elements
         :param modes: dict                      Periods and modal shapes obtained from modal analysis
         :return: float                          System hardening ductility
         """
+        # Number of stories and bays
         nst = None
         nbays = None
         for i in details["Columns"].keys():
             nst = int(i[1])
         for i in details["Columns"].keys():
             nbays = int(i[3])
-        phi_p_list = np.zeros(nst) + 1000.
+
+        # Initialize curvatures at yield, plasticity fracturing
         phi_y_list = np.zeros(nst)
+        phi_p_list = np.zeros(nst) + 1000.
         phi_f_list = np.zeros(nst)
+
         # Selecting first modal shape
         modal_shape = modes["Modes"][0]
         for i in details["Columns"].keys():
-            phi_y = details["Columns"][i][3]["yield"]["curvature"]
-            mu_phi = details["Columns"][i][3]["ultimate"]["curvature"] / phi_y
-            phi_f = details["Columns"][i][3]["fracturing"]["curvature"]
-            phi_u = phi_y * mu_phi
+            phi_y = details["Columns"][i][4]["phi"][1]
+            phi_u = details["Columns"][i][4]["phi"][2]
+            phi_f = details["Columns"][i][4]["phi"][3]
+            # Plastic curvature
             phi_p = phi_u - phi_y
             if phi_p < phi_p_list[int(i[1])-1]:
                 phi_p_list[int(i[1])-1] = phi_p
@@ -46,15 +50,22 @@ class Plasticity:
                 phi_f_list[int(i[1])-1] = phi_f
             if i[3] == str(math.ceil(nbays/2)):
                 break
+        # Get the element with the lowest value of the plastic curvature
         phi_p = min(phi_p_list)
+        # Read the lengths of the elements (heights, since we are looking at the columns)
         lc_list = self.kwargs.get('lc', None)
+        # Get the length of the element matching the min plastic curvature
         lc = lc_list[np.argmin(phi_p_list)]
+        # Matching the yield and fracturing curvatures to the min plastic curvature
         phi_y = phi_y_list[np.argmin(phi_p_list)]
         phi_f = phi_f_list[np.argmin(phi_p_list)]
+        # Get the drift factor at that level
         drift_factor = modal_shape[np.argmin(phi_p_list)]
-        self.kwargs["lc"] = 0.6*lc              # Assuming contraflexure at 0.6 of height
+        # Assuming contraflexure at 0.6 of height calculate lp
+        self.kwargs["lc"] = 0.6*lc
         lp = self.get_lp()
-        # Getting the hardening ductility
+
+        # Getting the hardening ductility of the system
         hard_duct = 1 + 3*phi_p*lp/phi_y/lc/0.6
         du = hard_duct*dy
         # dp = phi_p*lp*lc
@@ -70,6 +81,7 @@ class Plasticity:
 
     def get_theta_pc(self, **kwargs):
         """
+        Method not utilized yet
         gets column post-capping rotation capacity based on Haselton et al., 2016, DOI: 10.14359/51689245
         :param kwargs: floats                   nu - axial load ratio, ro_sh - transverse reinforcement ratio
         :return: float                          Column post-capping rotation capacity
@@ -81,21 +93,6 @@ class Plasticity:
         else:
             theta_pc = 0.10
         return theta_pc
-
-    # todo, remove get_fracturing_ductility
-    def get_fracturing_ductility(self, mu_c, sa_c, sa_f, theta_pc, theta_y):
-        """
-        gets fracturing ductility
-        :param mu_c: float                      System hardening ductility
-        :param sa_c: float                      System peak spectral acceleration capacity
-        :param sa_f: float                      System residual spectral acceleration capacity
-        :param theta_pc: float                  Column post-capping rotation capacity
-        :param theta_y: float                   Column yield rotation capacity
-        :return: float                          System fracturing ductility
-        """
-        app = (sa_c - sa_f)/(theta_pc/theta_y)
-        ductility = mu_c - (sa_c - sa_f)/app
-        return ductility
 
     def get_lp(self):
         """
@@ -173,31 +170,3 @@ class Plasticity:
             lsp = 0.022 * fy * db
             lp = 2 * lsp
         return lp/1000
-
-    def verify_match(self, x, target, tol=0.05):
-        """
-        verify if target is met
-        :param x: float
-        :param target: float
-        :param tol: float
-        :return: bool
-        """
-        if x - tol <= target <= x + tol:
-            return True
-        else:
-            return False
-
-    def find_new_solution(self):
-        """
-        if local ductility not met, modify ro and/or c-s dimensions, get new T1 and estimate hardening ductility
-        look in sections for a new section matching the c-s dimensions identified herein
-        :return: dataframe
-        """
-        pass
-
-    def redo_mafc_check(self):
-        """
-        rerun spo2ida with new hardening ductility, period
-        :return: None
-        """
-        pass

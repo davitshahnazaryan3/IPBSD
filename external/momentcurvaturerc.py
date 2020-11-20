@@ -13,16 +13,16 @@ m2 for area
 - for compression
 """
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy import optimize
 from postprocessing.plasticity import Plasticity
+import math
 import warnings
 warnings.filterwarnings('ignore')
 
 
 class MomentCurvatureRC:
     def __init__(self, b, h, m_target, length=0, nlayers=0, p=0., d=.03, fc_prime=25, fy=415, young_mod_s=200e3,
-                 plotting=False, soft_method="Haselton", k_hard=1.0, fstiff=0.5, AsTotal=None, distAs=None):
+                 soft_method="Collins", k_hard=1.0, fstiff=0.5, AsTotal=None, distAs=None):
         """
         init Moment curvature tool
         :param b: float                         Element sectional width
@@ -35,7 +35,6 @@ class MomentCurvatureRC:
         :param fc_prime: float                  Concrete compressive strength
         :param fy: float                        Reinforcement yield strength
         :param young_mod_s: float               Young modulus of reinforcement
-        :param plotting: bool                   Plotting flag
         :param soft_method: str                 Method for the softening slope calculation
         :param k_hard: float                    Hardening slope of reinforcement (i.e. fu/fy)
         :param fstiff: float                    Stiffness reduction factor (50% per Eurocode 8), for the model only
@@ -55,7 +54,6 @@ class MomentCurvatureRC:
         self.EPSSH = 0.008
         self.EPSUK = 0.075
         self.k_hard = k_hard
-        self.plotting = plotting
         self.soft_method = soft_method
         self.fstiff = fstiff
         self.mi = np.nan
@@ -65,41 +63,29 @@ class MomentCurvatureRC:
         self.AsTotal = AsTotal
         self.distAs = distAs
         if self.distAs is None:
-            self.distAs = [0.5, 0.5]
+            self.distAs = np.array([0.5, 0.5])
         # Transverse reinforcement spacing in [m]
         self.TRANSVERSE_SPACING = 0.1
         # Transverse reinforcement diameter in [m]
         self.TRANSVERSE_DIAMETER = 8/1000
         # Number of transverse reinforcement legs
         self.TRANSVERSE_LEGS = 4
+        # Residual strength ratio
+        self.RESIDUAL = 0.0
 
-    def checkMy(self, my, data):
+    def checkMy(self, my, data, tol=0.):
         """
         Returns the first yield index
         :param my: int                          Target argument
         :param data: numpy.ndarray              Data for lookup
+        :param tol: float                       Tolerance
         :return: numpy.int64 or numpy.nan       Index of target argument
         """
         if np.where(data >= my)[0].size == 0:
             return np.nan
         else:
-            return np.where(data >= my)[0][0]
+            return np.where(data >= my - tol)[0][0]
 
-    def plot_mphi(self, phi, m):
-        """
-        plotting the moment curvature relationship
-        :param phi: numpy.ndarray               Curvature
-        :param m: numpy.ndarray                 Moment
-        :return: None
-        """
-        f, ax = plt.subplots(figsize=(4, 3), dpi=100)
-        plt.plot(phi, m, 'b', ls='-')
-        plt.ylim([0., max(m) + 50])
-        plt.xlim([0., max(phi) + 0.05])
-        plt.ylabel('Resisting moment [kNm]')
-        plt.xlabel('Curvature [1/m]')
-        plt.grid(True, which="both", ls="--", lw=0.5)
-        
     def objective(self, c, data):
         """
         Objective function solving for compressed concrete height
@@ -107,19 +93,16 @@ class MomentCurvatureRC:
         :param data: list                       Reinforcement characteristics
         :return: float                          Difference between internal and external forces
         """
+        # Force it to look for only positive values of c
+        c = abs(c)
+
+        # Reinforcement
+        rebar = data[2]
+        # Concrete strains
         epsc = data[0]
         epsc_prime = data[1]
-        rebar = data[2]
-        
-        # reinforcement properties
-        ey = self.fy / self.young_mod_s
-        fu = self.k_hard * self.fy
 
-        # Block parameters
-        b1 = (4 - epsc / epsc_prime) / (6 - 2 * epsc / epsc_prime)
-        a1b1 = (epsc / epsc_prime - 1 / 3 * (epsc / epsc_prime) ** 2)
-
-        # assumption, equal compressive and tensile reinforcement
+        # z = locations of rebar layers, from top to bottom (bottom corner = 0.0)
         if self.nlayers == 0:
             z = np.array([self.h - self.d, self.d])
             rebar = np.array([rebar*self.distAs[1], rebar*self.distAs[0]])
@@ -131,10 +114,20 @@ class MomentCurvatureRC:
                           ((self.h - 2 * self.d) / (1 + self.nlayers) + self.d), self.d])
             rebar = np.array([rebar * 4 / 12, rebar * 2 / 12, rebar * 2 / 12, rebar * 4 / 12])
         else:
-            raise ValueError(f"[EXCEPTION] wrong input {self.nlayers} of number of reinforcement layers")
+            raise ValueError(f"[EXCEPTION] Wrong input: number of reinforcement layers is {self.nlayers}, should be 2 "
+                             f"or lower!")
+
+        # reinforcement properties
+        ey = self.fy / self.young_mod_s
+        fu = self.k_hard * self.fy
+
+        # Block parameters
+        b1 = (4 - epsc / epsc_prime) / (6 - 2 * epsc / epsc_prime)
+        a1b1 = (epsc / epsc_prime - 1 / 3 * (epsc / epsc_prime) ** 2)
 
         # Strains
         epss = (c - (self.h - z)) / c * epsc
+
         # Stresses
         stress = np.zeros(len(z))
         for i in range(len(stress)):
@@ -153,21 +146,131 @@ class MomentCurvatureRC:
                             np.sqrt((epss[i] - 2 * (np.sign(epss[i]) * self.EPSUK - np.sign(epss[i]) * self.EPSSH)) / (
                                         np.sign(epss[i]) * self.EPSUK - 2 * (np.sign(epss[i]) * self.EPSUK
                                                                              - np.sign(epss[i]) * self.EPSSH)))
-            # if abs(epss[i]) > self.EPSUK:
-            #     # todo, fix it, not en elegant way of dealing with the problem, in some occasions will be problematic
-            #     stress[i] = 0
 
         # Forces
         cc = c * a1b1 * self.fc_prime * self.b * 1000
         nslist = rebar * stress * 1000
         nint = cc + sum(nslist)
 
-        self.mi = (cc * (self.h / 2 - b1 * c) + sum(nslist * (z - self.h / 2)))
+        # Compressed height
+        compr_height = min(b1*c, self.h)
+
+        self.mi = (cc * (self.h / 2 - compr_height / 2) + sum(nslist * (z - self.h / 2)))
         self.fst = abs(stress[-1])
         self.epss = abs(epss[-1])
         self.phii = epsc / c
         return abs(nint + self.p)
-        
+
+    def get_residual_strength(self, c, data):
+        """
+        Objective function solving for compressed concrete height
+        Only top reinforcement is working under tension, bottom reinforcement is assumed to be lost
+        Hence, compressed concrete height is within the cover of the top reinforcement
+        :param c: numpy.ndarray                 Compressed concrete height
+        :param data: list                       Reinforcement characteristics
+        :return: float                          Difference between internal and external forces
+        """
+        # Force it to look for only positive values of c
+        c = abs(c)
+
+        # Reinforcement
+        epsBot = data[0]
+        rebar = data[2]
+        # Concrete strains
+        epsc_prime = data[1]
+
+        # z = locations of rebar layers, from top to bottom (bottom corner = 0.0)
+        if self.nlayers == 0:
+            z = np.array([self.h - self.d, self.d])
+            rebar = np.array([rebar * self.distAs[1], rebar * self.distAs[0]])
+        elif self.nlayers == 1:
+            z = np.array([self.h - self.d, self.h / 2, self.d])
+            rebar = np.array([rebar * 3 / 8, rebar * 2 / 8, rebar * 3 / 8])
+        elif self.nlayers == 2:
+            z = np.array([self.h - self.d, ((self.h - 2 * self.d) / (1 + self.nlayers) + self.d) * 2 - self.d,
+                          ((self.h - 2 * self.d) / (1 + self.nlayers) + self.d), self.d])
+            rebar = np.array([rebar * 4 / 12, rebar * 2 / 12, rebar * 2 / 12, rebar * 4 / 12])
+        else:
+            raise ValueError(f"[EXCEPTION] Wrong input: number of reinforcement layers is {self.nlayers}, should be 2 "
+                             f"or lower!")
+
+        # Get strain at top concrete fiber
+        epsc = float(c * epsBot / (z[0] - c))
+
+        # reinforcement properties
+        ey = self.fy / self.young_mod_s
+        fu = self.k_hard * self.fy
+
+        # Block parameters
+        b1 = (4 - epsc / epsc_prime) / (6 - 2 * epsc / epsc_prime)
+        a1b1 = epsc / epsc_prime - 1 / 3 * (epsc / epsc_prime) ** 2
+
+        # Top rebar strain
+        epss = (c - (self.h - z[:-1])) / c * epsc
+
+        # Stresses
+        stress = np.zeros(len(epss))
+        for i in range(len(stress)):
+            if abs(epss[i]) <= ey:
+                stress[i] = self.young_mod_s * epss[i]
+            elif ey < abs(epss[i]) <= self.EPSSH:
+                stress[i] = np.sign(epss[i]) * self.fy
+            elif self.EPSSH < abs(epss[i]) <= self.EPSUK:
+                stress[i] = np.sign(epss[i]) * self.fy + (np.sign(epss[i]) * fu - np.sign(epss[i]) * self.fy) * \
+                            np.sqrt((epss[i] - np.sign(epss[i]) * self.EPSSH) / (
+                                        np.sign(epss[i]) * self.EPSUK - np.sign(epss[i]) * self.EPSSH))
+            else:
+                # This is an approximation, generally reinforcement will be sufficient enough not to surpass ultimate
+                # strain. However, for calculation purpose this will be left here for now
+                stress[i] = np.sign(epss[i]) * self.fy + (np.sign(epss[i]) * fu - np.sign(epss[i]) * self.fy) * \
+                            np.sqrt((epss[i] - 2 * (np.sign(epss[i]) * self.EPSUK - np.sign(epss[i]) * self.EPSSH)) / (
+                                        np.sign(epss[i]) * self.EPSUK - 2 * (np.sign(epss[i]) * self.EPSUK
+                                                                             - np.sign(epss[i]) * self.EPSSH)))
+
+        # Forces
+        cc = c * a1b1 * self.fc_prime * self.b * 1000
+        ns = rebar[:-1] * stress * 1000
+        nint = cc + sum(ns)
+
+        # Compressed height
+        compr_height = min(b1*c, self.h)
+
+        self.mi = float(cc * (self.h / 2 - compr_height / 2) + sum(ns * (z[:-1] - self.h / 2)))
+        self.phii = float(epsc / c)
+        return abs(nint + self.p)
+
+    def find_fracturing(self, epsc_prime, asinit):
+        """
+        Find fracturing point
+        :param epsc_prime: float                    Concrete strain at max compressive strength
+        :param asinit: float                        Total reinforcement area
+        :return: None
+        """
+        epss_bot = self.EPSUK
+        # Initialize moment and compressed concrete height
+        moment = 1.
+        c = 0.015
+        record = None
+
+        iteration = 0
+        while moment >= 0:
+            c = float(optimize.fsolve(self.get_residual_strength, c, [epss_bot, epsc_prime, asinit], factor=0.1))
+
+            moment = self.mi
+
+            if moment >= 0:
+                phii = self.phii
+                record = [phii, moment]
+
+            epss_bot += 0.1*epss_bot
+            # Break out of loop
+            if iteration < 3:
+                if moment < 0:
+                    moment = 1.
+                    iteration += 1
+
+        return record
+
     def max_moment(self, asi, epsc_prime):
         """
         Gets the maximum moment capacity
@@ -176,7 +279,7 @@ class MomentCurvatureRC:
         :return: float                              Maximum moment of element
         """
         asinit = asi[0]
-        c = np.array([0.05])
+        c = np.array([0.02])
         c = float(abs(optimize.fsolve(self.objective, c, [2 * epsc_prime, epsc_prime, asinit], factor=0.1)))
 
         return abs(self.mi / self.k_hard - self.m_target)
@@ -186,7 +289,7 @@ class MomentCurvatureRC:
         defines the softening slope of the moment-curvature relationship
         :param kwargs: floats                       Total reinforcement area, curvature at yield, axial load ratio
                                                     transverse steel ratio
-        :return: float                              Curvature at 0 or residual strength
+        :return: float                              Curvature and Moment at 0 and plastic hinge length
         """
         lp = Plasticity(lp_name="Priestley", db=20, fy=self.fy, fu=self.fy*self.k_hard, lc=self.length).get_lp()
         if self.soft_method == "Haselton":
@@ -198,37 +301,27 @@ class MomentCurvatureRC:
                 theta_pc = min(0.76*0.031**nu*(0.02 + 40*ro_sh)**1.02, 0.1)
             else:
                 theta_pc = 0.1
-            # todo, fix phi_pc formula, the accuracy needs to be increased as it does not account for elastic portion
-            phi_pc = theta_pc/lp
+            # TODO, fix phi_pc formula, the accuracy needs to be increased as it does not account for elastic portion
+            phi_pc = theta_pc / lp
             phi_critical = phiy*mu_phi + phi_pc
+            m_critical = 0.
 
         elif self.soft_method == "Collins":
-            
-            def obj(c, data):
-                eps_t = data[0]
-                epsc_prime = data[1]
-                rebar_area = data[2]
-                
-                epsc = c*eps_t/(self.h - self.d - c)
-                eps_c = (self.d - c)*epsc/c
-                a1b1 = (epsc / epsc_prime - 1 / 3 * (epsc / epsc_prime) ** 2)
-                C = c*a1b1*self.fc_prime*self.b/1000
-                T = -eps_c*self.young_mod_s*rebar_area/1000
-                nint = C + T
-                return abs(nint + self.p)
 
             rebar_area = kwargs.get('rebar_area', None)
             young_modulus_rc = (3320 * np.sqrt(self.fc_prime) + 6900)
             n = .8 + self.fc_prime / 17
             epsc_prime = self.fc_prime / young_modulus_rc * n / (n - 1)
-            eps_t = self.EPSUK + self.EPSUK*0.1
-            c = np.array([0.01])
-            c = abs(float(optimize.fsolve(obj, c, [eps_t, epsc_prime, rebar_area], factor=0.1)))
-            epsc = c*eps_t/(self.h - self.d - c)
-            phi_critical = epsc/c
+            c = 0.02
+            record = self.find_fracturing(epsc_prime, rebar_area)
+
+            # Fracturing curvature
+            m_critical = record[1]
+            phi_critical = record[0]
+
         else:
             raise ValueError("[EXCEPTION] Wrong method for the definition of softening slope!")
-        return phi_critical, lp
+        return phi_critical, m_critical, lp
     
     def get_mphi(self, check_reinforcement=False, reinf_test=0., m_target=None, reinforcements=None):
         # TODO, a bit too rigid, make it more flexible, easier to manipulate within IPBSD to achieve optimized designs
@@ -246,7 +339,7 @@ class MomentCurvatureRC:
             self.AsTotal = sum(reinforcements)
             self.distAs = reinforcements / self.AsTotal
         if m_target is not None:
-            self.m_target = m_target
+            self.m_target = float(m_target)
 
         # Concrete properties
         # Assumption - parabolic stress-strain relationship for the concrete
@@ -270,22 +363,24 @@ class MomentCurvatureRC:
         phi_cr = epscr / yc
 
         ''' The "Process" '''
-        epsc = np.linspace(epsc_prime * 2 / 500, 2 * epsc_prime, 1000)
+        epsc = np.linspace(epsc_prime * 2 / 500, 5 * epsc_prime, 100)
         sigma_c = self.fc_prime*n*epsc/epsc_prime / (n - 1 + np.power(epsc/epsc_prime, n*k_parameter))
-        m = np.zeros(len(epsc))
-        phi = np.zeros(len(epsc))
-        sigmat = np.zeros(len(epsc))
-        eps_tensile = np.zeros(len(epsc))
+        m = np.array([0])
+        phi = np.array([0])
+        sigmat = np.array([0])
+        eps_tensile = np.array([0])
 
         # Optimize for longitudinal reinforcement at peak capacity
         if self.AsTotal is not None:
             asinit = np.array([self.AsTotal])
         else:
-            asinit = np.array([0.001])
-            
+            asinit = np.array([0.002])
+
         asinit = abs(float(optimize.fsolve(self.max_moment, asinit, epsc_prime, factor=0.1)))
+
+        # Are we doing a reinforcement check? If, yes...
         if check_reinforcement:
-            c = np.array([0.01])
+            c = np.array([0.02])
             self.mi = None
             init_factor = 2.
             while self.mi is None or np.isnan(self.mi[0]):
@@ -293,20 +388,32 @@ class MomentCurvatureRC:
                                               factor=0.1)))
                 init_factor -= 0.1
             return self.mi
+
+        # If not, get the full M-Phi curve
         else:
             for i in range(len(epsc)):
-                # compressed section height optimization
-                c = np.array([0.01])
-                c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=0.1)))
+                # compressed section height optimization - make a good guess, otherwise convergence won't be achieved
+                c = 0.02
+                c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100, xtol=1e-4)))
+
+                # Stop analysis if RunTimeWarning is caught (i.e. no convergence)
+                if math.isnan(self.mi):
+                    break
+
+                # Sometimes even though the M-Phi is obtained, the solution is still converging, so we need to stop it
+                # to avoid inverse slopes of Curvature
+                if phi.size <= 1:
+                    if phi[-1] > self.phii:
+                        break
 
                 # tensile reinforcement strains
-                eps_tensile[i] = self.epss
+                eps_tensile = np.append(eps_tensile, self.epss)
                 # tensile reinforcement stresses
-                sigmat[i] = self.fst
+                sigmat = np.append(sigmat, self.fst)
                 # bending moment capacity
-                m[i] = self.mi
+                m = np.append(m, self.mi)
                 # curvature
-                phi[i] = self.phii
+                phi = np.append(phi, self.phii)
 
             yield_index = self.checkMy(self.fy, sigmat)
 
@@ -320,32 +427,42 @@ class MomentCurvatureRC:
                 phi = phi[:idx]
             idx_max = -1
             m_max = m[idx_max]
-
             my_first = m[yield_index]
             phiy_first = phi[yield_index]
             m = np.array(m)
             rpeak = m_max / my_first
             ei_cracked = my_first / phiy_first
-            mu_phi = phi[idx_max] / phiy_first
             ei_cracked = ei_cracked / (young_modulus_rc * self.b * self.h ** 3 / 12 * 1000)
 
-        # Softening slope
+        # Nominal yield curvature
+        phi_yield_nom = self.m_target * phiy_first / my_first
+
+        # Curvature ductility (hardening ductility)
+        mu_phi = phi[-1] / phi_yield_nom
+
+        # todo, add accounting for residual strength near here
+        # Softening slope (todo, Shear design to be added near here)
         nu = abs(self.p)/area/self.fc_prime/1000
         ro_sh = self.TRANSVERSE_LEGS*np.pi*self.TRANSVERSE_DIAMETER**2/4 / self.TRANSVERSE_SPACING / self.b
         A_sh = self.TRANSVERSE_LEGS*np.pi*self.TRANSVERSE_DIAMETER**2/4
-        phi_critical, lp = self.get_softening_slope(rebar_area=asinit, curvature_yield=phiy_first,
-                                                    curvature_ductility=mu_phi, axial_load_ratio=nu,
-                                                    transverse_steel_ratio=ro_sh)
+        phi_critical, m_critical, lp = self.get_softening_slope(rebar_area=asinit, curvature_yield=phiy_first,
+                                                                curvature_ductility=mu_phi, axial_load_ratio=nu,
+                                                                transverse_steel_ratio=ro_sh)
+
+        # M and Curvature for the lumped hinge model fitting / calibration if need be
+        m_critical = 1e-9 if m_critical == 0 else m_critical
+        m_model = np.array([1e-9, self.m_target, max(m), m_critical])
+
+        # Force phi_critical equal to max phi, if not exceeding (for columns), it is unlikely to have this situation
+        phi_critical = max(phi[-1], phi_critical)
+        phi_model = np.array([1e-9, phi_yield_nom, max(phi), phi_critical])
+
         # Identifying fracturing point
         m = np.append(m, 0.0)
         phi = np.append(phi, phi_critical)
-        fracturing_ductility = phi_critical/phiy_first
+        fracturing_ductility = phi_critical / phi_yield_nom
 
-        # Plotting
-        if self.plotting:
-            self.plot_mphi(phi, m)
-
-        # Storing the results
+        # Exporting the results
         # The values are relative to the point of yield definition (herein to first yield)
         # If columns are designed, full reinforcement is recorded, if beams, then the direction of interest is recorded
         As_factor = 1. if self.AsTotal is None else self.distAs[0]
@@ -354,22 +471,22 @@ class MomentCurvatureRC:
                 'reinforcement': asinit*As_factor, 'cracked EI': ei_cracked, 'first_yield_moment': my_first,
                 'first_yield_curvature': phiy_first, 'phi_critical': phi_critical,
                 'fracturing_ductility': fracturing_ductility, "lp": lp, "cover": self.d, "A_sh": A_sh,
-                "spacing": self.TRANSVERSE_SPACING}
+                "spacing": self.TRANSVERSE_SPACING, "b": self.b, "h": self.h}
         reinforcement = {"Strain": eps_tensile, "Stress": sigmat}
         concrete = {"Strain": epsc, "Stress": sigma_c}
+        MPhi_idealization = {"phi": phi_model, "m": m_model}
 
         # Hysteretic behaviour of all structural elements for model creation in OpenSees (M-curvature)
         # Assuming 50% of gross cross-section (the actual M-phi is calculated without the necessity of defining fstiff)
-        # todo, add accounting for residual strength here
         curv_yield = self.m_target/young_modulus_rc/1000/inertia/self.fstiff
         curv_ult = mu_phi*phiy_first
         model = {"yield": {"curvature": curv_yield, "moment": self.m_target},
                  "ultimate": {"curvature": curv_ult, "moment": m_max},
                  "fracturing": {"curvature": phi_critical, "moment": 0}}
 
-        return data, reinforcement, concrete, model
+        return data, reinforcement, concrete, model, MPhi_idealization
 
-    
+
 if __name__ == '__main__':
     """
     --- Info on the input data:
@@ -382,7 +499,6 @@ if __name__ == '__main__':
     fc_prime                concrete strength [MPa]
     fy                      reinforcement yield strength [MPa]
     young_modulus_s         reinforcement elastic modulus [MPa]
-    plotting                plot the M-phi [bool]
     """
     # Section properties
     b = 0.3
@@ -391,7 +507,7 @@ if __name__ == '__main__':
     N = 100.
     cover = 0.03
 
-    mphi = MomentCurvatureRC(b, h, Mtarget, p=N, d=cover, nlayers=0, plotting=False, soft_method="Haselton",
+    mphi = MomentCurvatureRC(b, h, Mtarget, p=N, d=cover, nlayers=0, soft_method="Haselton",
                              AsTotal=0.0005, distAs=[0.5, 0.5])
 
     # data = mphi.get_mphi()

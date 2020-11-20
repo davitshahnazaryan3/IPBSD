@@ -7,7 +7,7 @@ import pandas as pd
 
 class Action:
     def __init__(self, solution, n_seismic, nbays, nst, masses, say, df, analysis, gravity_loads, num_modes=None,
-                 opt_modes=None, modal_sa=None):
+                 opt_modes=None, modal_sa=None, pdelta_loads=None):
         """
 
         :param solution: DataFrame          Solution containing cross-section and modal properties
@@ -21,6 +21,7 @@ class Action:
         :param num_modes: int               Number of modes to consider for SRSS
         :param opt_modes: dict              Periods and normalized modal shapes of the optimal solution
         :param modal_sa: list               Spectral acceleration to be used for RMSA
+        :param pdelta_loads: dict           Gravity loads over Pdetla columns as {'roof': *, 'floor': *}
         """
         self.solution = solution
         self.n_seismic = n_seismic
@@ -34,6 +35,7 @@ class Action:
         self.num_modes = num_modes
         self.opt_modes = opt_modes
         self.modal_sa = modal_sa
+        self.pdelta_loads = pdelta_loads
         # Gravitational acceleration in m/s2
         self.g = 9.81
 
@@ -57,7 +59,8 @@ class Action:
             d = pd.DataFrame({'phi': np.array(self.df.loc['phi']),
                               'm': [mi / self.n_seismic for mi in self.masses],
                               'Fi': [0] * self.nst,
-                              'Vi': [0] * self.nst})
+                              'Vi': [0] * self.nst,
+                              'pdelta': [pdelta / self.n_seismic for pdelta in self.pdelta_loads]})
             # lateral forces
             for n in range(self.nst):
                 d.at[n, 'Fi'] = d['m'][n]*self.df.loc['phi'][n] * self.get_vb() / \

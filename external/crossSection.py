@@ -8,7 +8,8 @@ import pandas as pd
 
 
 class CrossSection:
-    def __init__(self, nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, fstiff, tlower, tupper, iteration=False):
+    def __init__(self, nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, fstiff, tlower, tupper, iteration=False,
+                 cache_dir=None):
         """
         Initializes the optimization function for the cross-section for a target fundamental period
         :param nst: int                                     Number of stories
@@ -23,6 +24,7 @@ class CrossSection:
         :param tlower: float                                Lower period bound
         :param tupper: float                                Upper period bound
         :param iteration: bool                              Whether an iterative analysis is being performed
+        :param cache_dir: str                               Directory to export the solution cache if provided
         """
         self.nst = nst
         self.nbays = nbays
@@ -36,9 +38,18 @@ class CrossSection:
         self.tlower = tlower
         self.tupper = tupper
         self.SWEIGHT = 25.
-        if not iteration:
-            self.elements = self.constraint_function()
-            self.solutions = self.get_all_solutions()
+
+        # Export solution as cache in .csv (Initialize)
+        if cache_dir is not None:
+            cache_path = cache_dir/"solution_cache.csv"
+            if not iteration and not cache_path.exists():
+                self.elements = self.constraint_function()
+                self.solutions = self.get_all_solutions()
+                # Export solutions as cache in .csv
+                self.solutions.to_csv(cache_path)
+            # If solutions file exists, read and derive the solutions
+            if cache_path.exists():
+                self.solutions = pd.read_csv(cache_path, index_col=[0])
 
     def get_all_solutions(self):
         """
@@ -88,10 +99,10 @@ class CrossSection:
         h = []
 
         for st in range(self.nst):
-            hce.append(ele[f'he{st+1}'])
-            hci.append(ele[f'hi{st+1}'])
-            b.append(ele[f'b{st+1}'])
-            h.append(ele[f'h{st+1}'])
+            hce.append(float(ele[f'he{st+1}']))
+            hci.append(float(ele[f'hi{st+1}']))
+            b.append(float(ele[f'b{st+1}']))
+            h.append(float(ele[f'h{st+1}']))
         return hce, hci, b, h
 
     def create_props(self, hce, hci, b, h):
@@ -131,6 +142,7 @@ class CrossSection:
         constraint function for identifying combinations of all possible cross-sections
         :return: DataFrame                                      All solutions with element cross-sections
         """
+        # Helper constraint functions
         def storey_constraint(x, y):
             x = round(x, 2)
             y = round(y, 2)
@@ -155,9 +167,13 @@ class CrossSection:
             if x + 0.1 - 10**-5 <= y <= x + 0.3 + 10**-5:
                 return True
 
+        # TODO, if section in first 3 storeys did not change, then 4th storey may be different (ignore grouping)
+        # Initialize element types
         ele_types = []
+        # Initialize the problem
         problem = constraint.Problem()
         for i in range(self.nst):
+            # Limits on cross-section dimensions and types of elements
             problem.addVariable(f'b{i+1}', np.arange(0.25, 0.55, 0.05))
             problem.addVariable(f'h{i+1}', np.arange(0.40, 0.75, 0.05))
             problem.addVariable(f'hi{i+1}', np.arange(0.25, 0.75, 0.05))
@@ -167,15 +183,28 @@ class CrossSection:
             ele_types.append(f'b{i+1}')
             ele_types.append(f'h{i+1}')
 
-        for i in range(self.nst-1):
-            problem.addConstraint(eq_constraint, [f'b{i+1}', f'b{i+2}'])
-            problem.addConstraint(eq_constraint, [f'h{i+1}', f'h{i+2}'])
-            problem.addConstraint(storey_constraint, [f'hi{i+1}', f'hi{i+2}'])
-            problem.addConstraint(storey_constraint, [f'he{i+1}', f'he{i+2}'])
+        for i in range(1, self.nst, 2):
+            # Force equality of beam and column sections by creating groups of 2
+            # If nst is odd, the last storey will be in a group of 1, so no equality constraint is applied
+            problem.addConstraint(eq_constraint, [f'hi{i}', f'hi{i+1}'])
+            problem.addConstraint(eq_constraint, [f'he{i}', f'he{i+1}'])
+            problem.addConstraint(eq_constraint, [f'b{i}', f'b{i+1}'])
+            problem.addConstraint(eq_constraint, [f'h{i}', f'h{i+1}'])
+            # Force allowable variations of c-s dimensions between elements of adjacent groups
+            if i <= self.nst - 2:
+                problem.addConstraint(storey_constraint, [f'hi{i}', f'hi{i+2}'])
+                problem.addConstraint(storey_constraint, [f'he{i}', f'he{i+2}'])
+                problem.addConstraint(storey_constraint, [f'b{i}', f'b{i+2}'])
+                problem.addConstraint(storey_constraint, [f'h{i}', f'h{i+2}'])
+
+        # Force beam width equal to column height
         problem.addConstraint(eq_constraint, [f'b{self.nst}', f'he{self.nst}'])
+        # Force allowable variation of beam c-s width and height
         problem.addConstraint(beam_constraint, [f'b{self.nst}', f'h{self.nst}'])
         for i in range(self.nst):
+            # Force allowable variation of internal and external column c-s dimensions
             problem.addConstraint(bay_constraint, [f'hi{i+1}', f'he{i+1}'])
+        # Find all possible solutions within the constraints specified
         solutions = problem.getSolutions()
 
         elements = np.zeros((len(solutions), len(ele_types)))
@@ -224,9 +253,28 @@ class CrossSection:
             optimal = self.solutions[self.solutions["Weight"] == self.solutions["Weight"].min()].iloc[0]
         else:
             optimal = solution
+            if isinstance(optimal, pd.DataFrame):
+                optimal = optimal.iloc[solution.first_valid_index()]
+
+        # Cross-section properties of the selected solution
         hce, hci, b, h = self.get_section(optimal)
         properties = self.create_props(hce, hci, b, h)
         period, phi = self.run_ma(properties, single_mode=False)
+
+        # Get modal parameters
+        weight = self.get_weight(properties)
+        M = np.zeros((self.nst, self.nst))
+        for st in range(self.nst):
+            M[st][st] = self.mi[st] / self.n_seismic
+        identity = np.ones((1, self.nst))
+        phi1 = phi[0, :]
+        gamma = (phi1.transpose().dot(M)).dot(identity.transpose()) / (phi1.transpose().dot(M)).dot(phi1)
+        mstar = (phi1.transpose().dot(M)).dot(identity.transpose())
+
+        optimal["T"] = period[0]
+        optimal["Weight"] = weight
+        optimal["Part Factor"] = abs(gamma[0])
+        optimal["Mstar"] = abs(mstar[0])
 
         opt_modes = {"Periods": period, "Modes": phi}
 
@@ -236,21 +284,23 @@ class CrossSection:
 if __name__ == "__main__":
     import timeit
     start_time = timeit.default_timer()
-
-    nst = 4
+    from pathlib import Path
+    mainDir = Path.cwd().parents[0] / "Database"
+    
+    nst = 3
     nbays = 3
     fy = 415
     fc = 25
     bay_widths = [5, 5, 5]
-    heights = [3.5, 3, 3, 3]
+    heights = [3.5, 3, 3]
     n_seismic = 2
     fstiff = 0.5
-    mi = [99.08, 99.08, 99.08, 82.57]
-    tlower = 0.5
-    tupper = 1.0
-    ma = CrossSection(nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, fstiff, tlower, tupper)
+    mi = [99.08, 99.08, 82.57]
+    tlower = 0.6
+    tupper = 0.8
+    ma = CrossSection(nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, fstiff, tlower, tupper, cache_dir=mainDir)
     opt_sol = ma.find_optimal_solution()
-    print(opt_sol)
+    print(ma.solutions)
 
     def truncate(n, decimals=0):
         multiplier = 10 ** decimals

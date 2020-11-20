@@ -1,5 +1,5 @@
 """
-identifies design limits for the verification fo expected annual loss (EAL)
+identifies design limits for the verification of expected annual loss (EAL)
 """
 import numpy as np
 from client.slf import SLF

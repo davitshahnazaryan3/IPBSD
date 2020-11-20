@@ -6,6 +6,7 @@ from external.momentcurvaturerc import MomentCurvatureRC
 from postprocessing.plasticity import Plasticity
 import numpy as np
 from scipy import optimize
+import pandas as pd
 
 
 class Detailing:
@@ -52,7 +53,7 @@ class Detailing:
         self.FYK = 500.
         self.k_hard = k_hard
         # if warning 0, then no iterations are necessary for 4a, otherwise it equals to 1
-        self.WARNING = 0
+        self.WARNING = False
         # Warning for each element
         self.WARN_ELE = 0
         self.fstiff = fstiff
@@ -72,24 +73,24 @@ class Detailing:
 
         for bay in range(self.nbays, -1, -1):
             # No capacity design for the top storey
-            for st in range(self.nst-2, -1, -1):
+            for st in range(self.nst - 2, -1, -1):
                 if bay == 0:
-                    diff = Myb[st][bay] * 1.3 - (Myc[st][bay] + Myc[st+1][bay])
+                    diff = Myb[st][bay] * 1.3 - (Myc[st][bay] + Myc[st + 1][bay])
                     if diff > 0.0:
-                        Myc[st][bay] += diff/2
-                        Myc[st+1][bay] += diff/2
+                        Myc[st][bay] += diff / 2
+                        Myc[st + 1][bay] += diff / 2
                 elif bay == self.nbays:
-                    diff = Myb[st][bay-1] * 1.3 - (Myc[st][bay] + Myc[st+1][bay])
+                    diff = Myb[st][bay - 1] * 1.3 - (Myc[st][bay] + Myc[st + 1][bay])
                     if diff > 0.0:
                         Myc[st][bay] += diff / 2
-                        Myc[st+1][bay] += diff / 2
+                        Myc[st + 1][bay] += diff / 2
                 else:
-                    diff = (Myb[st][bay-1] + Myb[st][bay]) * 1.3 - (Myc[st][bay] + Myc[st+1][bay])
+                    diff = (Myb[st][bay - 1] + Myb[st][bay]) * 1.3 - (Myc[st][bay] + Myc[st + 1][bay])
                     if diff > 0.0:
                         Myc[st][bay] += diff / 2
-                        Myc[st+1][bay] += diff / 2
-        
-        return Myb, Myc
+                        Myc[st + 1][bay] += diff / 2
+
+        return Myc
 
     def ensure_symmetry(self, option="max"):
         """
@@ -107,20 +108,20 @@ class Detailing:
         if self.nbays <= 2:
             for st in range(self.nst):
                 if option == "max":
-                    MbiPos[st][0] = MbiPos[st][self.nbays-1] = np.max((MbiPos[st][0], MbiPos[st][self.nbays-1]))
-                    MbiNeg[st][0] = MbiNeg[st][self.nbays-1] = np.max((MbiNeg[st][0], MbiNeg[st][self.nbays-1]))
+                    MbiPos[st][0] = MbiPos[st][self.nbays - 1] = np.max((MbiPos[st][0], MbiPos[st][self.nbays - 1]))
+                    MbiNeg[st][0] = MbiNeg[st][self.nbays - 1] = np.max((MbiNeg[st][0], MbiNeg[st][self.nbays - 1]))
                     Mci[st][0] = Mci[st][self.nbays] = np.max((Mci[st][0], Mci[st][self.nbays]))
                     Nci[st][0] = Nci[st][self.nbays] = np.max((Nci[st][0], Nci[st][self.nbays]))
                     NciNeg[st][0] = NciNeg[st][self.nbays] = min(np.min((NciNeg[st][0], NciNeg[st][self.nbays])), 0.0)
                 elif option == "mean":
-                    MbiPos[st][0] = MbiPos[st][self.nbays-1] = np.mean((MbiPos[st][0], MbiPos[st][self.nbays-1]))
-                    MbiNeg[st][0] = MbiNeg[st][self.nbays-1] = np.mean((MbiNeg[st][0], MbiNeg[st][self.nbays-1]))
+                    MbiPos[st][0] = MbiPos[st][self.nbays - 1] = np.mean((MbiPos[st][0], MbiPos[st][self.nbays - 1]))
+                    MbiNeg[st][0] = MbiNeg[st][self.nbays - 1] = np.mean((MbiNeg[st][0], MbiNeg[st][self.nbays - 1]))
                     Mci[st][0] = Mci[st][self.nbays] = np.mean((Mci[st][0], Mci[st][self.nbays]))
                     Nci[st][0] = Nci[st][self.nbays] = np.mean((Nci[st][0], Nci[st][self.nbays]))
                     NciNeg[st][0] = NciNeg[st][self.nbays] = min(np.min((NciNeg[st][0], NciNeg[st][self.nbays])), 0.0)
                 elif option == "min":
-                    MbiPos[st][0] = MbiPos[st][self.nbays-1] = np.min((MbiPos[st][0], MbiPos[st][self.nbays-1]))
-                    MbiNeg[st][0] = MbiNeg[st][self.nbays-1] = np.min((MbiNeg[st][0], MbiNeg[st][self.nbays-1]))
+                    MbiPos[st][0] = MbiPos[st][self.nbays - 1] = np.min((MbiPos[st][0], MbiPos[st][self.nbays - 1]))
+                    MbiNeg[st][0] = MbiNeg[st][self.nbays - 1] = np.min((MbiNeg[st][0], MbiNeg[st][self.nbays - 1]))
                     Mci[st][0] = Mci[st][self.nbays] = np.min((Mci[st][0], Mci[st][self.nbays]))
                     Nci[st][0] = Nci[st][self.nbays] = np.min((Nci[st][0], Nci[st][self.nbays]))
                     NciNeg[st][0] = NciNeg[st][self.nbays] = min(np.min((NciNeg[st][0], NciNeg[st][self.nbays])), 0.0)
@@ -130,46 +131,49 @@ class Detailing:
             for st in range(self.nst):
 
                 if option == "max":
-                    MbiPos[st][0] = MbiPos[st][self.nbays-1] = np.max((MbiPos[st][0], MbiPos[st][self.nbays-1]))
-                    MbiPos[st][1:self.nbays-1] = np.max(MbiPos[st][1:self.nbays-1])
-                    MbiNeg[st][0] = MbiNeg[st][self.nbays-1] = np.max((MbiNeg[st][0], MbiNeg[st][self.nbays-1]))
-                    MbiNeg[st][1:self.nbays-1] = np.max(MbiNeg[st][1:self.nbays-1])
+                    MbiPos[st][0] = MbiPos[st][self.nbays - 1] = np.max((MbiPos[st][0], MbiPos[st][self.nbays - 1]))
+                    MbiPos[st][1:self.nbays - 1] = np.max(MbiPos[st][1:self.nbays - 1])
+                    MbiNeg[st][0] = MbiNeg[st][self.nbays - 1] = np.max((MbiNeg[st][0], MbiNeg[st][self.nbays - 1]))
+                    MbiNeg[st][1:self.nbays - 1] = np.max(MbiNeg[st][1:self.nbays - 1])
                     Mci[st][0] = Mci[st][self.nbays] = np.max((Mci[st][0], Mci[st][self.nbays]))
-                    for bay in range(1, int((self.nbays-1)/2)+1):
-                        Mci[st][bay] = Mci[st][-bay-1] = np.max((Mci[st][bay], Mci[st][-bay-1]))
+                    for bay in range(1, int((self.nbays - 1) / 2) + 1):
+                        Mci[st][bay] = Mci[st][-bay - 1] = np.max((Mci[st][bay], Mci[st][-bay - 1]))
                     Nci[st][0] = Nci[st][self.nbays] = np.max((Nci[st][0], Nci[st][self.nbays]))
                     NciNeg[st][0] = NciNeg[st][self.nbays] = min(np.min((NciNeg[st][0], NciNeg[st][self.nbays])), 0.0)
-                    for bay in range(1, int((self.nbays-1)/2)+1):
-                        Nci[st][bay] = Nci[st][-bay-1] = np.max((Nci[st][bay], Nci[st][-bay-1]))
-                        NciNeg[st][bay] = NciNeg[st][-bay-1] = min(np.min((NciNeg[st][bay], NciNeg[st][-bay-1])), 0.0)
+                    for bay in range(1, int((self.nbays - 1) / 2) + 1):
+                        Nci[st][bay] = Nci[st][-bay - 1] = np.max((Nci[st][bay], Nci[st][-bay - 1]))
+                        NciNeg[st][bay] = NciNeg[st][-bay - 1] = min(np.min((NciNeg[st][bay], NciNeg[st][-bay - 1])),
+                                                                     0.0)
 
                 elif option == "mean":
-                    MbiPos[st][0] = MbiPos[st][self.nbays-1] = np.mean((MbiPos[st][0], MbiPos[st][self.nbays-1]))
-                    MbiPos[st][1:self.nbays-1] = np.mean(MbiPos[st][1:self.nbays-1])
-                    MbiNeg[st][0] = MbiNeg[st][self.nbays-1] = np.mean((MbiNeg[st][0], MbiNeg[st][self.nbays-1]))
-                    MbiNeg[st][1:self.nbays-1] = np.mean(MbiNeg[st][1:self.nbays-1])
+                    MbiPos[st][0] = MbiPos[st][self.nbays - 1] = np.mean((MbiPos[st][0], MbiPos[st][self.nbays - 1]))
+                    MbiPos[st][1:self.nbays - 1] = np.mean(MbiPos[st][1:self.nbays - 1])
+                    MbiNeg[st][0] = MbiNeg[st][self.nbays - 1] = np.mean((MbiNeg[st][0], MbiNeg[st][self.nbays - 1]))
+                    MbiNeg[st][1:self.nbays - 1] = np.mean(MbiNeg[st][1:self.nbays - 1])
                     Mci[st][0] = Mci[st][self.nbays] = np.mean((Mci[st][0], Mci[st][self.nbays]))
-                    for bay in range(1, int((self.nbays-1)/2)+1):
-                        Mci[st][bay] = Mci[st][-bay-1] = np.mean((Mci[st][bay], Mci[st][-bay-1]))
+                    for bay in range(1, int((self.nbays - 1) / 2) + 1):
+                        Mci[st][bay] = Mci[st][-bay - 1] = np.mean((Mci[st][bay], Mci[st][-bay - 1]))
                     Nci[st][0] = Nci[st][self.nbays] = np.mean((Nci[st][0], Nci[st][self.nbays]))
                     NciNeg[st][0] = NciNeg[st][self.nbays] = min(np.min((NciNeg[st][0], NciNeg[st][self.nbays])), 0.0)
-                    for bay in range(1, int((self.nbays-1)/2)+1):
-                        Nci[st][bay] = Nci[st][-bay-1] = np.mean((Nci[st][bay], Nci[st][-bay-1]))
-                        NciNeg[st][bay] = NciNeg[st][-bay-1] = min(np.min((NciNeg[st][bay], NciNeg[st][-bay-1])), 0.0)
+                    for bay in range(1, int((self.nbays - 1) / 2) + 1):
+                        Nci[st][bay] = Nci[st][-bay - 1] = np.mean((Nci[st][bay], Nci[st][-bay - 1]))
+                        NciNeg[st][bay] = NciNeg[st][-bay - 1] = min(np.min((NciNeg[st][bay], NciNeg[st][-bay - 1])),
+                                                                     0.0)
 
                 elif option == "min":
-                    MbiPos[st][0] = MbiPos[st][self.nbays-1] = np.min((MbiPos[st][0], MbiPos[st][self.nbays-1]))
-                    MbiPos[st][1:self.nbays-1] = np.min(MbiPos[st][1:self.nbays-1])
-                    MbiNeg[st][0] = MbiNeg[st][self.nbays-1] = np.min((MbiNeg[st][0], MbiNeg[st][self.nbays-1]))
-                    MbiNeg[st][1:self.nbays-1] = np.min(MbiNeg[st][1:self.nbays-1])
+                    MbiPos[st][0] = MbiPos[st][self.nbays - 1] = np.min((MbiPos[st][0], MbiPos[st][self.nbays - 1]))
+                    MbiPos[st][1:self.nbays - 1] = np.min(MbiPos[st][1:self.nbays - 1])
+                    MbiNeg[st][0] = MbiNeg[st][self.nbays - 1] = np.min((MbiNeg[st][0], MbiNeg[st][self.nbays - 1]))
+                    MbiNeg[st][1:self.nbays - 1] = np.min(MbiNeg[st][1:self.nbays - 1])
                     Mci[st][0] = Mci[st][self.nbays] = np.min((Mci[st][0], Mci[st][self.nbays]))
-                    for bay in range(1, int((self.nbays-1)/2)+1):
-                        Mci[st][bay] = Mci[st][-bay-1] = np.min((Mci[st][bay], Mci[st][-bay-1]))
+                    for bay in range(1, int((self.nbays - 1) / 2) + 1):
+                        Mci[st][bay] = Mci[st][-bay - 1] = np.min((Mci[st][bay], Mci[st][-bay - 1]))
                     Nci[st][0] = Nci[st][self.nbays] = np.min((Nci[st][0], Nci[st][self.nbays]))
                     NciNeg[st][0] = NciNeg[st][self.nbays] = min(np.min((NciNeg[st][0], NciNeg[st][self.nbays])), 0.0)
-                    for bay in range(1, int((self.nbays-1)/2)+1):
-                        Nci[st][bay] = Nci[st][-bay-1] = np.min((Nci[st][bay], Nci[st][-bay-1]))
-                        NciNeg[st][bay] = NciNeg[st][-bay-1] = min(np.min((NciNeg[st][bay], NciNeg[st][-bay-1])), 0.0)
+                    for bay in range(1, int((self.nbays - 1) / 2) + 1):
+                        Nci[st][bay] = Nci[st][-bay - 1] = np.min((Nci[st][bay], Nci[st][-bay - 1]))
+                        NciNeg[st][bay] = NciNeg[st][-bay - 1] = min(np.min((NciNeg[st][bay], NciNeg[st][-bay - 1])),
+                                                                     0.0)
                 else:
                     raise ValueError("[EXCEPTION] Wrong option for ensuring symmetry, must be max, mean or min")
         return MbiPos, MbiNeg, Mci, Nci, NciNeg
@@ -197,9 +201,9 @@ class Detailing:
             raise ValueError("[EXCEPTION] Wrong type of ductility class, must be DCM or DCH!")
 
         # Design compressive strength
-        fcd = 0.8/1.5*self.fc
+        fcd = 0.8 / 1.5 * self.fc
         # Tensile strength
-        fctm = 0.3*self.fc**(2/3)
+        fctm = 0.3 * self.fc ** (2 / 3)
 
         # Reinforcement ratio
         ro_prime = reinforcement / (b * (h - self.rebar_cover))
@@ -229,20 +233,20 @@ class Detailing:
                 rebar = (b * (h - self.rebar_cover)) * ro_prime
                 m_target = relation.get_mphi(check_reinforcement=True, reinf_test=rebar)
                 data = relation.get_mphi(m_target=m_target)
-            self.WARN_ELE = 0
+            self.WARN_ELE = False
             return data
 
         elif ro_max < ro_prime:
             print(f"[WARNING] Cross-section of {eletype} element at storey {st} and bay {bay} should be increased! "
-                  f"ratio: {ro_prime*100:.2f}%")
-            self.WARN_ELE = 1
-            self.WARNING = 1
+                  f"ratio: {ro_prime * 100:.2f}%")
+            self.WARN_ELE = True
+            self.WARNING = True
             return None
 
         else:
-            self.WARN_ELE = 0
+            self.WARN_ELE = False
             return None
-        
+
     def get_rebar_distribution(self, b, h, d, mpos, mneg):
         """
         Gets initial rebar distribution based on Eurocode design procedures.
@@ -251,19 +255,19 @@ class Detailing:
         :param h: float                         Height of element
         :param d: float                         Effective height of element
         :param mpos: float                      Positive moment demand
-        :param mneg: flaot                      Negative moment demand
+        :param mneg: float                      Negative moment demand
         :return: float, list                    Total reinforcement area in m2 and relative distributions of reinforcement
         """
-        eta = min(1., 1-(self.fc - 50)/200)
+        eta = min(1., 1 - (self.fc - 50) / 200)
         alpha_cc = 0.85
         # Partial factor for concrete at ULS assuming persistent and transient design situations 
         gamma_uls = 1.5
-        fcd = alpha_cc*self.fc/gamma_uls*1000
+        fcd = alpha_cc * self.fc / gamma_uls * 1000
         fy = self.fy * 1000
-        
+
         def get_As(As, moment):
-            return fy*As*(h - d) * (1 - fy*As / (2*(h - d)*fcd*eta*b)) - moment
-        
+            return fy * As * (h - d) * (1 - fy * As / (2 * (h - d) * fcd * eta * b)) - moment
+
         # Initial guess for the solver
         As = 0.002
         AsPos = float(optimize.fsolve(get_As, As, mpos, factor=0.1))
@@ -271,7 +275,7 @@ class Detailing:
         AsTotal = AsPos + AsNeg
         distributions = [AsPos / AsTotal, AsNeg / AsTotal]
         return AsTotal, distributions
-        
+
     def design_elements(self, modes=None):
         """
         designs elements using demands from ELFM and optimal solution, uses moment_curvature_rc
@@ -283,59 +287,73 @@ class Detailing:
         ''' Assumptions: Beams are designed for both directions: positive and negative, neglecting axial loads
         Columns are designed considering M+N demands; No shear design is carried out'''
         mbiPos, mbiNeg, mci, nci, nciNeg = self.ensure_symmetry(option="max")
+        # Max value to be used in capacity design
         mbi = np.maximum(mbiPos, mbiNeg)
 
         ''' Follow the capacity design requirements, currently only Eurocode 8, but it may be adapted for other codes
         as well. Maximum absolute value of positive and negative moment demands on beams is used.'''
-        myb, myc = self.capacity_design(mbi, mci)
-        
-        # Initialize dictionaries for storing details and warnings
+        myc = self.capacity_design(mbi, mci)
+
+        # Initialize dictionaries for storing details, warnings and hinge models (hysteretic models) for OpenSees model
         data = {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}
         warnings = {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}
+        hinge_models = {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}
 
         # Design of beams
         for st in range(self.nst):
             if self.nbays > 2:
-                for bay in range(int(round(self.nbays/2, 0))):      # todo, check whether it should be round up or down
+                for bay in range(int(round(self.nbays / 2, 0))):  # todo, check whether it should be round up or down
                     # Design bending moment
+                    # Note: Negative = bottom, positive = top
                     m_target_pos = mbiPos[st][bay]
                     m_target_neg = mbiNeg[st][bay]
 
                     # Cross-section dimensions
-                    b = self.sections[f"b{st+1}"]
-                    h = self.sections[f"h{st+1}"]
-                    
+                    b = self.sections[f"b{st + 1}"]
+                    h = self.sections[f"h{st + 1}"]
+
                     # Initial guess on the distribution and values of the reinforcements
                     AsTotal, distributions = self.get_rebar_distribution(b, h, self.rebar_cover, m_target_pos,
                                                                          m_target_neg)
-                    
+
+                    # TODO, modify so that Negative direction is run with the knowledge of AsPos and seeks only AsNeg
                     # Perform moment-curvature analysis, Positive direction
                     mphiPos = MomentCurvatureRC(b, h, m_target_pos, d=self.rebar_cover, young_mod_s=self.young_mod_s,
                                                 k_hard=self.k_hard, AsTotal=AsTotal, distAs=distributions)
-                    data["Beams"]["Pos"][f"S{st+1}B{bay+1}"] = mphiPos.get_mphi()
-                    
+                    data["Beams"]["Pos"][f"S{st + 1}B{bay + 1}"] = mphiPos.get_mphi()
+
                     # Negative direction
                     mphiNeg = MomentCurvatureRC(b, h, m_target_neg, d=self.rebar_cover, young_mod_s=self.young_mod_s,
                                                 k_hard=self.k_hard, AsTotal=AsTotal, distAs=distributions[::-1])
-                    data["Beams"]["Neg"][f"S{st+1}B{bay+1}"] = mphiNeg.get_mphi()
+                    data["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"] = mphiNeg.get_mphi()
+
+                    # Hinge models
+                    hinge_models["Beams"]["Pos"][f"S{st+1}B{bay+1}"] = data["Beams"]["Pos"][f"S{st+1}B{bay+1}"][4]
+                    hinge_models["Beams"]["Neg"][f"S{st+1}B{bay+1}"] = data["Beams"]["Neg"][f"S{st+1}B{bay+1}"][4]
 
                     '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
                     # Positive direction
-                    d_temp = self.ensure_local_ductility(b, h, data["Beams"]["Pos"][f"S{st+1}B{bay+1}"][0]["reinforcement"],
-                                                         mphiPos, st+1, bay+1, eletype="Beam",
-                                                         oppReinf=data["Beams"]["Neg"][f"S{st+1}B{bay+1}"][0]["reinforcement"])
+                    d_temp = self.ensure_local_ductility(b, h, data["Beams"]["Pos"][f"S{st + 1}B{bay + 1}"][0][
+                        "reinforcement"],
+                                                         mphiPos, st + 1, bay + 1, eletype="Beam",
+                                                         oppReinf=data["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"][0][
+                                                             "reinforcement"])
                     warnings["Beams"]["Pos"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE
                     if d_temp is not None:
                         data["Beams"]["Pos"][f"S{st + 1}B{bay + 1}"] = d_temp
+                        hinge_models["Beams"]["Pos"][f"S{st+1}B{bay+1}"] = d_temp[4]
 
                     # Negative direction
-                    d_temp = self.ensure_local_ductility(b, h, data["Beams"]["Neg"][f"S{st+1}B{bay+1}"][0]["reinforcement"],
-                                                         mphiNeg, st+1, bay+1, eletype="Beam",
-                                                         oppReinf=data["Beams"]["Pos"][f"S{st+1}B{bay+1}"][0]["reinforcement"])
+                    d_temp = self.ensure_local_ductility(b, h, data["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"][0][
+                        "reinforcement"],
+                                                         mphiNeg, st + 1, bay + 1, eletype="Beam",
+                                                         oppReinf=data["Beams"]["Pos"][f"S{st + 1}B{bay + 1}"][0][
+                                                             "reinforcement"])
 
-                    warnings["Beams"]["Neg"][f"S{st+1}B{bay+1}"] = self.WARN_ELE
+                    warnings["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE
                     if d_temp is not None:
-                        data["Beams"]["Neg"][f"S{st+1}B{bay+1}"] = d_temp
+                        data["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"] = d_temp
+                        hinge_models["Beams"]["Pos"][f"S{st+1}B{bay+1}"] = d_temp[4]
 
             else:
                 # Design bending moment
@@ -345,43 +363,51 @@ class Detailing:
                 # Cross-section dimensions
                 b = self.sections[f"b{st + 1}"]
                 h = self.sections[f"h{st + 1}"]
-                    
+
                 # Initial guess on the distribution and values of the reinforcements
                 AsTotal, distributions = self.get_rebar_distribution(b, h, self.rebar_cover, m_target_pos, m_target_neg)
 
                 # Perform moment-curvature analysis, Positive direction
                 mphiPos = MomentCurvatureRC(b, h, m_target_pos, d=self.rebar_cover, young_mod_s=self.young_mod_s,
                                             k_hard=self.k_hard, AsTotal=AsTotal, distAs=distributions)
-                data["Beams"]["Pos"][f"S{st+1}B{1}"] = mphiPos.get_mphi()
+                data["Beams"]["Pos"][f"S{st + 1}B{1}"] = mphiPos.get_mphi()
                 # Negative direction
                 mphiNeg = MomentCurvatureRC(b, h, m_target_neg, d=self.rebar_cover, young_mod_s=self.young_mod_s,
                                             k_hard=self.k_hard, AsTotal=AsTotal, distAs=distributions[::-1])
-                data["Beams"]["Neg"][f"S{st+1}B{1}"] = mphiNeg.get_mphi()
+                data["Beams"]["Neg"][f"S{st + 1}B{1}"] = mphiNeg.get_mphi()
+
+                # Hinge models
+                hinge_models["Beams"]["Pos"][f"S{st+1}B{1}"] = data["Beams"]["Pos"][f"S{st+1}B{1}"][4]
+                hinge_models["Beams"]["Neg"][f"S{st+1}B{1}"] = data["Beams"]["Neg"][f"S{st+1}B{1}"][4]
 
                 '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
                 # Positive direction
-                d_temp = self.ensure_local_ductility(b, h, data["Beams"]["Pos"][f"S{st+1}B{1}"][0]["reinforcement"],
-                                                     mphiPos, st+1, 1, eletype="Beam",
-                                                     oppReinf=data["Beams"]["Neg"][f"S{st+1}B{1}"][0]["reinforcement"])
+                d_temp = self.ensure_local_ductility(b, h, data["Beams"]["Pos"][f"S{st + 1}B{1}"][0]["reinforcement"],
+                                                     mphiPos, st + 1, 1, eletype="Beam",
+                                                     oppReinf=data["Beams"]["Neg"][f"S{st + 1}B{1}"][0][
+                                                         "reinforcement"])
                 warnings["Beams"]["Pos"][f"S{st + 1}B{1}"] = self.WARN_ELE
                 if d_temp is not None:
-                    data["Beams"]["Pos"][f"S{st+1}B{1}"] = d_temp
+                    data["Beams"]["Pos"][f"S{st + 1}B{1}"] = d_temp
+                    hinge_models["Beams"]["Pos"][f"S{st+1}B{1}"] = d_temp[4]
 
                 # Negative direction
-                d_temp = self.ensure_local_ductility(b, h, data["Beams"]["Neg"][f"S{st+1}B{1}"][0]["reinforcement"],
-                                                     mphiNeg, st+1, 1, eletype="Beam",
-                                                     oppReinf=data["Beams"]["Pos"][f"S{st+1}B{1}"][0]["reinforcement"])
+                d_temp = self.ensure_local_ductility(b, h, data["Beams"]["Neg"][f"S{st + 1}B{1}"][0]["reinforcement"],
+                                                     mphiNeg, st + 1, 1, eletype="Beam",
+                                                     oppReinf=data["Beams"]["Pos"][f"S{st + 1}B{1}"][0][
+                                                         "reinforcement"])
                 warnings["Beams"]["Neg"][f"S{st + 1}B{1}"] = self.WARN_ELE
                 if d_temp is not None:
-                    data["Beams"]["Neg"][f"S{st+1}B{1}"] = d_temp
+                    data["Beams"]["Neg"][f"S{st + 1}B{1}"] = d_temp
+                    hinge_models["Beams"]["Neg"][f"S{st+1}B{1}"] = d_temp[4]
 
         # Design of columns
         for st in range(self.nst):
-            for bay in range(int(round((self.nbays+1)/2, 0))):
+            for bay in range(int(round((self.nbays + 1) / 2, 0))):
                 if bay == 0:
-                    b = h = self.sections[f"he{st+1}"]
+                    b = h = self.sections[f"he{st + 1}"]
                 else:
-                    b = h = self.sections[f"hi{st+1}"]
+                    b = h = self.sections[f"hi{st + 1}"]
                 # Design bending moment
                 m_target = myc[st][bay]
                 # Design compressive internal axial force
@@ -391,16 +417,18 @@ class Detailing:
                 nc_design_neg = nciNeg[st][bay]
 
                 # Number of reinforcement layers based on section height (may be adjusted manually)
-                nlayers = 0 if h <= 0.35 else 1 if (0.35 < h <= 0.55) else 2
+                nlayers = 0 if h <= 0.3 else 1 if (0.3 < h <= 0.55) else 2
                 # Assuming contraflexure at 0.6 of height
                 # todo, may add better estimation of contraflexure point based on Muto's approach
-                z = 0.6*self.heights[st]
+                # todo, Collins softening method not working well with columns
+                z = 0.6 * self.heights[st]
                 mphi = MomentCurvatureRC(b, h, m_target, length=z, p=-nc_design, nlayers=nlayers, d=self.rebar_cover,
-                                         young_mod_s=self.young_mod_s, k_hard=self.k_hard)
+                                         young_mod_s=self.young_mod_s, k_hard=self.k_hard, soft_method="Haselton")
                 temp = {"Pos": mphi.get_mphi()}
                 if nc_design_neg < 0.0:
                     mphiNeg = MomentCurvatureRC(b, h, m_target, length=z, p=-nc_design_neg, nlayers=nlayers,
-                                                d=self.rebar_cover, young_mod_s=self.young_mod_s, k_hard=self.k_hard)
+                                                d=self.rebar_cover, young_mod_s=self.young_mod_s, k_hard=self.k_hard,
+                                                soft_method="Haselton")
                     temp["Neg"] = mphiNeg.get_mphi()
                     # Select the design requiring highest reinforcement
                     if temp["Neg"][0]["reinforcement"] > temp["Pos"][0]["reinforcement"]:
@@ -411,46 +439,99 @@ class Detailing:
                 else:
                     selection = temp["Pos"]
 
-                data["Columns"][f"S{st+1}B{bay+1}"] = selection
-                '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
-                d_temp = self.ensure_local_ductility(b, h, data["Columns"][f"S{st+1}B{bay+1}"][0]["reinforcement"],
-                                                     mphi, st+1, bay+1, eletype="Column")
-                warnings["Columns"][f"S{st+1}B{bay+1}"] = self.WARN_ELE
-                if d_temp is not None:
-                    data["Columns"][f"S{st+1}B{bay+1}"] = d_temp
+                data["Columns"][f"S{st + 1}B{bay + 1}"] = selection
+                hinge_models["Columns"][f"S{st + 1}B{bay + 1}"] = selection[4]
 
+                '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
+                d_temp = self.ensure_local_ductility(b, h, data["Columns"][f"S{st + 1}B{bay + 1}"][0]["reinforcement"],
+                                                     mphi, st + 1, bay + 1, eletype="Column")
+                warnings["Columns"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE
+                if d_temp is not None:
+                    data["Columns"][f"S{st + 1}B{bay + 1}"] = d_temp
+                    hinge_models["Columns"][f"S{st + 1}B{bay + 1}"] = d_temp[4]
+
+        # Old version, requires improvement
         mu_c, mu_f = self.estimate_ductilities(data, modes)
 
-        return data, mu_c, mu_f, warnings
+        # Get hinge model information in DataFrame
+        hinge_models = self.model_to_df(data)
+
+        return data, hinge_models, mu_c, mu_f, warnings
+
+    def model_to_df(self, model):
+        """
+        Main purpose of the function is to transform the hinge model dictionary into a DataFrame for use in RCMRF
+        :return: DataFrame                          Lumped hinge model information for RCMRF Hysteretic model
+        """
+        # Initialize DataFrame with its columns
+        columns = ["Element", "Bay", "Storey", "Position", "b", "h", "coverNeg", "coverPos", "lp", "length",
+                   "phi1Neg", "phi2Neg", "phi3Neg", "m1Neg", "m2Neg", "m3Neg", "phi1", "phi2", "phi3", "m1", "m2", "m3"]
+
+        numericCols = ["Bay", "Storey", "b", "h", "coverNeg", "coverPos", "lp", "length", "phi1Neg", "phi2Neg",
+                       "phi3Neg", "m1Neg", "m2Neg", "m3Neg", "phi1", "phi2", "phi3", "m1", "m2", "m3"]
+
+        df = pd.DataFrame(columns=columns)
+        for ele in model:
+            if ele.lower() == "beams":
+                mTemp = model[ele]["Pos"]
+            else:
+                mTemp = model[ele]
+
+            for j in mTemp:
+                bay = int(j[-1])
+                st = int(j[-3])
+                if bay == 1 or bay == self.nbays:
+                    pos = "external"
+                else:
+                    pos = "internal"
+                lp = mTemp[j][0]["lp"]
+
+                if ele.lower() == "beams":
+                    temp = np.array([ele[:-1], bay, st, pos, model[ele]["Neg"][j][0]["b"], model[ele]["Neg"][j][0]["h"],
+                                     model[ele]["Neg"][j][0]["cover"], model[ele]["Pos"][j][0]["cover"], lp,
+                                     self.bay_widths[bay-1]])
+                    phiNeg = model[ele]["Neg"][j][4]["phi"][1:]
+                    mNeg = model[ele]["Neg"][j][4]["m"][1:]
+                    phiPos = model[ele]["Pos"][j][4]["phi"][1:]
+                    mPos = model[ele]["Pos"][j][4]["m"][1:]
+                else:
+                    temp = np.array([ele[:-1], bay, st, pos, model[ele][j][0]["b"], model[ele][j][0]["h"],
+                                     model[ele][j][0]["cover"], model[ele][j][0]["cover"], lp, self.heights[st-1]])
+                    phiNeg = phiPos = model[ele][j][4]["phi"][1:]
+                    mNeg = mPos = model[ele][j][4]["m"][1:]
+
+                data = np.concatenate((temp, phiNeg, mNeg, phiPos, mPos)).reshape(1, len(columns))
+
+                # Concatenate into the DataFrame
+                df = df.append(pd.DataFrame(data=data, columns=columns), ignore_index=True)
+
+                # Add symmetric elements
+                bayCount = self.nbays - (bay - 1) if ele.lower() == "beams" else self.nbays + 2 - bay
+                if bay != bayCount:
+                    bay = bayCount
+                    temp[1] = bay
+                    data = np.concatenate((temp, phiNeg, mNeg, phiPos, mPos)).reshape(1, len(columns))
+                    # Concatenate into the DataFrame
+                    df = df.append(pd.DataFrame(data=data, columns=columns), ignore_index=True)
+
+        for i in numericCols:
+            df[i] = pd.to_numeric(df[i])
+
+        return df
 
     def estimate_ductilities(self, details, modes):
         """
-        Gets hardening ductility
+        Estimates system hardening ductility
         :param details: dict                    Moment-curvature relationships of the elements
         :param modes: dict                      Periods and modal shapes obtained from modal analysis
         :return: float                          Hardening ductility
         """
-        p = Plasticity(lp_name="Priestley", db=20, fy=self.fy, fu=self.fy*self.k_hard, lc=self.heights)
+        p = Plasticity(lp_name="Priestley", db=20, fy=self.fy, fu=self.fy * self.k_hard, lc=self.heights)
         mu_c, mu_f = p.estimate_ductilities(self.dy, details, modes)
         return mu_c, mu_f
 
-    def get_fracturing_ductility(self, mu_c, sa_c, sa_f, theta_pc, theta_y):
-        """
-        Gets fracturing ductility
-        :param mu_c: float                      System hardening ductility
-        :param sa_c: float                      System peak spectral acceleration capacity
-        :param sa_f: float                      System residual spectral acceleration capacity
-        :param theta_pc: float                  Column post-capping rotation capacity
-        :param theta_y: float                   Column yield rotation capacity
-        :return: float                          System fracturing ductility
-        """
-        p = Plasticity()
-        mu_f = p.get_fracturing_ductility(mu_c, sa_c, sa_f, theta_pc, theta_y)
-        return mu_f
-
 
 if __name__ == "__main__":
-
     from client.master import Master
     from pathlib import Path
     from external.openseesrun import OpenSeesRun
@@ -482,7 +563,7 @@ if __name__ == "__main__":
     ductility_class = "DCM"
 
     d = Detailing(response, csd.data.nst, csd.data.n_bays, csd.data.fy, csd.data.fc, csd.data.spans_x,
-                          csd.data.h, csd.data.n_seismic, csd.data.masses, tlower, tupper, dy, cs,
-                          ductility_class=ductility_class, fstiff=fstiff, rebar_cover=cover)
+                  csd.data.h, csd.data.n_seismic, csd.data.masses, tlower, tupper, dy, cs,
+                  ductility_class=ductility_class, fstiff=fstiff, rebar_cover=cover)
 
     data, mu_c, mu_f, warnings = d.design_elements()

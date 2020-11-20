@@ -5,27 +5,23 @@ import numpy as np
 
 
 class Hazard:
-    def __init__(self, coef, cflag, return_period=None, beta_al=None, pflag=False):
+    def __init__(self, coef, cflag, return_period=None, beta_al=None):
         """
         initialize hazard calculation
         :param coef: array                              Hazard 2nd-order fit coefficients
         :param cflag: str                               Intensity measure (SA or PGA)
         :param return_period: array                     Return periods of all limit states considered
         :param beta_al: array                           Uncertainties associated with each limit state considered
-        :param pflag: bool                              Plotting flag
         """
         self.Sa_Range = np.linspace(0.005, 5.005, 301)
         self.coef = coef
         self.cflag = cflag
         self.return_period = return_period
         self.beta_al = beta_al
-        self.pflag = pflag
         if cflag == "PGA":
             self.lambdaLS, self.PGA = self.get_PGA()
         elif cflag == 'SA':
             self.Hs = self.get_distribution()
-            if self.pflag:
-                self.plotting()
         else:
             raise ValueError("[EXCEPTION] Wrong call for a hazard function!")
 

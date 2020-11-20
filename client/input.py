@@ -27,7 +27,7 @@ class Input:
         self.beta_al = None                         # Uncertainties associated with PLSs                    list(float)
         self.nst = None                             # Number of storeys                                     int
         self.masses = None                          # Lumped masses at stories in tonne                     list(float)
-        self.h = None                               # Storey heights in m                                   list(float)
+        self.heights = None                         # Storey heights in m                                   list(float)
         self.o_th = None                            # Higher mode reduction factor                          float
         self.n_bays = None                          # Number of bays                                        int
         self.spans_x = None                         # Bay widths in m in X direction                        list(float)
@@ -39,6 +39,7 @@ class Input:
         self.n_gravity = None                       # Number of gravity frames                              int
         self.bay_perp = None                        # Bay width (approximate) in the y direction            float
         self.w_seismic = None                       # Seismic weights in kN/m2                              dict
+        self.pdelta_loads = None                    # Gravity loads over P Delta columns                    dict
         self.elastic_modulus_steel = 200000.        # Steel elastic modulus in MPa                          float
 
     def read_inputs(self, filename):
@@ -61,31 +62,37 @@ class Input:
         q_floor = self.i_d['bldg_ch'][0]
         q_roof = self.i_d['bldg_ch'][1]
         A_floor = self.i_d['bldg_ch'][2]
-        self.h = np.zeros(len(self.i_d['h_storeys']))
+        self.heights = np.zeros(len(self.i_d['h_storeys']))
         for storey in range(len(self.i_d['h_storeys'])):
-            self.h[storey] = self.i_d['h_storeys'][storey]
-        self.nst = len(self.h)
-        self.masses = np.zeros(self.nst)
-        for storey in range(self.nst):
-            if storey == self.nst - 1:
-                self.masses[storey] = q_roof * A_floor / 9.81
-            else:
-                self.masses[storey] = q_floor * A_floor / 9.81
-        self.o_th = self.i_d['mode_red'][0]
+            self.heights[storey] = self.i_d['h_storeys'][storey]
+        self.nst = len(self.heights)
         self.spans_x = []
         self.spans_y = []
         for bay in self.i_d['spans_X']:
             self.spans_x.append(self.i_d['spans_X'][bay])
         for bay in self.i_d['spans_Y']:
             self.spans_y.append(self.i_d['spans_Y'][bay])
+        self.bay_perp = self.spans_y[0]
         self.n_bays = len(self.spans_x)
+        # Loads and masses for the entire building (will be divided by n_seismic at later stages)
+        self.masses = np.zeros(self.nst)
+        self.pdelta_loads = np.zeros(self.nst)
+        for storey in range(self.nst):
+            if storey == self.nst - 1:
+                self.masses[storey] = q_roof * A_floor / 9.81
+                self.pdelta_loads[storey] = q_roof*(sum(self.spans_y)-self.bay_perp)
+            else:
+                self.masses[storey] = q_floor * A_floor / 9.81
+                self.pdelta_loads[storey] = q_floor*(sum(self.spans_y)-self.bay_perp)
+        self.o_th = self.i_d['mode_red'][0]
         self.fy = self.i_d['fy'][0]
         self.elastic_modulus_steel = self.i_d['Es'][0]
         self.eps_y = self.fy / self.elastic_modulus_steel
         self.fc = self.i_d['fc'][0]
         self.n_seismic = self.i_d['n_seismic_frames'][0]
         self.n_gravity = self.i_d['n_gravity_frames'][0]
-        self.bay_perp = A_floor / sum(self.spans_x) / (self.n_seismic + self.n_gravity - 1)
+        # Note: bay perpendicular used only for perimeter frames, which also assumes symmetry of the building
+        # Consideration of space not included yet
         q_beam_floor = self.bay_perp / 2 * q_floor
         q_beam_roof = self.bay_perp / 2 * q_roof
         self.w_seismic = {'roof': q_beam_roof, 'floor': q_beam_floor}

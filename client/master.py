@@ -12,7 +12,6 @@ from calculations.designLimits import DesignLimits
 from calculations.transformations import Transformations
 from calculations.periodRange import PeriodRange
 from external.crossSection import CrossSection
-from verifications.periodCheck import PeriodCheck
 from verifications.mafcCheck import MAFCCheck
 from postprocessing.action import Action
 from external.openseesrun import OpenSeesRun
@@ -138,7 +137,7 @@ class Master:
         pr.period_range_verification(t_lower, t_upper)
         return t_lower, t_upper
 
-    def get_all_section_combinations(self, t_lower, t_upper, fstiff=0.5, solution=None, data=None):
+    def get_all_section_combinations(self, t_lower, t_upper, fstiff=0.5, solution=None, data=None, cache_dir=None):
         """
         gets all section combinations satisfying period bound range
         :param t_lower: float                       Lower period limit
@@ -146,19 +145,27 @@ class Master:
         :param fstiff: float                        Stiffness reduction factor
         :param solution: Series                     Solution to run analysis instead (for iterations)
         :param data: object                         Input arguments
+        :param cache_dir: str                       Directory to export the cache csv solutions of
         :return cs.solutions: DataFrame             Solution combos
         :return opt_sol: DataFrame                  Optimal solution
         :return opt_modes: dict                     Periods and normalized modal shapes of the optimal solution
         """
         if solution is None:
             cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
-                              self.data.h, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper)
+                              self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
+                              cache_dir=cache_dir)
             opt_sol, opt_modes = cs.find_optimal_solution()
+            return cs.solutions, opt_sol, opt_modes
+        elif solution is not None and data is None:
+            cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
+                              self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
+                              cache_dir=cache_dir)
+            opt_sol, opt_modes = cs.find_optimal_solution(solution)
             return cs.solutions, opt_sol, opt_modes
         else:
             self.data = data
             cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
-                              self.data.h, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
+                              self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
                               iteration=True)
             opt_sol, opt_modes = cs.find_optimal_solution(solution)
             return opt_sol, opt_modes
@@ -282,7 +289,8 @@ class Master:
                 ele += 1
         return results
 
-    def get_action(self, solution, say, df, gravity_loads, analysis, num_modes=None, opt_modes=None, modal_sa=None):
+    def get_action(self, solution, say, df, gravity_loads, analysis, num_modes=None, opt_modes=None,
+                   modal_sa=None):
         """
         gets demands on the structure
         :param solution: DataFrame                  Solution containing cross-section and modal properties
@@ -297,7 +305,7 @@ class Master:
         """
         # todo, consider phi shape for forces from CrossSection for opt_sol, 1st mode-proportional
         a = Action(solution, self.data.n_seismic, self.data.n_bays, self.data.nst, self.data.masses, say, df, analysis,
-                   gravity_loads, num_modes, opt_modes, modal_sa)
+                   gravity_loads, num_modes, opt_modes, modal_sa, self.data.pdelta_loads)
         d = a.forces()
         return d
 
@@ -356,7 +364,7 @@ class Master:
                 response['Mci'][st] = 0.6 * self.data.h[st] * shear_internal
                 response['Mce'][st] = 0.6 * self.data.h[st] * shear_external
         else:
-            op = OpenSeesRun(self.data, solution, analysis, fstiff=fstiff)
+            op = OpenSeesRun(self.data, solution, fstiff=fstiff)
             beams, columns = op.create_model()
             if lat_action is not None:
                 op.elfm_loads(lat_action)
@@ -372,6 +380,40 @@ class Master:
 
         return response
 
+    def ma_analysis(self, solution, hinge, action, fstiff):
+        """
+        Runs modal analysis
+        :param solution: DataFrame                  Design solution, cross-section dimensions
+        :param hinge: DataFrame                     Idealized plastic hinge model parameters
+        :param action: DataFrame                    Gravity loads over PDelta columns
+        :param fstiff: float                        Stiffness reduction factor
+        :return: list                               Modal periods
+        """
+        ma = OpenSeesRun(self.data, solution, fstiff, hinge=hinge)
+        ma.create_model()
+        ma.define_masses()
+        ma.pdelta_columns(action)
+        periods = ma.ma_analysis(1)
+        ma.wipe()
+        return periods
+
+    def spo_opensees(self, solution, hinge, action, fstiff, modalShape=None):
+        """
+        Runs static pushover analysis and fits an idealized curve to the SPO curve for later use by SPO2IDA
+        :param solution: DataFrame                  Design solution, cross-section dimensions
+        :param hinge: DataFrame                     Idealized plastic hinge model parameters
+        :param action: DataFrame                    Gravity loads over PDelta columns
+        :param fstiff: float                        Stiffness reduction factor
+        :param modalShape: list                     Modal shape to be used for SPO loads
+        :return: dict                               SPO response in terms of top displacement vs base shear
+        """
+        spo = OpenSeesRun(self.data, solution, fstiff, hinge=hinge)
+        spo.create_model()
+        spo.pdelta_columns(action)
+        topDisp, baseShear = spo.spo_analysis(mode_shape=modalShape)
+        spo.wipe()
+        return topDisp, baseShear
+
     def design_elements(self, demands, sections, modes, tlower, tupper, dy, ductility_class="DCM", fstiff=0.5,
                         cover=0.03):
         """
@@ -383,16 +425,16 @@ class Master:
         :param tupper: float                        Upper period limit
         :param dy: float                            System yield displacement in m
         :param ductility_class: str                 Ductility class (DCM or DCH, following Eurocode 8 recommendations)
-        :return: dict                               Designed element properties from the moment-curvature relationship
         :param fstiff: float                        Stiffness reduction factor
         :param cover: float                         Reinforcement cover in m
+        :return: dict                               Designed element properties from the moment-curvature relationship
         """
         d = Detailing(demands, self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
-                      self.data.h, self.data.n_seismic, self.data.masses, tlower, tupper, dy, sections,
+                      self.data.heights, self.data.n_seismic, self.data.masses, tlower, tupper, dy, sections,
                       ductility_class=ductility_class, fstiff=fstiff, rebar_cover=cover)
-        data, mu_c, mu_f, warnings = d.design_elements(modes)
+        data, hinge_models, mu_c, mu_f, warnings = d.design_elements(modes)
         warn = d.WARNING
-        return data, mu_c, mu_f, warn, warnings
+        return data, hinge_models, mu_c, mu_f, warn, warnings
 
     def run_ma(self, solution, tlower, tupper, sections):
         """
@@ -405,8 +447,9 @@ class Master:
         """
         fstiff_beam = [sections["Beams"][i][0]["cracked EI"] for i in sections["Beams"]]
         fstiff_col = [sections["Columns"][i][0]["cracked EI"] for i in sections["Columns"]]
-        cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x, self.data.h,
-                          self.data.n_seismic, self.data.masses, fstiff=1.0, tlower=tlower, tupper=tupper)
+        cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
+                          self.data.heights, self.data.n_seismic, self.data.masses, fstiff=1.0, tlower=tlower,
+                          tupper=tupper)
         hce, hci, b, h = cs.get_section(solution)
 
         props = cs.create_props(hce, hci, b, h)

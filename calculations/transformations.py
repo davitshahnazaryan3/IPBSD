@@ -23,7 +23,7 @@ class Transformations:
         table = {}
         nst = self.data.nst  # Number of storeys
         o_th = self.data.o_th  # Higher mode reduction factor
-        h = self.data.h  # Storey heights of the structure
+        h = self.data.heights  # Storey heights of the structure
         Hn = sum(h)  # Total height of the structure
         deltas = []  # Initialization of lateral displacements
         for storey in range(nst):

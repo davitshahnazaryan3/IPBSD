@@ -145,20 +145,15 @@ Iterations:  4a. if local ductility requirements are not met
 		    * that is max reinforcement ratio is exceeded and secion redimensioning is necessitated
 		    4. Estimate global hardening and fracturing ductility, peak to yield strength ratio, overstrength ratio - Detailing, Plasticity
 		    * perform iteration 3a if SPO shape characteristics vary (phase 3 to 4)
-			
-todo: merge phase 5 and 6 into an iterative phase
+		    
 -> **Phase 5 - From Detailing to Global:**<br/>
 
         	1. Use the optimal solution and estimate Period based on cracked section properties of 4.3d - Detailing,
 			CrossSection
         		a. Fundamental period
         		b. Verify that the period is within the bounds
-        	X. Estimate MAFC based on the new SPO, see if an iteration is needed, establish tolerance
-        	X. Check for conditions met, if non met, return to 3.1 and repeat until conditions are met - Detailing
-		
--> ***Phase 6 - Modifications and Rerunning of Phases if necessary:***<br/>
-
-        	1.
+        	2. Estimate MAFC based on the new SPO, see if an iteration is needed, establish tolerance
+        	3. Check for conditions met, if non met, return to 3.1 and repeat until conditions are met - Detailing
 
 Note: *Iterations 1a and 1b are manual, while iterations 3a and 4a may be manual or automatic.*
 
@@ -176,27 +171,21 @@ Note: *Iterations 1a and 1b are manual, while iterations 3a and 4a may be manual
 
 * [x] Add explanations on how and in which format to provide the inputs for the software
 
-* [ ] Reinforced concrete moment-resisting frame -> Steel MRF, other typologies to be included
+* [x] Reinforced concrete moment-resisting frame
 
 * [ ] 3 Performance objective limit states -> flexible for inclusion
 
-* [ ] **Variable storey-loss-functions along the height** -> flexible for inclusion
-
-* [ ] SPO2IDA tool for collapse fragility definition -> ML algorithms to avoid being limited to using SPO2IDA, needs extensive studies and analysis, possible data collection
+* [x] Variable storey-loss-functions along the height
 
 * [ ] Symmetric structures only -> add considerations for 3D models, partially done
 
-* [ ] **Single conversion factor for peak floor accelerations** -> study based on Antonio's work to include regressions
+* [x] Conversion factor regression for peak floor accelerations
 
 * [x] Code-based overstrength factors indirectly accounted for -> flexible to include
 
 * [x] Same beam cross-sections along the height/no grouping for beams -> partially done, more will be added when necessary
  
 * [ ] Considerations for shear design, will be useful also in identifying inelastic rotation capacities, then input ro_sh based on that for Haselton platic hinge length definition
-
-* [ ] Test all input argument effects for bugs and default arguments for functions as well
-
-* [ ] Different methods of estimating collapse capacity distribution in case the user is not willing to guess the SPO curve
 
 * [x] SLF generator -> based on Sebastiano's work
 
