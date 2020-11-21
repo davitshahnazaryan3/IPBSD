@@ -494,7 +494,7 @@ if __name__ == "__main__":
     mafc_target = 2.e-4
     damping = .05
     system = "Perimeter"
-    maxiter = 20
+    maxiter = 5
     fstiff = 0.5
     geometry = "2d"
     export_cache = True
@@ -505,7 +505,7 @@ if __name__ == "__main__":
     solutionFile = None
 
     method = IPBSD(input_file, hazard_file, slfDir, spo_file, limit_eal, mafc_target, outputPath, analysis_type,
-                   damping=damping, num_modes=2, iterate=True, system=system, maxiter=20, fstiff=0.5,
+                   damping=damping, num_modes=2, iterate=True, system=system, maxiter=maxiter, fstiff=fstiff,
                    geometry=geometry, solutionFile=solutionFile, export_cache=export_cache, holdFlag=holdFlag,
                    overstrength=None)
     start_time = method.get_init_time()

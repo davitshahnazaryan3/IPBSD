@@ -24,11 +24,12 @@ class Iterations:
         self.omegaWarn = False
         self.spo_validate = True
 
-    def iterate_phase_3(self, opt_sol, omega):
+    def iterate_phase_3(self, opt_sol, omega, read=True):
         """
         Runs phase 3 of the framework
         :param opt_sol: Series                          Solution containing c-s and modal properties
         :param omega: float                             Overstrength ratio
+        :param read: bool                               Whether to read the input file or not
         :return part_factor: float                      Participation factor of first mode
         :return m_star: float                           Effective first modal mass
         :return say: float                              Spectral acceleration at yield in g
@@ -38,7 +39,8 @@ class Iterations:
         """Perform SPO2IDA"""
         """Estimate parameters for SPO curve and compare with assumed shape"""
         period = round(float(opt_sol['T']), 1)
-        self.spo_data = self.ipbsd.data.initial_spo_data(period, self.spo_file)
+        if read:
+            self.spo_data = self.ipbsd.data.initial_spo_data(period, self.spo_file)
         spo2ida_data = self.ipbsd.perform_spo2ida(self.spo_data)
         print("[SUCCESS] SPO2IDA was performed")
 
@@ -388,9 +390,13 @@ class Iterations:
         # Get new SPO parameters
         spo_data_updated = self.spo2ida_parameters(d, v, tnew)
 
-        # Check whether the parameters vary from the original assumption (w.r.t self.spo_data)
+        # Check whether the parameters vary from the original assumption (if True, then tolerance met)
+        # NOTE: spo shape might loop around two scenarios (need a better technique to look for a solution)
+        # It is primarily due to some low values (e.g. muC), where the large variations of e.g. a do not have a
+        # significant impact on the final results, however are hard to fit
         self.spo_validate = all(list(map(self.compare_value, self.spo_data.values(), spo_data_updated.values())))
         self.spo_data = self.spo_data if self.spo_validate else spo_data_updated
+
         return omegaNew, opt_sol, gamma, mstar
 
     def validations(self, opt_sol, modes, sa, period_range, table_sls, t_lower, t_upper,
@@ -455,16 +461,27 @@ class Iterations:
             # Start with the correction of SPO curve shape. Also, recalculate the mode shape of new design solution
             cnt = 0
             print("[ITERATION 4] Commencing iteration...")
-            while (warn or not self.spo_validate) and cnt <= maxiter:
+            while (warn or not self.spo_validate) and cnt+1 <= maxiter:
 
                 """Look for a different solution"""
                 # Get the new design solution and the modal shapes
                 opt_sol, modes = self.seek_solution(warnings, opt_sol)
 
-                print(f"[ITERATION 4] Iteration: {cnt+1}. Rerunning phase 3 due to modified Overstrength and "
-                      f"SPO shape or unsatisfactory detailing.")
+                # Print out the issue causing subsequent iteration to be run
+                textToPrintOut = f"[ITERATION 4] Iteration: {cnt+1}. Rerunning phase 3 due to: "
+                if self.omegaWarn:
+                    textToPrintOut += "modified Overstrength"
+                if warn:
+                    textToPrintOut += ", unsatisfactory detailing" if self.omegaWarn else "unsatisfactory detailing"
+                if not self.spo_validate:
+                    if self.omegaWarn or warn:
+                        textToPrintOut += ", SPO shape modification"
+                    else:
+                        textToPrintOut += "SPO shape modification"
+                print(textToPrintOut)
+
                 # Optimize for MAFC and find the new yield spectral acceleration
-                part_factor, m_star, say, dy, spo2ida_data = self.iterate_phase_3(opt_sol, omegaNew)
+                part_factor, m_star, say, dy, spo2ida_data = self.iterate_phase_3(opt_sol, omegaNew, read=False)
 
                 # Calculate demands and do detailing of structural elements
                 phase_4 = self.iterate_phase_4(say, dy, sa, period_range, opt_sol, modes, table_sls, t_lower, t_upper)
@@ -480,9 +497,6 @@ class Iterations:
 
                 # Increase count of iterations
                 cnt += 1
-
-                # Force stop the iterations (TODO TO BE REMOVED)
-                cnt = maxiter + 1
 
             if cnt == maxiter:
                 print("[WARNING] Maximum number of iterations reached!")

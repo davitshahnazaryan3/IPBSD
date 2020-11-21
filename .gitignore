@@ -2,4 +2,5 @@
 flowchart.svg
 Details.xlsx
 postprocessing/__pycache__/*
-Database/*
+.idea/*
+*.iml
