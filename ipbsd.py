@@ -146,11 +146,10 @@ class IPBSD:
         elif filetype == "csv":
             data.to_csv(f"{filepath}.csv", index=False)
 
-    def cacheRCMRF(self, ipbsd, case_directory, details, sol, demands):
+    def cacheRCMRF(self, ipbsd, details, sol, demands):
         """
         Creates cache to be used by RCMRF
         :param ipbsd: object                            Master class
-        :param case_directory: str                      Directory of the case
         :param details: dict                            Details of design
         :param sol: dict                                Optimal solution
         :param demands: dict                            Demands on structural components
@@ -226,14 +225,14 @@ class IPBSD:
                                   "Pattern": "mass",
                                   "Load": masses[st - 1]}, ignore_index=True)
 
-        # Storing loads
-        filepath = case_directory / "loads"
-        loads.to_csv(f"{filepath}.csv", index=False)
+        # Exporting action for use by a Modeler module
+        self.export_results(self.outputPath / "action", loads, "csv")
 
         # Materials
         fc = ipbsd.data.i_d["fc"][0]
         fy = ipbsd.data.i_d["fy"][0]
         Es = ipbsd.data.i_d["Es"][0]
+
         # Elastic modulus of uncracked concrete
         Ec = (3320 * np.sqrt(fc) + 6900) * self.fstiff
 
@@ -242,13 +241,11 @@ class IPBSD:
                                   "Es": Es,
                                   "Ec": Ec}, index=[0])
 
-        # Storing the materials file
-        filepath = case_directory / "materials"
-        materials.to_csv(f"{filepath}.csv", index=False)
+        # Exporting the materials file for use by a Modeler module
+        self.export_results(self.outputPath / "materials", materials, "csv")
 
-        """Section properties"""
+        """Section properties (for the Haselton model)"""
         def get_sections(i, sections, details, sol, demands, ele, iterator, st, bay, nbays, bayName):
-            # TODO, remove constraint on beams being uniform along the building
             eleType = "Beam" if ele == "Beams" else "Column"
             pos = "External" if bay == 1 else "Internal"
             p0 = pos[0].lower() if eleType == "Column" else ""
@@ -263,15 +260,12 @@ class IPBSD:
                 MyNeg = details[ele]["Neg"][i][3]["yield"]["moment"]
                 coverPos = details[ele]["Pos"][i][0]["cover"]
                 coverNeg = details[ele]["Neg"][i][0]["cover"]
-                roPos = details[ele]["Pos"][i][0]["reinforcement"] / \
-                        (b * (h - coverPos))
-                roNeg = details[ele]["Neg"][i][0]["reinforcement"] / \
-                        (b * (h - coverNeg))
+                roPos = details[ele]["Pos"][i][0]["reinforcement"] / (b * (h - coverPos))
+                roNeg = details[ele]["Neg"][i][0]["reinforcement"] / (b * (h - coverNeg))
 
             else:
                 b = h = sol.loc[f"h{p0}{st}"]
-                Ptotal = max(demands[ele]["N"][st - 1][bay - 1], demands[ele]["N"][st - 1][nbays - bay + 1],
-                             key=abs)
+                Ptotal = max(demands[ele]["N"][st - 1][bay - 1], demands[ele]["N"][st - 1][nbays - bay + 1], key=abs)
                 length = heights[st - 1]
                 MyPos = MyNeg = details[ele][i][3]["yield"]["moment"]
                 coverPos = coverNeg = details[ele][i][0]["cover"]
@@ -309,18 +303,18 @@ class IPBSD:
         c = 1
         D = 1
         db = 20
-        nbays = len(spansY)
+        nbays = len(spansX)
 
         # Initialize sections
         sections = pd.DataFrame(columns=["Element", "Bay", "Storey", "Position", "b", "h", "coverPos", "coverNeg",
                                          "Ptotal", "MyPos", "MyNeg", "asl", "Ash", "spacing", "db", "c", "D", "Res",
                                          "Length", "ro_long_pos", "ro_long_neg"])
 
-        for ele in details["details"]:
+        for ele in details:
             if ele == "Beams":
-                iterator = details["details"][ele]["Pos"]
+                iterator = details[ele]["Pos"]
             else:
-                iterator = details["details"][ele]
+                iterator = details[ele]
 
             for i in iterator:
                 st = int(i[1])
@@ -335,7 +329,7 @@ class IPBSD:
                 for st in range(1, nst + 1):
                     ele = "Columns"
                     i = f"S{st}B{bb}"
-                    iterator = details["details"][ele]
+                    iterator = details[ele]
                     sections = get_sections(i, sections, details, sol, demands, ele, iterator, st, bb, nbays, bayName)
 
             bayName = bay
@@ -344,12 +338,11 @@ class IPBSD:
                 for st in range(1, nst + 1):
                     ele = "Beams"
                     i = f"S{st}B{bb}"
-                    iterator = details["details"][ele]["Pos"]
+                    iterator = details[ele]["Pos"]
                     sections = get_sections(i, sections, details, sol, demands, ele, iterator, st, bb, nbays, bayName)
 
-        # Storing the materials file
-        filepath = case_directory / "sections"
-        sections.to_csv(f"{filepath}.csv", index=False)
+        # Exporting the sections file for use by Modeler module as Haselton springs
+        self.export_results(self.outputPath / "haselton_springs", sections, "csv")
 
     def run_ipbsd(self):
 
@@ -429,7 +422,7 @@ class IPBSD:
                                     self.num_modes, self.fstiff, self.rebar_cover, self.outputPath)
 
             # Run the validations and iterations if need be
-            ipbsd_outputs, spoResults, opt_sol, demands, details, hinge_models = \
+            ipbsd_outputs, spoResults, opt_sol, demands, details, hinge_models, action = \
                 iterations.validations(opt_sol, opt_modes, sa, period_range, table_sls, t_lower, t_upper, self.iterate,
                                        self.maxiter, omega=self.overstrength)
 
@@ -441,13 +434,13 @@ class IPBSD:
                 self.export_results(self.outputPath / "Cache/spoAnalysisCurveShape", spoResults, "pickle")
                 self.export_results(self.outputPath / "optimal_solution", opt_sol, "csv")
                 self.export_results(self.outputPath / "Cache/demands", demands, "pkl")
-                self.export_results(self.outputPath / "ipbsd", ipbsd_outputs, "pkl")
+                self.export_results(self.outputPath / "Cache/ipbsd", ipbsd_outputs, "pkl")
                 self.export_results(self.outputPath / "Cache/details", details, "pkl")
                 self.export_results(self.outputPath / "hinge_models", hinge_models, "csv")
 
                 # TODO
                 """Creating DataFrames to store for RCMRF input"""
-                # self.cacheRCMRF(ipbsd, self.outputPath, details, opt_sol, demands)
+                self.cacheRCMRF(ipbsd, details, opt_sol, demands)
 
             print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
 
@@ -499,13 +492,14 @@ if __name__ == "__main__":
     geometry = "2d"
     export_cache = True
     holdFlag = False
+    iterate = True
 
     # Design solution to use (leave None, if the tool needs to look for the solution)
     solutionFile = path.parents[0] / ".applications/case1/designSol.csv"
     solutionFile = None
 
     method = IPBSD(input_file, hazard_file, slfDir, spo_file, limit_eal, mafc_target, outputPath, analysis_type,
-                   damping=damping, num_modes=2, iterate=True, system=system, maxiter=maxiter, fstiff=fstiff,
+                   damping=damping, num_modes=2, iterate=iterate, system=system, maxiter=maxiter, fstiff=fstiff,
                    geometry=geometry, solutionFile=solutionFile, export_cache=export_cache, holdFlag=holdFlag,
                    overstrength=None)
     start_time = method.get_init_time()

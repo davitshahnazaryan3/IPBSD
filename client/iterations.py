@@ -504,4 +504,4 @@ class Iterations:
         ipbsd_outputs = {"part_factor": part_factor, "Mstar": m_star, "Period range": [t_lower, t_upper],
                          "overstrength": omega, "yield": [say, dy], "lateral loads": forces}
 
-        return ipbsd_outputs, spo2ida_data, opt_sol, demands, details, hinge_models
+        return ipbsd_outputs, spo2ida_data, opt_sol, demands, details, hinge_models, forces
