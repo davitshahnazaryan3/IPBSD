@@ -100,7 +100,8 @@ class OpenSeesRun:
 
     def define_masses(self):
         """
-        Define masses
+        Define masses. Mass should be the total mass of the building, which is then divided by the number of seismic
+        frames.
         :return: None
         """
         for st in range(self.i_d.nst):
@@ -276,7 +277,7 @@ class OpenSeesRun:
                 # Parameters for elastic static analysis
                 next_bay = bay + 1
                 b_beam = self.cs[f'b{st}']
-                h_beam = self.cs[f'b{st}']
+                h_beam = self.cs[f'h{st}']
                 lp = 1.0 * h_beam  # not important for linear static analysis
                 my = capacities_beam[beam_id]
                 beam_id += 1
@@ -630,6 +631,7 @@ class OpenSeesRun:
 if __name__ == "__main__":
     from client.master import Master
     from pathlib import Path
+    import pandas as pd
 
     directory = Path.cwd().parents[1]
 
@@ -637,18 +639,29 @@ if __name__ == "__main__":
 
     csd = Master(directory)
     input_file = directory / ".applications/case1/ipbsd_input.csv"
+    hazard_file = directory / ".applications/case1/Hazard-LAquila-Soil-C.pkl"
+    csd.read_input(input_file, hazard_file, outputPath=outputPath)
 
-    csd.read_input(input_file, "Hazard-LAquila-Soil-C.pkl", outputPath=outputPath)
+    hinge_file = directory / ".applications/case1/Output/hinge_models.csv"
+    hinge = pd.read_csv(hinge_file)
 
-    cs = {'he1': 0.35, 'hi1': 0.4, 'b1': 0.25, 'h1': 0.45, 'he2': 0.3, 'hi2': 0.35, 'b2': 0.25,
-          'h2': 0.45, 'he3': 0.25, 'hi3': 0.3, 'b3': 0.25, 'h3': 0.45, 'T': 0.936}
+    action = [18.2, 18.2, 18.2, 18.2, 14.85]
+
+    materials_file = directory / ".applications/case1/Output/materials.csv"
+    materials = pd.read_csv(hinge_file)
+
+    cs = {'he1': 0.5, 'hi1': 0.6, 'b1': 0.4, 'h1': 0.7,
+          'he2': 0.5, 'hi2': 0.6, 'b2': 0.4, 'h2': 0.7,
+          'he3': 0.45, 'hi3': 0.6, 'b3': 0.4, 'h3': 0.65,
+          'he4': 0.45, 'hi4': 0.6, 'b4': 0.4, 'h4': 0.65,
+          'he5': 0.4, 'hi5': 0.55, 'b5': 0.4, 'h5': 0.6, 'T': 0.99}
+
     analysis = 3
-    op = OpenSeesRun(csd.data, cs, analysis=analysis, fstiff=1.0)
-    beams, columns = op.create_model()
-    action = [160, 200, 200]
-    gravity = [16.2, 13.5, 13.5]
-    op.gravity_loads(gravity, beams)
-    op.elfm_loads(action)
-    op.static_analysis()
-    response = op.define_recorders(beams, columns, analysis=analysis)
-    print(response)
+    model = OpenSeesRun(csd.data, cs, hinge=hinge, fstiff=0.5)
+    beams, columns = model.create_model()
+    model.define_masses()
+    model_periods, modalShape, gamma, mstar = model.ma_analysis(1)
+    model.gravity_loads(action, beams)
+    # op.static_analysis()
+    # response = op.define_recorders(beams, columns, analysis=analysis)
+    print(model_periods, modalShape, gamma, mstar)

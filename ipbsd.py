@@ -189,7 +189,7 @@ class IPBSD:
         else:
             pDeltaLoad = 0.0
 
-        # Masses
+        # Masses (actual frame mass is exported)
         masses = np.array(ipbsd.data.masses)
 
         # Creating a DataFrame for loads
@@ -223,7 +223,7 @@ class IPBSD:
             # Masses
             loads = loads.append({"Storey": st,
                                   "Pattern": "mass",
-                                  "Load": masses[st - 1]}, ignore_index=True)
+                                  "Load": masses[st - 1] / ipbsd.data.n_seismic}, ignore_index=True)
 
         # Exporting action for use by a Modeler module
         self.export_results(self.outputPath / "action", loads, "csv")
@@ -431,6 +431,8 @@ class IPBSD:
             if self.export_cache:
                 """Storing the outputs"""
                 # Exporting the IPBSD outputs
+                self.export_results(self.outputPath / "Cache/spoShape", pd.DataFrame(iterations.spo_data, index=[0]),
+                                    "csv")
                 self.export_results(self.outputPath / "Cache/spoAnalysisCurveShape", spoResults, "pickle")
                 self.export_results(self.outputPath / "optimal_solution", opt_sol, "csv")
                 self.export_results(self.outputPath / "Cache/demands", demands, "pkl")
@@ -438,12 +440,10 @@ class IPBSD:
                 self.export_results(self.outputPath / "Cache/details", details, "pkl")
                 self.export_results(self.outputPath / "hinge_models", hinge_models, "csv")
 
-                # TODO
                 """Creating DataFrames to store for RCMRF input"""
                 self.cacheRCMRF(ipbsd, details, opt_sol, demands)
 
             print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
-
             # Note: stiffness based off first yield point, at nominal point the stiffness is actually lower, and
             # might act as a more realistic value. Notably Haselton, 2016 limits the secant yield stiffness between
             # 0.2EIg and 0.6EIg.

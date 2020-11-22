@@ -393,9 +393,9 @@ class Master:
         ma.create_model()
         ma.define_masses()
         ma.pdelta_columns(action)
-        periods = ma.ma_analysis(1)
+        model_periods, modalShape, gamma, mstar = ma.ma_analysis(1)
         ma.wipe()
-        return periods
+        return model_periods, modalShape, gamma, mstar
 
     def spo_opensees(self, solution, hinge, action, fstiff, modalShape=None):
         """

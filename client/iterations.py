@@ -468,7 +468,7 @@ class Iterations:
                 opt_sol, modes = self.seek_solution(warnings, opt_sol)
 
                 # Print out the issue causing subsequent iteration to be run
-                textToPrintOut = f"[ITERATION 4] Iteration: {cnt+1}. Rerunning phase 3 due to: "
+                textToPrintOut = f"[ITERATION 4] Iteration: {cnt+1}. Rerunning phase 3 and/or 4 due to: "
                 if self.omegaWarn:
                     textToPrintOut += "modified Overstrength"
                 if warn:
