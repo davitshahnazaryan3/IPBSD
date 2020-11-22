@@ -414,7 +414,13 @@ class Iterations:
         :param iterate: bool                            Whether iterations to seek for better solutions are necessary
         :param maxiter: int                             Maximum number of iterations before the framework halts
         :param omega: float                             Overstrength ratio
-        :return:
+        :return: ipbsd_outputs: dict                    IPBSD outputs to cache
+        :return: spo2ida_data: dict                     SPO2IDA outputs to cache
+        :return: opt_sol: df.Series                     Optimal solution to cache
+        :return: demands: dict                          Demands on structural elements to cache
+        :return: details: dict                          Detailing outputs to cache
+        :return: hinge_models: DataFrame                Hysteretic hinge model parameters
+        :return: forces: DataFrame                      Acting loads and masses on the structure
         """
         # Based on available literature, depending on perimeter or space frame, inclusion of gravity loads
         if omega is None:
