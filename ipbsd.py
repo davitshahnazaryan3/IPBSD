@@ -184,8 +184,7 @@ class IPBSD:
 
         # PDelta loads/ essentially loads going to the gravity frames
         if nGravity > 0:
-            distLength = spansY[0]
-            pDeltaLoad = [floorLoad * distLength * X, roofLoad * distLength * X]
+            pDeltaLoad = ipbsd.data.pdelta_loads
         else:
             pDeltaLoad = 0.0
 
@@ -211,7 +210,7 @@ class IPBSD:
 
             # PDelta loads
             if nGravity > 0:
-                l = pDeltaLoad[1] if st == nst else pDeltaLoad[0]
+                l = pDeltaLoad[st-1] / ipbsd.data.n_seismic
                 loads = loads.append({"Storey": st,
                                       "Pattern": "pdelta",
                                       "Load": l}, ignore_index=True)
@@ -422,7 +421,7 @@ class IPBSD:
                                     self.num_modes, self.fstiff, self.rebar_cover, self.outputPath)
 
             # Run the validations and iterations if need be
-            ipbsd_outputs, spoResults, opt_sol, demands, details, hinge_models, action = \
+            ipbsd_outputs, spoResults, opt_sol, demands, details, hinge_models, action, modelOutputs = \
                 iterations.validations(opt_sol, opt_modes, sa, period_range, table_sls, t_lower, t_upper, self.iterate,
                                        self.maxiter, omega=self.overstrength)
 
@@ -439,6 +438,7 @@ class IPBSD:
                 self.export_results(self.outputPath / "Cache/ipbsd", ipbsd_outputs, "pkl")
                 self.export_results(self.outputPath / "Cache/details", details, "pkl")
                 self.export_results(self.outputPath / "hinge_models", hinge_models, "csv")
+                self.export_results(self.outputPath / "Cache/modelOutputs", modelOutputs, "pickle")
 
                 """Creating DataFrames to store for RCMRF input"""
                 self.cacheRCMRF(ipbsd, details, opt_sol, demands)
@@ -487,7 +487,7 @@ if __name__ == "__main__":
     mafc_target = 2.e-4
     damping = .05
     system = "Perimeter"
-    maxiter = 5
+    maxiter = 1
     fstiff = 0.5
     geometry = "2d"
     export_cache = True

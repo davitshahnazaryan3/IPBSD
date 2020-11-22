@@ -80,10 +80,10 @@ class Input:
         for storey in range(self.nst):
             if storey == self.nst - 1:
                 self.masses[storey] = q_roof * A_floor / 9.81
-                self.pdelta_loads[storey] = q_roof*(sum(self.spans_y)-self.bay_perp)
+                self.pdelta_loads[storey] = q_roof*(sum(self.spans_y)-self.bay_perp)*sum(self.spans_x)
             else:
                 self.masses[storey] = q_floor * A_floor / 9.81
-                self.pdelta_loads[storey] = q_floor*(sum(self.spans_y)-self.bay_perp)
+                self.pdelta_loads[storey] = q_floor*(sum(self.spans_y)-self.bay_perp)*sum(self.spans_x)
         self.o_th = self.i_d['mode_red'][0]
         self.fy = self.i_d['fy'][0]
         self.elastic_modulus_steel = self.i_d['Es'][0]

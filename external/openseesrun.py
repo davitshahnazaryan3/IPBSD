@@ -336,7 +336,7 @@ class OpenSeesRun:
         :return: None
         """
         # Elastic modulus of concrete
-        elastic_modulus = (3320 * np.sqrt(self.i_d.fc) + 6900) * 1000 * self.fstiff
+        elastic_modulus = float((3320 * np.sqrt(self.i_d.fc) + 6900) * 1000 * self.fstiff)
         # Check whether Pdelta forces were provided (if not, skips step)
         if "pdelta" in loads.columns:
             # Material definition
@@ -384,14 +384,13 @@ class OpenSeesRun:
             op.fixY(0.0, 0, 1, 0, 0, 0, 1)
 
             # Creation of P-Delta column elements
-            agcol = 2.**2
-            izgcol = 2.**4/12
-            young_modulus = float(elastic_modulus)
+            agcol = 0.5**2
+            izgcol = 0.5**4/12/1.0e4
             for st in range(1, self.i_d.nst + 1):
                 eleid = int(f"2{pdelta_mat_tag}{st}")
                 node_i = int(f"{pdelta_mat_tag}{st-1}")
                 node_j = int(f"{pdelta_mat_tag}{st}")
-                op.element("elasticBeamColumn", eleid, node_i, node_j, agcol, young_modulus, self.NEGLIGIBLE,
+                op.element("elasticBeamColumn", eleid, node_i, node_j, agcol, elastic_modulus, self.NEGLIGIBLE,
                            self.NEGLIGIBLE, self.NEGLIGIBLE, izgcol, pdelta_transf_tag)
 
             # Definition of loads
@@ -509,7 +508,7 @@ class OpenSeesRun:
         topDisp = np.array([op.nodeResponse(self.spo_nodes[-1], 1, 1)])
         baseShear = np.array([0.0])
         for col in self.base_cols:
-            baseShear[0] += op.eleForce(col, 1, 3)
+            baseShear[0] += op.eleForce(col, 1)
 
         while step <= nsteps and ok == 0 and loadf > 0:
             ok = op.analyze(1)
@@ -549,7 +548,7 @@ class OpenSeesRun:
             topDisp = np.append(topDisp, (op.nodeResponse(self.spo_nodes[-1], 1, 1)))
             eleForceTemp = 0.
             for col in self.base_cols:
-                eleForceTemp += op.eleForce(col, 1, 3)
+                eleForceTemp += op.eleForce(col, 1)
             baseShear = np.append(baseShear, eleForceTemp)
 
             loadf = op.getTime()

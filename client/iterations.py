@@ -23,6 +23,7 @@ class Iterations:
         self.outputPath = outputPath
         self.omegaWarn = False
         self.spo_validate = True
+        self.model_outputs = None
 
     def iterate_phase_3(self, opt_sol, omega, read=True):
         """
@@ -362,6 +363,10 @@ class Iterations:
         spoResults = self.ipbsd.spo_opensees(opt_sol, hinge_models, forces, self.fstiff, modalShape)
         print("[SUCCESS] Modal analysis and  Static pushover analysis were successfully performed.")
 
+        # Record
+        self.model_outputs = {"MA": {"T": model_periods, "modes": modalShape, "gamma": gamma, "mstar": mstar},
+                              "SPO": spoResults}
+
         # Get the idealized version of the SPO curve and create a warningSPO = True if the assumed shape was incorrect
         d, v = self.derive_spo_shape(spoResults)
 
@@ -510,4 +515,4 @@ class Iterations:
         ipbsd_outputs = {"part_factor": part_factor, "Mstar": m_star, "Period range": [t_lower, t_upper],
                          "overstrength": omega, "yield": [say, dy], "lateral loads": forces}
 
-        return ipbsd_outputs, spo2ida_data, opt_sol, demands, details, hinge_models, forces
+        return ipbsd_outputs, spo2ida_data, opt_sol, demands, details, hinge_models, forces, self.model_outputs
