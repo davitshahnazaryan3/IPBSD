@@ -19,7 +19,7 @@ class MAFCCheck:
         :param omega: float                         Overstrength factor
         :param hazard: str                          Hazard to use, i.e. True or Fitted
         """
-        self.say = None
+        self.cy = None
         self.r = r
         self.lam_target = lam_target
         self.gamma = gamma
@@ -108,13 +108,14 @@ class MAFCCheck:
         :return: float                              Difference of target and calculated MAFC
         """
         # transform R to Sa
-        self.say = np.array(say)
+        self.cy = np.array(say)
         # defining scale and standard deviation of lognormal distribution
-        mu_lnr = self.say[0]*self.r[1]*self.gamma*self.omega
-        std_lnr = np.log(self.r[1]*self.say[0]*self.gamma) - np.log(min(self.r[0], self.r[2])*self.say[0]*self.gamma)
+        mu_lnr = self.cy[0] * self.r[1] * self.gamma * self.omega
+        std_lnr = np.log(self.r[1] * self.cy[0] * self.gamma) - np.log(min(self.r[0], self.r[2]) * self.cy[0] *
+                                                                       self.gamma)
 
         if self.hazard == "Fitted":
-            sa_range = np.linspace(0, 50, 1000)*self.say[0]*self.gamma
+            sa_range = np.linspace(0, 50, 1000) * self.cy[0] * self.gamma
             log_dist = lognorm.cdf(sa_range, std_lnr, 0, mu_lnr)
             interpolator = interp1d(sa_range, log_dist)
             new_dist = np.array([])

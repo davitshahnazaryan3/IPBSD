@@ -85,7 +85,7 @@ class Master:
         """
         lc = LossCurve(self.data.y, lambda_ls, eal_limit)
         lc.verify_eal()
-        return lc.EAL
+        return lc.EAL, lc.y_fit, lc.lambda_fit
 
     def get_spectra(self, lam):
         """
@@ -194,10 +194,11 @@ class Master:
         r = [spo2ida['R16'], spo2ida['R50'], spo2ida['R84']]
         Hs, sa_hazard = self.get_hazard_sa(period, hazard)
         m = MAFCCheck(r, mafc_target, g, Hs, sa_hazard, omega, hazard)
-        fsolve(m.objective, x0=np.array([0.05]))
-        dy = float(m.say)*9.81*(period/2/np.pi)**2
-        say = float(m.say)
-        return say, dy
+        fsolve(m.objective, x0=np.array([0.02]), factor=0.1)
+        # Yield displacement for ESDOF
+        dy = float(m.cy) * 9.81 * (period / 2 / np.pi) ** 2
+        cy = float(m.cy)
+        return cy, dy
 
     def get_index(self, target, data):
         """
@@ -289,12 +290,12 @@ class Master:
                 ele += 1
         return results
 
-    def get_action(self, solution, say, df, gravity_loads, analysis, num_modes=None, opt_modes=None,
+    def get_action(self, solution, cy, df, gravity_loads, analysis, num_modes=None, opt_modes=None,
                    modal_sa=None):
         """
         gets demands on the structure
         :param solution: DataFrame                  Solution containing cross-section and modal properties
-        :param say: float                           Spectral acceleration at yield
+        :param cy: float                            Spectral acceleration at yield
         :param df: DataFrame                        Contains information of displacement shape at SLS
         :param analysis: int                        Analysis type
         :param gravity_loads: dict                  Gravity loads as {'roof': *, 'floor': *}
@@ -304,7 +305,7 @@ class Master:
         :return: DataFrame                          Acting forces
         """
         # todo, consider phi shape for forces from CrossSection for opt_sol, 1st mode-proportional
-        a = Action(solution, self.data.n_seismic, self.data.n_bays, self.data.nst, self.data.masses, say, df, analysis,
+        a = Action(solution, self.data.n_seismic, self.data.n_bays, self.data.nst, self.data.masses, cy, df, analysis,
                    gravity_loads, num_modes, opt_modes, modal_sa, self.data.pdelta_loads)
         d = a.forces()
         return d
@@ -317,7 +318,8 @@ class Master:
         elf = ELF(solution, loads, heights, widths)
         return elf.response
 
-    def run_analysis(self, analysis, solution, lat_action=None, grav_loads=None, sls=None, yield_sa=None, fstiff=0.5):
+    def run_analysis(self, analysis, solution, lat_action=None, grav_loads=None, sls=None, yield_sa=None, fstiff=0.5,
+                     hinge=None):
         """
         runs elfm to identify demands on the structural elements
         :param analysis: int                        Analysis type
@@ -327,8 +329,10 @@ class Master:
         :param sls: dict                            Table at SLS, necessary for simplified computations only
         :param yield_sa: float                      Spectral acceleration at yield
         :param fstiff: float                        Stiffness reduction factor
+        :param hinge: DataFrame                     Hinge models
         :return: dict                               Demands on the structural elements
         """
+        response = None
         if analysis == 1:       # redundant, unnecessary, but will be left here as a placeholder for future changes
             print("[INITIATE] Starting simplified approximate demand estimation...")
             response = pd.DataFrame({'Mbi': np.zeros(self.data.nst),
@@ -364,19 +368,8 @@ class Master:
                 response['Mci'][st] = 0.6 * self.data.h[st] * shear_internal
                 response['Mce'][st] = 0.6 * self.data.h[st] * shear_external
         else:
-            op = OpenSeesRun(self.data, solution, fstiff=fstiff)
-            beams, columns = op.create_model()
-            if lat_action is not None:
-                op.elfm_loads(lat_action)
-            # gravity load inclusion
-            if analysis == 3 or analysis == 5:
-                if grav_loads is not None:
-                    op.gravity_loads(grav_loads, beams)
-            op.static_analysis()
-            # Sets analysis type 3, so that critical demand values are recorded
-            if grav_loads is not None:
-                analysis = 3
-            response = op.define_recorders(beams, columns, analysis)
+            op = OpenSeesRun(self.data, solution, fstiff=fstiff, hinge=hinge)
+            response = op.elastic_analysis(analysis, lat_action, grav_loads)
 
         return response
 
@@ -414,27 +407,24 @@ class Master:
         spo.wipe()
         return topDisp, baseShear
 
-    def design_elements(self, demands, sections, modes, tlower, tupper, dy, ductility_class="DCM", fstiff=0.5,
-                        cover=0.03):
+    def design_elements(self, demands, sections, modes, dy, ductility_class="DCM", cover=0.03):
         """
         Runs M-phi to optimize for reinforcement for each section
         :param demands: DataFrame or dict           Demands identified from a structural analysis (lateral+gravity)
         :param sections: DataFrame                  Solution including section information
         :param modes: dict                          Periods and modal shapes obtained from modal analysis
-        :param tlower: float                        Lower period limit
-        :param tupper: float                        Upper period limit
         :param dy: float                            System yield displacement in m
         :param ductility_class: str                 Ductility class (DCM or DCH, following Eurocode 8 recommendations)
-        :param fstiff: float                        Stiffness reduction factor
         :param cover: float                         Reinforcement cover in m
         :return: dict                               Designed element properties from the moment-curvature relationship
         """
         d = Detailing(demands, self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
-                      self.data.heights, self.data.n_seismic, self.data.masses, tlower, tupper, dy, sections,
-                      ductility_class=ductility_class, fstiff=fstiff, rebar_cover=cover)
+                      self.data.heights, self.data.n_seismic, self.data.masses, dy, sections,
+                      ductility_class=ductility_class, rebar_cover=cover)
         data, hinge_models, mu_c, mu_f, warnings = d.design_elements(modes)
-        warn = d.WARNING
-        return data, hinge_models, mu_c, mu_f, warn, warnings
+        warnMax = d.WARNING_MAX
+        warnMin = d.WARNING_MIN
+        return data, hinge_models, mu_c, mu_f, warnMax, warnMin, warnings
 
     def run_ma(self, solution, tlower, tupper, sections):
         """

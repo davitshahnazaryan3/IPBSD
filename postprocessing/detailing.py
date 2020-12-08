@@ -10,8 +10,8 @@ import pandas as pd
 
 
 class Detailing:
-    def __init__(self, demands, nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, tlower, tupper, dy, sections,
-                 rebar_cover=0.03, ductility_class="DCM", young_mod_s=200e3, k_hard=1.0, fstiff=0.5):
+    def __init__(self, demands, nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, dy, sections,
+                 rebar_cover=0.04, ductility_class="DCM", young_mod_s=200e3, k_hard=1.0):
         """
         initializes detailing phase
         :param demands: dict                Demands on structural elements
@@ -23,15 +23,12 @@ class Detailing:
         :param heights: list                Storey heights
         :param n_seismic: int               Number of seismic frames
         :param mi: list                     Lumped storey masses
-        :param tlower: float                Lower period bound
-        :param tupper: float                Upper period bound
         :param dy: float                    System yield displacement in m
         :param sections: DataFrame          Cross-sections of elements of the solution
         :param rebar_cover: float           Reinforcement cover in m
         :param ductility_class: str         Ductility class (DCM or DCH, following Eurocode 8 recommendations)
         :param young_mod_s: float           Young modulus of reinforcement
         :param k_hard: float                Hardening slope of reinforcement (i.e. fu/fy)
-        :param fstiff: float                Stiffness reduction factor
         """
         self.demands = demands
         self.nst = nst
@@ -43,8 +40,6 @@ class Detailing:
         self.heights = heights
         self.n_seismic = n_seismic
         self.mi = mi
-        self.tlower = tlower
-        self.tupper = tupper
         self.dy = dy
         self.sections = sections
         self.rebar_cover = rebar_cover
@@ -52,11 +47,13 @@ class Detailing:
         # Reinforcement characteristic yield strength in MPa
         self.FYK = 500.
         self.k_hard = k_hard
-        # if warning 0, then no iterations are necessary for 4a, otherwise it equals to 1
-        self.WARNING = False
-        # Warning for each element
-        self.WARN_ELE = 0
-        self.fstiff = fstiff
+        # if no warning, then no iterations are necessary for 4a
+        self.WARNING_MAX = False
+        self.WARNING_MIN = False
+        # Warning for each element, if local max reinforcement ratio limit is not met
+        self.WARN_ELE_MAX = False
+        # Warning for each element, if local min reinforcement ratio limit is not met
+        self.WARN_ELE_MIN = False
 
     def capacity_design(self, Mbi, Mci):
         """
@@ -224,27 +221,52 @@ class Detailing:
         if ro_min > ro_prime:
             ro_prime = ro_min
             if eletype == "Beam":
+                # self.WARN_ELE_MIN = True
+                # cover = relation.d
+                # while self.WARN_ELE_MIN and cover < 0.04 - 0.0005:
+                    # Increase reinforcement cover, which will trigger requirement of more reinforcement
+                #     cover += 0.005
+                #     data = relation.get_mphi(cover=cover)
+                #     reinforcement = data[0]["reinforcement"]
+                #     ro_prime = reinforcement / (b * (h - cover))
+                #
+                #     if ro_min > ro_prime:
+                #         self.WARN_ELE_MIN = True
+                #     else:
+                #         self.WARN_ELE_MIN = False
+                # data = relation.get_mphi(cover=cover)
+
                 rebar = (b * (h - self.rebar_cover)) * ro_prime + oppReinf
                 m_target = relation.get_mphi(check_reinforcement=True, reinf_test=rebar,
                                              reinforcements=[(b * (h - self.rebar_cover)) * ro_prime, oppReinf])
                 data = relation.get_mphi(m_target=m_target,
                                          reinforcements=[(b * (h - self.rebar_cover)) * ro_prime, oppReinf])
             else:
+                # while self.WARN_ELE_MIN:
+                #     # Increase reinforcement cover, which will trigger requirement of more reinforcement
+                #     cover = relation.d + 0.05
+                #     data = relation.get_mphi(cover=cover)
+
                 rebar = (b * (h - self.rebar_cover)) * ro_prime
                 m_target = relation.get_mphi(check_reinforcement=True, reinf_test=rebar)
                 data = relation.get_mphi(m_target=m_target)
-            self.WARN_ELE = False
+
+            self.WARN_ELE_MAX = False
+            self.WARN_ELE_MIN = True
+            self.WARNING_MIN = True
             return data
 
         elif ro_max < ro_prime:
             print(f"[WARNING] Cross-section of {eletype} element at storey {st} and bay {bay} should be increased! "
                   f"ratio: {ro_prime * 100:.2f}%")
-            self.WARN_ELE = True
-            self.WARNING = True
+            self.WARN_ELE_MAX = True
+            self.WARN_ELE_MIN = False
+            self.WARNING_MAX = True
             return None
 
         else:
-            self.WARN_ELE = False
+            self.WARN_ELE_MIN = False
+            self.WARN_ELE_MAX = False
             return None
 
     def get_rebar_distribution(self, b, h, d, mpos, mneg):
@@ -282,7 +304,6 @@ class Detailing:
         :param modes: dict                      Periods and modal shapes obtained from modal analysis
         :return: dict                           Designed element details from the moment-curvature relationship
         """
-        # TODO, should I include fstiff here?
         # Ensure symmetry of strength distribution along the widths of the frame
         ''' Assumptions: Beams are designed for both directions: positive and negative, neglecting axial loads
         Columns are designed considering M+N demands; No shear design is carried out'''
@@ -296,7 +317,8 @@ class Detailing:
 
         # Initialize dictionaries for storing details, warnings and hinge models (hysteretic models) for OpenSees model
         data = {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}
-        warnings = {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}
+        warnings = {"MAX": {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}},
+                    "MIN": {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}}
         hinge_models = {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}
 
         # Design of beams
@@ -334,23 +356,26 @@ class Detailing:
                     '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
                     # Positive direction
                     d_temp = self.ensure_local_ductility(b, h, data["Beams"]["Pos"][f"S{st + 1}B{bay + 1}"][0][
-                        "reinforcement"],
-                                                         mphiPos, st + 1, bay + 1, eletype="Beam",
+                        "reinforcement"],  mphiPos, st + 1, bay + 1, eletype="Beam",
                                                          oppReinf=data["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"][0][
                                                              "reinforcement"])
-                    warnings["Beams"]["Pos"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE
+
+                    warnings["MAX"]["Beams"]["Pos"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE_MAX
+                    warnings["MIN"]["Beams"]["Pos"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE_MIN
                     if d_temp is not None:
                         data["Beams"]["Pos"][f"S{st + 1}B{bay + 1}"] = d_temp
                         hinge_models["Beams"]["Pos"][f"S{st+1}B{bay+1}"] = d_temp[4]
 
                     # Negative direction
                     d_temp = self.ensure_local_ductility(b, h, data["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"][0][
-                        "reinforcement"],
-                                                         mphiNeg, st + 1, bay + 1, eletype="Beam",
+                        "reinforcement"], mphiNeg, st + 1, bay + 1, eletype="Beam",
                                                          oppReinf=data["Beams"]["Pos"][f"S{st + 1}B{bay + 1}"][0][
                                                              "reinforcement"])
 
-                    warnings["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE
+                    # TODO, once local ductility is ensured, M-phi relationship might change, also after mphiNeg, pos reinforcement might change
+                    # So, ideally it should go back and forth to correct the reinforcements, however, no iterations are done there
+                    warnings["MAX"]["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE_MAX
+                    warnings["MIN"]["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE_MIN
                     if d_temp is not None:
                         data["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"] = d_temp
                         hinge_models["Beams"]["Pos"][f"S{st+1}B{bay+1}"] = d_temp[4]
@@ -386,7 +411,8 @@ class Detailing:
                                                      mphiPos, st + 1, 1, eletype="Beam",
                                                      oppReinf=data["Beams"]["Neg"][f"S{st + 1}B{1}"][0][
                                                          "reinforcement"])
-                warnings["Beams"]["Pos"][f"S{st + 1}B{1}"] = self.WARN_ELE
+                warnings["MAX"]["Beams"]["Pos"][f"S{st + 1}B{1}"] = self.WARN_ELE_MAX
+                warnings["MIN"]["Beams"]["Pos"][f"S{st + 1}B{1}"] = self.WARN_ELE_MIN
                 if d_temp is not None:
                     data["Beams"]["Pos"][f"S{st + 1}B{1}"] = d_temp
                     hinge_models["Beams"]["Pos"][f"S{st+1}B{1}"] = d_temp[4]
@@ -396,7 +422,8 @@ class Detailing:
                                                      mphiNeg, st + 1, 1, eletype="Beam",
                                                      oppReinf=data["Beams"]["Pos"][f"S{st + 1}B{1}"][0][
                                                          "reinforcement"])
-                warnings["Beams"]["Neg"][f"S{st + 1}B{1}"] = self.WARN_ELE
+                warnings["MAX"]["Beams"]["Neg"][f"S{st + 1}B{1}"] = self.WARN_ELE_MAX
+                warnings["MIN"]["Beams"]["Neg"][f"S{st + 1}B{1}"] = self.WARN_ELE_MIN
                 if d_temp is not None:
                     data["Beams"]["Neg"][f"S{st + 1}B{1}"] = d_temp
                     hinge_models["Beams"]["Neg"][f"S{st+1}B{1}"] = d_temp[4]
@@ -422,13 +449,16 @@ class Detailing:
                 # todo, may add better estimation of contraflexure point based on Muto's approach
                 # todo, Collins softening method not working well with columns
                 z = 0.6 * self.heights[st]
+
                 mphi = MomentCurvatureRC(b, h, m_target, length=z, p=-nc_design, nlayers=nlayers, d=self.rebar_cover,
-                                         young_mod_s=self.young_mod_s, k_hard=self.k_hard, soft_method="Haselton")
+                                         young_mod_s=self.young_mod_s, k_hard=self.k_hard, soft_method="Collins")
+
                 temp = {"Pos": mphi.get_mphi()}
                 if nc_design_neg < 0.0:
+
                     mphiNeg = MomentCurvatureRC(b, h, m_target, length=z, p=-nc_design_neg, nlayers=nlayers,
                                                 d=self.rebar_cover, young_mod_s=self.young_mod_s, k_hard=self.k_hard,
-                                                soft_method="Haselton")
+                                                soft_method="Collins")
                     temp["Neg"] = mphiNeg.get_mphi()
                     # Select the design requiring highest reinforcement
                     if temp["Neg"][0]["reinforcement"] > temp["Pos"][0]["reinforcement"]:
@@ -445,7 +475,8 @@ class Detailing:
                 '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
                 d_temp = self.ensure_local_ductility(b, h, data["Columns"][f"S{st + 1}B{bay + 1}"][0]["reinforcement"],
                                                      mphi, st + 1, bay + 1, eletype="Column")
-                warnings["Columns"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE
+                warnings["MAX"]["Columns"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE_MAX
+                warnings["MIN"]["Columns"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE_MIN
                 if d_temp is not None:
                     data["Columns"][f"S{st + 1}B{bay + 1}"] = d_temp
                     hinge_models["Columns"][f"S{st + 1}B{bay + 1}"] = d_temp[4]
@@ -545,7 +576,7 @@ if __name__ == "__main__":
     cs = {'he1': 0.35, 'hi1': 0.4, 'b1': 0.25, 'h1': 0.45, 'he2': 0.3, 'hi2': 0.35, 'b2': 0.25,
           'h2': 0.45, 'he3': 0.25, 'hi3': 0.3, 'b3': 0.25, 'h3': 0.45, 'T': 0.936}
     analysis = 2
-    op = OpenSeesRun(csd.data, cs, analysis=analysis, fstiff=1.0)
+    op = OpenSeesRun(csd.data, cs, analysis=analysis)
     beams, columns = op.create_model()
     action = [160, 200, 200]
     gravity = [16.2, 13.5, 13.5]
@@ -556,14 +587,13 @@ if __name__ == "__main__":
 
     # Input for Detailing
     cover = 0.03
-    fstiff = 1.0
     tlower = 0.5
     tupper = 1.0
     dy = 0.035
     ductility_class = "DCM"
 
     d = Detailing(response, csd.data.nst, csd.data.n_bays, csd.data.fy, csd.data.fc, csd.data.spans_x,
-                  csd.data.h, csd.data.n_seismic, csd.data.masses, tlower, tupper, dy, cs,
-                  ductility_class=ductility_class, fstiff=fstiff, rebar_cover=cover)
+                  csd.data.h, csd.data.n_seismic, csd.data.masses, dy, cs,
+                  ductility_class=ductility_class, rebar_cover=cover)
 
     data, mu_c, mu_f, warnings = d.design_elements()

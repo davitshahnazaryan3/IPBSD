@@ -18,13 +18,13 @@ class LossCurve:
         self.lam = lam
         self.eal_limit = eal_limit
         self.EAL = None                 # Expected annual loss (EAL)
-        self.loss_curve()
+        self.y_fit, self.lambda_fit = self.loss_curve()
 
     def loss_curve(self):
         """
         Fitting of a refined loss curve that passes through the performance limit states and calculates the expected
         annual loss (EAL) as the area below the refined loss curve
-        :return: None
+        :return: ndarrays               Fitted loss curve
         """
         coef = np.zeros(len(self.y))
 
@@ -61,6 +61,7 @@ class LossCurve:
             area.append((lambda_fit[i] + lambda_fit[i + 1]) / 2 * (y_fit[i + 1] - y_fit[i]))
         # Get EAL in terms of %
         self.EAL = sum(area) * 100
+        return y_fit, lambda_fit
 
     def verify_eal(self):
         """

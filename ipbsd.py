@@ -364,7 +364,9 @@ class IPBSD:
 
         # """Get EAL"""
         lam_ls = ipbsd.get_hazard_pga(self.target_MAFC)
-        eal = ipbsd.get_loss_curve(lam_ls, self.limit_EAL)
+        eal, y_fit, lam_fit = ipbsd.get_loss_curve(lam_ls, self.limit_EAL)
+        lossCurve = {"y": ipbsd.data.y, "lam": lam_ls, "y_fit": y_fit, "lam_fit": lam_fit, "eal": eal,
+                     "PLS": ipbsd.data.PLS}
 
         """Get design limits"""
         theta_max, a_max = ipbsd.get_design_values(self.slfDir, self.geometry)
@@ -430,10 +432,12 @@ class IPBSD:
             if self.export_cache:
                 """Storing the outputs"""
                 # Exporting the IPBSD outputs
-                self.export_results(self.outputPath / "Cache/spoShape", pd.DataFrame(iterations.spo_data, index=[0]),
+                self.export_results(self.outputPath / "Cache/spoShape", pd.DataFrame(iterations.spo_shape, index=[0]),
                                     "csv")
+                self.export_results(self.outputPath / "Cache/lossCurve", lossCurve, "pickle")
                 self.export_results(self.outputPath / "Cache/spoAnalysisCurveShape", spoResults, "pickle")
                 self.export_results(self.outputPath / "optimal_solution", opt_sol, "csv")
+                self.export_results(self.outputPath / "Cache/action", action, "csv")
                 self.export_results(self.outputPath / "Cache/demands", demands, "pkl")
                 self.export_results(self.outputPath / "Cache/ipbsd", ipbsd_outputs, "pkl")
                 self.export_results(self.outputPath / "Cache/details", details, "pkl")
@@ -475,33 +479,34 @@ if __name__ == "__main__":
     # Paths
     from pathlib import Path
     path = Path.cwd()
-    outputPath = path.parents[0] / ".applications/case1/Output"
+    outputPath = path.parents[0] / ".applications/case1/Output1"
 
     # Add input arguments
     analysis_type = 3
     input_file = path.parents[0] / ".applications/case1/ipbsd_input.csv"
     hazard_file = path.parents[0] / ".applications/case1/Hazard-LAquila-Soil-C.pkl"
-    slfDir = path.parents[0] / ".applications/case1/Output/slfoutput"
+    slfDir = outputPath / "slfoutput"
     spo_file = path.parents[0] / ".applications/case1/spo.csv"
     limit_eal = 0.8
     mafc_target = 2.e-4
     damping = .05
     system = "Perimeter"
-    maxiter = 1
+    maxiter = 5
     fstiff = 0.5
+    overstrength = 1.0
     geometry = "2d"
     export_cache = True
     holdFlag = False
     iterate = True
 
     # Design solution to use (leave None, if the tool needs to look for the solution)
-    solutionFile = path.parents[0] / ".applications/case1/designSol.csv"
+    # solutionFile = path.parents[0] / ".applications/case1/designSol.csv"
     solutionFile = None
 
     method = IPBSD(input_file, hazard_file, slfDir, spo_file, limit_eal, mafc_target, outputPath, analysis_type,
                    damping=damping, num_modes=2, iterate=iterate, system=system, maxiter=maxiter, fstiff=fstiff,
                    geometry=geometry, solutionFile=solutionFile, export_cache=export_cache, holdFlag=holdFlag,
-                   overstrength=None)
+                   overstrength=overstrength, rebar_cover=0.03)
     start_time = method.get_init_time()
     method.run_ipbsd()
     method.get_time(start_time)

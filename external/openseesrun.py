@@ -33,6 +33,203 @@ class OpenSeesRun:
         # Rightmost nodes for pushover load application
         self.spo_nodes = []
 
+    def elastic_analysis(self, analysis, lat_action, grav_loads):
+        """
+
+        :param analysis: int                        Analysis type
+        :param lat_action: list                     Acting lateral loads in kN
+        :param grav_loads: list                     Acting gravity loads in kN/m
+        """
+        self.wipe()
+        # Create the model
+        op.model('Basic', '-ndm', 2)
+
+        # Add the nodes
+        xloc = 0.
+        for bay in range(0, int(self.i_d.n_bays + 1)):
+            zloc = 0.
+            nodetag = int(str(1 + bay) + '0')
+            self.base_nodes.append(nodetag)
+            op.node(nodetag, xloc, zloc)
+
+            # Fix the base nodes
+            op.fix(nodetag, 1, 1, 1)
+            for st in range(1, self.i_d.nst + 1):
+                zloc += self.i_d.heights[st - 1]
+                nodetag = int(str(1 + bay) + str(st))
+                op.node(nodetag, xloc, zloc)
+
+            if bay == int(self.i_d.n_bays):
+                pass
+            else:
+                xloc += self.i_d.spans_x[bay]
+
+        # Rigid floor constraints
+        for st in range(1, self.i_d.nst + 1):
+            nodeTagR = int(f"1{st}")
+            for bay in range(2, int(self.i_d.n_bays + 2)):
+                nodeTag = int(f"{bay}{st}")
+                op.equalDOF(nodeTagR, nodeTag, 1)
+
+        # Geometric transformations
+        op.geomTransf("Linear", 1)
+        # Add the column elements
+        col_id = 0
+        columns = []
+        for bay in range(1, int(self.i_d.n_bays + 2)):
+            for st in range(1, int(self.i_d.nst + 1)):
+                # Parameters for elastic static analysis
+                previous_st = st - 1
+                col_id += 1
+                if bay == 1 or bay == 1 + int(self.i_d.n_bays):
+                    b_col = h_col = self.cs[f'he{st}']
+                else:
+                    b_col = h_col = self.cs[f'hi{st}']
+                et = int(f"2{bay}{st}")
+                inode = int(f"{bay}{previous_st}")
+                jnode = int(f"{bay}{st}")
+                A = b_col * h_col
+                I = b_col * h_col**3 / 12
+
+                # Stiffness reduction
+                if self.hinge is not None:
+                    eleHinge = self.hinge[(self.hinge["Element"] == "Column") & (self.hinge["Bay"] == bay) & (
+                                self.hinge["Storey"] == st)].reset_index(drop=True)
+                    my = eleHinge["m1"].iloc[0]
+                    phiy = eleHinge["phi1"].iloc[0]
+                    E = my / phiy / I
+                else:
+                    # Elastic modulus of concrete
+                    E = (3320 * np.sqrt(self.i_d.fc) + 6900) * 1000 * self.fstiff
+
+                # Create the elastic element
+                op.element("elasticBeamColumn", et, inode, jnode, A, E, I, 1)
+
+                columns.append(et)
+                # Base columns (added, because for some reason base node recorders did not work)
+                if st == 1:
+                    self.base_cols.append(int(f"2{bay}{st}"))
+
+        # Add the beam elements
+        beam_id = 0
+        beams = []
+        for bay in range(1, int(self.i_d.n_bays + 1)):
+            for st in range(1, int(self.i_d.nst + 1)):
+                # Parameters for elastic static analysis
+                next_bay = bay + 1
+                b_beam = self.cs[f'b{st}']
+                h_beam = self.cs[f'h{st}']
+                beam_id += 1
+                et = int(f"1{bay}{st}")
+                inode = int(f"{bay}{st}")
+                jnode = int(f"{next_bay}{st}")
+                A = b_beam * h_beam
+                I = b_beam * h_beam**3 / 12
+
+                # Stiffness reduction
+                if self.hinge is not None:
+                    eleHinge = self.hinge[(self.hinge["Element"] == "Beam") & (self.hinge["Bay"] == bay) & (
+                                self.hinge["Storey"] == st)].reset_index(drop=True)
+                    my = eleHinge["m1"].iloc[0]
+                    phiy = eleHinge["phi1"].iloc[0]
+                    E = my / phiy / I
+                else:
+                    # Elastic modulus of concrete
+                    E = (3320 * np.sqrt(self.i_d.fc) + 6900) * 1000 * self.fstiff
+
+                # Create the element
+                op.element("elasticBeamColumn", et, inode, jnode, A, E, I, 1)
+                beams.append(et)
+
+        # Apply loads for static analysis and perform analysis
+        if lat_action is not None:
+            op.timeSeries("Linear", 1)
+            op.pattern("Plain", 1, 1)
+            for st in range(1, int(self.i_d.nst + 1)):
+                for bay in range(1, int(self.i_d.n_bays + 2)):
+                    op.load(int(f"{bay}{st}"), lat_action[st - 1] / (self.i_d.n_bays + 1), 0, 0)
+
+        if analysis == 3 or analysis == 5:
+            if grav_loads is not None:
+                op.timeSeries("Linear", 2)
+                op.pattern("Plain", 2, 2)
+                for ele in beams:
+                    storey = int(str(ele)[-1]) - 1
+                    op.eleLoad('-ele', ele, '-type', '-beamUniform', -abs(grav_loads[storey]))
+
+        # Analysis parameters
+        op.constraints("Plain")
+        op.numberer("Plain")
+        op.system("BandGeneral")
+        op.test("NormDispIncr", 1.0e-8, 6)
+        op.integrator("LoadControl", 1.0)
+        op.algorithm("Linear")
+        op.analysis("Static")
+        op.analyze(1)
+        op.loadConst("-time", 0.0)
+
+        # Define recorders for the 2D model
+        if analysis in [1, 2, 3]:
+            b = np.zeros((self.i_d.nst, self.i_d.n_bays))
+            c = np.zeros((self.i_d.nst, self.i_d.n_bays + 1))
+
+            results = {"Beams": {"M": {"Pos": b.copy(), "Neg": b.copy()}, "N": b.copy(), "V": b.copy()},
+                       "Columns": {"M": c.copy(), "N": c.copy(), "V": c.copy()}}
+
+            # Beams, counting: bottom to top, left to right
+            ele = 0
+            for bay in range(self.i_d.n_bays):
+                for st in range(self.i_d.nst):
+                    # Note: Positive = Top, Negative = Bottom
+                    results["Beams"]["M"]["Pos"][st][bay] = abs(op.eleForce(beams[ele], 6))
+                    results["Beams"]["M"]["Neg"][st][bay] = abs(op.eleForce(beams[ele], 3))
+                    results["Beams"]["N"][st][bay] = max(op.eleForce(beams[ele], 1),
+                                                         op.eleForce(beams[ele], 4), key=abs)
+                    results["Beams"]["V"][st][bay] = max(abs(op.eleForce(beams[ele], 2)),
+                                                         abs(op.eleForce(beams[ele], 5)))
+                    ele += 1
+
+            # Columns
+            ele = 0
+            for bay in range(self.i_d.n_bays + 1):
+                for st in range(self.i_d.nst):
+                    results["Columns"]["M"][st][bay] = max(abs(op.eleForce(columns[ele], 3)),
+                                                           abs(op.eleForce(columns[ele], 6)))
+                    # Negative N is tension, Positive N is compression
+                    results["Columns"]["N"][st][bay] = max(op.eleForce(columns[ele], 2),
+                                                           op.eleForce(columns[ele], 5), key=abs)
+                    results["Columns"]["V"][st][bay] = max(abs(op.eleForce(columns[ele], 1)),
+                                                           abs(op.eleForce(columns[ele], 4)))
+                    ele += 1
+        else:
+            # TODO, fix recording when applying RMSA, analysis type if condition seems incorrect
+            n_beams = self.i_d.nst * self.i_d.n_bays
+            n_cols = self.i_d.nst * (self.i_d.n_bays + 1)
+            results = {"Beams": {}, "Columns": {}}
+            if analysis != 4 and analysis != 5:
+                for i in range(n_beams):
+                    results["Beams"][i] = {
+                        "M": abs(max(op.eleForce(beams[i], 3), op.eleForce(beams[i], 6), key=abs)),
+                        "N": abs(max(op.eleForce(beams[i], 1), op.eleForce(beams[i], 4), key=abs)),
+                        "V": abs(max(op.eleForce(beams[i], 2), op.eleForce(beams[i], 5), key=abs))}
+                for i in range(n_cols):
+                    results["Columns"][i] = {
+                        "M": abs(max(op.eleForce(columns[i], 3), op.eleForce(columns[i], 6), key=abs)),
+                        "N": abs(max(op.eleForce(columns[i], 2), op.eleForce(columns[i], 5), key=abs)),
+                        "V": abs(max(op.eleForce(columns[i], 1), op.eleForce(columns[i], 4), key=abs))}
+            else:
+                for i in range(n_beams):
+                    results["Beams"][i] = {"M": np.array([op.eleForce(beams[i], 3), op.eleForce(beams[i], 6)]),
+                                           "N": np.array([op.eleForce(beams[i], 1), op.eleForce(beams[i], 4)]),
+                                           "V": np.array([op.eleForce(beams[i], 2), op.eleForce(beams[i], 5)])}
+                for i in range(n_cols):
+                    results["Columns"][i] = {"M": np.array([op.eleForce(columns[i], 3), op.eleForce(columns[i], 6)]),
+                                             "N": np.array([op.eleForce(columns[i], 1), op.eleForce(columns[i], 5)]),
+                                             "V": np.array([op.eleForce(columns[i], 2), op.eleForce(columns[i], 4)])}
+        self.wipe()
+
+        return results
+
     @staticmethod
     def wipe():
         """
@@ -162,6 +359,7 @@ class OpenSeesRun:
         M = np.zeros((self.i_d.nst, self.i_d.nst))
         for st in range(self.i_d.nst):
             M[st][st] = self.i_d.masses[st] / self.i_d.n_seismic
+
         identity = np.ones((1, self.i_d.nst))
         gamma = (modalShape.transpose().dot(M)).dot(identity.transpose()) / \
                 (modalShape.transpose().dot(M)).dot(modalShape)
@@ -372,7 +570,7 @@ class OpenSeesRun:
                     if option.lower() == "truss":
                         op.element("Truss", ele, nodeFrame, node, 5., pdelta_mat_tag)
 
-                    elif option == "EqualDOF":
+                    elif option.lower() == "equaldof":
                         for bay in range(self.i_d.n_bays+1):
                             op.equalDOF(node, int(f"{bay + 1}{st}"), 1)
 
@@ -493,7 +691,7 @@ class OpenSeesRun:
         op.system("BandGeneral")
         op.test(testType, tol, iterInit, 0)
         op.algorithm(algorithmType)
-        op.integrator("DisplacementControl", self.spo_nodes[-1], 1, 1./nsteps)
+        op.integrator("DisplacementControl", self.spo_nodes[-1], 1.5, 1.5/nsteps)
         op.analysis("Static")
 
         '''Seek for a solution using different test conditions or algorithms'''

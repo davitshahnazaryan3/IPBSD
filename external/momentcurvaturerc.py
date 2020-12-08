@@ -123,7 +123,10 @@ class MomentCurvatureRC:
 
         # Block parameters
         b1 = (4 - epsc / epsc_prime) / (6 - 2 * epsc / epsc_prime)
-        a1b1 = (epsc / epsc_prime - 1 / 3 * (epsc / epsc_prime) ** 2)
+        a1b1 = epsc / epsc_prime - 1 / 3 * (epsc / epsc_prime) ** 2
+        if epsc > 2*epsc_prime:
+            b1 = (4 - 2*epsc_prime / epsc_prime) / (6 - 4 * epsc_prime / epsc_prime)
+            a1b1 = 2*epsc_prime / epsc_prime - 1 / 3 * (2*epsc_prime / epsc_prime) ** 2
 
         # Strains
         epss = (c - (self.h - z)) / c * epsc
@@ -204,6 +207,9 @@ class MomentCurvatureRC:
         # Block parameters
         b1 = (4 - epsc / epsc_prime) / (6 - 2 * epsc / epsc_prime)
         a1b1 = epsc / epsc_prime - 1 / 3 * (epsc / epsc_prime) ** 2
+        if epsc > 2*epsc_prime:
+            b1 = (4 - 2*epsc_prime / epsc_prime) / (6 - 4 * epsc_prime / epsc_prime)
+            a1b1 = 2*epsc_prime / epsc_prime - 1 / 3 * (2*epsc_prime / epsc_prime) ** 2
 
         # Top rebar strain
         epss = (c - (self.h - z[:-1])) / c * epsc
@@ -246,28 +252,20 @@ class MomentCurvatureRC:
         :param asinit: float                        Total reinforcement area
         :return: None
         """
-        epss_bot = self.EPSUK
+        # Take 10% more than the last recorded bottom reinforcement strain
+        epss_bot = 1.1 * self.epss
+        # epss_bot = 0.044
         # Initialize moment and compressed concrete height
-        moment = 1.
-        c = 0.015
-        record = None
+        c = 0.01
+        c = float(optimize.fsolve(self.get_residual_strength, c, [epss_bot, epsc_prime, asinit], factor=0.1))
 
-        iteration = 0
-        while moment >= 0:
-            c = float(optimize.fsolve(self.get_residual_strength, c, [epss_bot, epsc_prime, asinit], factor=0.1))
+        moment = self.mi
+        phii = self.phii
 
-            moment = self.mi
-
-            if moment >= 0:
-                phii = self.phii
-                record = [phii, moment]
-
-            epss_bot += 0.1*epss_bot
-            # Break out of loop
-            if iteration < 3:
-                if moment < 0:
-                    moment = 1.
-                    iteration += 1
+        if moment >= 0:
+            record = [phii, moment]
+        else:
+            record = [phii, 0.0]
 
         return record
 
@@ -279,7 +277,7 @@ class MomentCurvatureRC:
         :return: float                              Maximum moment of element
         """
         asinit = asi[0]
-        c = np.array([0.02])
+        c = np.array([0.05])
         c = float(abs(optimize.fsolve(self.objective, c, [2 * epsc_prime, epsc_prime, asinit], factor=0.1)))
 
         return abs(self.mi / self.k_hard - self.m_target)
@@ -312,7 +310,6 @@ class MomentCurvatureRC:
             young_modulus_rc = (3320 * np.sqrt(self.fc_prime) + 6900)
             n = .8 + self.fc_prime / 17
             epsc_prime = self.fc_prime / young_modulus_rc * n / (n - 1)
-            c = 0.02
             record = self.find_fracturing(epsc_prime, rebar_area)
 
             # Fracturing curvature
@@ -323,7 +320,7 @@ class MomentCurvatureRC:
             raise ValueError("[EXCEPTION] Wrong method for the definition of softening slope!")
         return phi_critical, m_critical, lp
     
-    def get_mphi(self, check_reinforcement=False, reinf_test=0., m_target=None, reinforcements=None):
+    def get_mphi(self, check_reinforcement=False, reinf_test=0., m_target=None, reinforcements=None, cover=None):
         # TODO, a bit too rigid, make it more flexible, easier to manipulate within IPBSD to achieve optimized designs
         """
         Gives the Moment-curvature relationship
@@ -333,6 +330,7 @@ class MomentCurvatureRC:
         :param m_target: float                      Target bending moment. This is a value that may be increased
                                                     depending on local ductility requirements
         :param reinforcements: list                 Positive and negative reinforcements (for beams only)
+        :param cover: float                         Reinforcement cover, generally input when warnMin was triggered
         :return: dict                               M-phi response data, reinforcement and concrete data for detailing
         """
         if reinforcements is not None:
@@ -340,6 +338,8 @@ class MomentCurvatureRC:
             self.distAs = reinforcements / self.AsTotal
         if m_target is not None:
             self.m_target = float(m_target)
+        if cover is not None:
+            self.d = cover
 
         # Concrete properties
         # Assumption - parabolic stress-strain relationship for the concrete
@@ -363,7 +363,7 @@ class MomentCurvatureRC:
         phi_cr = epscr / yc
 
         ''' The "Process" '''
-        epsc = np.linspace(epsc_prime * 2 / 500, 5 * epsc_prime, 100)
+        epsc = np.linspace(epsc_prime * 2 / 500, 10 * epsc_prime, 400)
         sigma_c = self.fc_prime*n*epsc/epsc_prime / (n - 1 + np.power(epsc/epsc_prime, n*k_parameter))
         m = np.array([0])
         phi = np.array([0])
@@ -380,7 +380,7 @@ class MomentCurvatureRC:
 
         # Are we doing a reinforcement check? If, yes...
         if check_reinforcement:
-            c = np.array([0.02])
+            c = np.array([0.05])
             self.mi = None
             init_factor = 2.
             while self.mi is None or np.isnan(self.mi[0]):
@@ -393,7 +393,7 @@ class MomentCurvatureRC:
         else:
             for i in range(len(epsc)):
                 # compressed section height optimization - make a good guess, otherwise convergence won't be achieved
-                c = 0.02
+                c = 0.05
                 c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100, xtol=1e-4)))
 
                 # Stop analysis if RunTimeWarning is caught (i.e. no convergence)
@@ -415,6 +415,11 @@ class MomentCurvatureRC:
                 # curvature
                 phi = np.append(phi, self.phii)
 
+                # Stop analysis if bottom reinforcement has ruptured
+                # TODO, don't know why RESPONSE stops at half of strain,uk
+                if self.epss >= self.EPSUK / 2:
+                    break
+
             yield_index = self.checkMy(self.fy, sigmat)
 
             # Removing None arguments
@@ -427,6 +432,7 @@ class MomentCurvatureRC:
                 phi = phi[:idx]
             idx_max = -1
             m_max = m[idx_max]
+
             my_first = m[yield_index]
             phiy_first = phi[yield_index]
             m = np.array(m)
@@ -445,6 +451,10 @@ class MomentCurvatureRC:
         nu = abs(self.p)/area/self.fc_prime/1000
         ro_sh = self.TRANSVERSE_LEGS*np.pi*self.TRANSVERSE_DIAMETER**2/4 / self.TRANSVERSE_SPACING / self.b
         A_sh = self.TRANSVERSE_LEGS*np.pi*self.TRANSVERSE_DIAMETER**2/4
+
+        if math.isnan(self.epss):
+            self.epss = eps_tensile[-1]
+
         phi_critical, m_critical, lp = self.get_softening_slope(rebar_area=asinit, curvature_yield=phiy_first,
                                                                 curvature_ductility=mu_phi, axial_load_ratio=nu,
                                                                 transverse_steel_ratio=ro_sh)
@@ -458,7 +468,7 @@ class MomentCurvatureRC:
         phi_model = np.array([1e-9, phi_yield_nom, max(phi), phi_critical])
 
         # Identifying fracturing point
-        m = np.append(m, 0.0)
+        m = np.append(m, m_critical)
         phi = np.append(phi, phi_critical)
         fracturing_ductility = phi_critical / phi_yield_nom
 
@@ -478,6 +488,7 @@ class MomentCurvatureRC:
 
         # Hysteretic behaviour of all structural elements for model creation in OpenSees (M-curvature)
         # Assuming 50% of gross cross-section (the actual M-phi is calculated without the necessity of defining fstiff)
+        # Those are useless, TO BE REMOVED
         curv_yield = self.m_target/young_modulus_rc/1000/inertia/self.fstiff
         curv_ult = mu_phi*phiy_first
         model = {"yield": {"curvature": curv_yield, "moment": self.m_target},

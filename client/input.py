@@ -115,8 +115,6 @@ class Input:
         :param filename: str                            Filename containing spo assumptions as path 'path/*.csv'
         :return: dict                                   Backbone curve parameters
         """
-        # todo, future research, look into creating a database based on ML algorithms for possible SPO curve depending
-        #  on the input
         data = pd.read_csv(filename)
         data = {col: data[col].dropna().to_dict() for col in data}
         spo = {'mc': data["mc"][0], 'a': data["a"][0], 'ac': data["ac"][0], 'r': data["r"][0], 'mf': data["mf"][0],

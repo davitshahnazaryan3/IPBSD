@@ -6,7 +6,7 @@ import pandas as pd
 
 
 class Action:
-    def __init__(self, solution, n_seismic, nbays, nst, masses, say, df, analysis, gravity_loads, num_modes=None,
+    def __init__(self, solution, n_seismic, nbays, nst, masses, cy, df, analysis, gravity_loads, num_modes=None,
                  opt_modes=None, modal_sa=None, pdelta_loads=None):
         """
 
@@ -14,7 +14,7 @@ class Action:
         :param n_seismic: int               Number of seismic frames
         :param nbays: int                   Number of bays
         :param masses: array                Lumped storey masses
-        :param say: float                   Spectral acceleration at yield
+        :param cy: float                    Spectral acceleration at yield
         :param df: DataFrame                SLS table generated through Transformations object
         :param analysis: int                Analysis type
         :param gravity_loads: dict          Gravity loads as {'roof': *, 'floor': *}
@@ -28,7 +28,7 @@ class Action:
         self.nbays = nbays
         self.nst = nst
         self.masses = masses
-        self.say = say
+        self.cy = cy
         self.df = df
         self.analysis = analysis
         self.gravity_loads = gravity_loads
@@ -46,7 +46,7 @@ class Action:
         """
         mstar = self.solution["Mstar"]
         gamma = self.solution["Part Factor"]
-        vb = self.say*mstar*self.n_seismic*gamma*9.81
+        vb = self.cy * mstar * self.n_seismic * gamma * 9.81
         vb_i = vb/self.n_seismic
         return vb_i
 
@@ -87,7 +87,7 @@ class Action:
             if self.opt_modes is None:
                 self.num_modes = 1
                 self.opt_modes = np.array(self.df.loc['phi'])
-                self.modal_sa = np.array(self.say)
+                self.modal_sa = np.array(self.cy)
 
             masses = self.masses/self.n_seismic
             M = np.zeros([self.nst, self.nst])
