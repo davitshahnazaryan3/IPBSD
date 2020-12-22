@@ -11,7 +11,7 @@ import pandas as pd
 
 class Detailing:
     def __init__(self, demands, nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, dy, sections,
-                 rebar_cover=0.04, ductility_class="DCM", young_mod_s=200e3, k_hard=1.0):
+                 rebar_cover=0.04, ductility_class="DCM", young_mod_s=200e3, k_hard=1.0, est_ductilities=True):
         """
         initializes detailing phase
         :param demands: dict                Demands on structural elements
@@ -29,6 +29,7 @@ class Detailing:
         :param ductility_class: str         Ductility class (DCM or DCH, following Eurocode 8 recommendations)
         :param young_mod_s: float           Young modulus of reinforcement
         :param k_hard: float                Hardening slope of reinforcement (i.e. fu/fy)
+        :param est_ductilities: bool        Whether to estimate global ductilities
         """
         self.demands = demands
         self.nst = nst
@@ -54,6 +55,8 @@ class Detailing:
         self.WARN_ELE_MAX = False
         # Warning for each element, if local min reinforcement ratio limit is not met
         self.WARN_ELE_MIN = False
+        # Estimate ductilities
+        self.est_ductilities = est_ductilities
 
     def capacity_design(self, Mbi, Mci):
         """
@@ -482,7 +485,10 @@ class Detailing:
                     hinge_models["Columns"][f"S{st + 1}B{bay + 1}"] = d_temp[4]
 
         # Old version, requires improvement
-        mu_c, mu_f = self.estimate_ductilities(data, modes)
+        if self.est_ductilities:
+            mu_c, mu_f = self.estimate_ductilities(data, modes)
+        else:
+            mu_c = mu_f = None
 
         # Get hinge model information in DataFrame
         hinge_models = self.model_to_df(data)

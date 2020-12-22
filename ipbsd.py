@@ -369,7 +369,9 @@ class IPBSD:
                      "PLS": ipbsd.data.PLS}
 
         """Get design limits"""
-        theta_max, a_max = ipbsd.get_design_values(self.slfDir, self.geometry)
+        theta_max, a_max, slfsCache = ipbsd.get_design_values(self.slfDir, self.geometry)
+        if self.export_cache:
+            self.export_results(self.outputPath / "Cache/SLFs", slfsCache, "pickle")
         print("[SUCCESS] SLF successfully read, and design limits are calculated")
 
         """Transform design values into spectral coordinates"""
@@ -482,7 +484,7 @@ if __name__ == "__main__":
     outputPath = path.parents[0] / ".applications/case1/Output1"
 
     # Add input arguments
-    analysis_type = 3
+    analysis_type = 5
     input_file = path.parents[0] / ".applications/case1/ipbsd_input.csv"
     hazard_file = path.parents[0] / ".applications/case1/Hazard-LAquila-Soil-C.pkl"
     slfDir = outputPath / "slfoutput"
@@ -491,7 +493,7 @@ if __name__ == "__main__":
     mafc_target = 2.e-4
     damping = .05
     system = "Perimeter"
-    maxiter = 5
+    maxiter = 10
     fstiff = 0.5
     overstrength = 1.0
     geometry = "2d"

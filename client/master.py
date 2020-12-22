@@ -106,7 +106,8 @@ class Master:
         """
         y_sls = self.data.y[1]
         dl = DesignLimits(slfDirectory, y_sls, self.data.nst, geometry)
-        return dl.theta_max, dl.a_max
+        slfsCache = dl.SLFsCache
+        return dl.theta_max, dl.a_max, slfsCache
 
     def perform_transformations(self, th, a):
         """
@@ -255,39 +256,37 @@ class Master:
         response = {}
         b = np.zeros((self.data.nst, self.data.n_bays))
         c = np.zeros((self.data.nst, self.data.n_bays + 1))
-        results = {"Beams": {"M": b.copy(), "N": b.copy(), "V": b.copy()},
+
+        # Initialize results
+        results = {"Beams": {"M": {"Pos": b.copy(), "Neg": b.copy()}, "N": b.copy(), "V": b.copy()},
                    "Columns": {"M": c.copy(), "N": c.copy(), "V": c.copy()}}
+
+        # For each element type (Beams, Columns)
         for eleType in demands["Mode1"].keys():
-            response[eleType] = {}
-            for ele in demands["Mode1"][eleType].keys():
-                m_temp = np.zeros(2)
-                n_temp = np.zeros(2)
-                v_temp = np.zeros(2)
+            for dem in demands["Mode1"][eleType].keys():
+                if eleType == "Beams" and dem == "M":
+                    tempPos = np.zeros(demands["Mode1"][eleType][dem]["Pos"].shape)
+                    tempNeg = np.zeros(demands["Mode1"][eleType][dem]["Neg"].shape)
+                else:
+                    temp = np.zeros(demands["Mode1"][eleType][dem].shape)
+                # Star the combination
                 for i in range(num_modes):
                     for j in range(num_modes):
-                        m_temp = m_temp + corr[i][j]*demands[f"Mode{i+1}"][eleType][ele]["M"] * \
-                                 demands[f"Mode{j+1}"][eleType][ele]["M"]
-                        n_temp = n_temp + corr[i][j]*demands[f"Mode{i+1}"][eleType][ele]["N"] * \
-                                 demands[f"Mode{j+1}"][eleType][ele]["N"]
-                        v_temp = v_temp + corr[i][j]*demands[f"Mode{i+1}"][eleType][ele]["V"] * \
-                                 demands[f"Mode{j+1}"][eleType][ele]["V"]
-                response[eleType][ele] = {"M": max(np.sqrt(m_temp)), "N": max(np.sqrt(n_temp)),
-                                          "V": max(np.sqrt(v_temp))}
-        # Storing results in a specific format
-        ele = 0
-        for bay in range(self.data.n_bays):
-            for st in range(self.data.nst):
-                results["Beams"]["M"][st][bay] = response["Beams"][ele]["M"]
-                results["Beams"]["N"][st][bay] = response["Beams"][ele]["N"]
-                results["Beams"]["V"][st][bay] = response["Beams"][ele]["V"]
-                ele += 1
-        ele = 0
-        for bay in range(self.data.n_bays + 1):
-            for st in range(self.data.nst):
-                results["Columns"]["M"][st][bay] = response["Columns"][ele]["M"]
-                results["Columns"]["N"][st][bay] = response["Columns"][ele]["N"]
-                results["Columns"]["V"][st][bay] = response["Columns"][ele]["V"]
-                ele += 1
+                        if eleType == "Beams" and dem == "M":
+                            tempPos = tempPos + corr[i][j]*demands[f"Mode{i+1}"][eleType][dem]["Pos"] * \
+                                      demands[f"Mode{j+1}"][eleType][dem]["Pos"]
+                            tempNeg = tempNeg + corr[i][j]*demands[f"Mode{i+1}"][eleType][dem]["Neg"] * \
+                                      demands[f"Mode{j+1}"][eleType][dem]["Neg"]
+                        else:
+                            temp = temp + corr[i][j]*demands[f"Mode{i+1}"][eleType][dem] * \
+                                   demands[f"Mode{j+1}"][eleType][dem]
+
+                if eleType == "Beams" and dem == "M":
+                    results[eleType][dem]["Pos"] = np.sqrt(tempPos)
+                    results[eleType][dem]["Neg"] = np.sqrt(tempNeg)
+                else:
+                    results[eleType][dem] = np.sqrt(temp)
+
         return results
 
     def get_action(self, solution, cy, df, gravity_loads, analysis, num_modes=None, opt_modes=None,
@@ -407,7 +406,7 @@ class Master:
         spo.wipe()
         return topDisp, baseShear
 
-    def design_elements(self, demands, sections, modes, dy, ductility_class="DCM", cover=0.03):
+    def design_elements(self, demands, sections, modes, dy, ductility_class="DCM", cover=0.03, est_ductilities=True):
         """
         Runs M-phi to optimize for reinforcement for each section
         :param demands: DataFrame or dict           Demands identified from a structural analysis (lateral+gravity)
@@ -416,11 +415,12 @@ class Master:
         :param dy: float                            System yield displacement in m
         :param ductility_class: str                 Ductility class (DCM or DCH, following Eurocode 8 recommendations)
         :param cover: float                         Reinforcement cover in m
+        :param est_ductilities: bool                Estimate global ductilities?
         :return: dict                               Designed element properties from the moment-curvature relationship
         """
         d = Detailing(demands, self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
                       self.data.heights, self.data.n_seismic, self.data.masses, dy, sections,
-                      ductility_class=ductility_class, rebar_cover=cover)
+                      ductility_class=ductility_class, rebar_cover=cover, est_ductilities=est_ductilities)
         data, hinge_models, mu_c, mu_f, warnings = d.design_elements(modes)
         warnMax = d.WARNING_MAX
         warnMin = d.WARNING_MIN

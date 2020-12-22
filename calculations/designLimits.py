@@ -20,6 +20,7 @@ class DesignLimits:
         self.geometry = geometry
         self.theta_max = None               # Peak storey drift
         self.a_max = None                   # Peak floor acceleration in g
+        self.SLFsCache = None
 
         self.get_design_edps()
         
@@ -28,7 +29,7 @@ class DesignLimits:
         Calculates the design EDPs (i.e. PSD as theta and PFA as a)
         """
         slf = SLF(self.slfDirectory, self.y, self.nst, self.geometry)
-        slfs = slf.slfs()
+        slfs, self.SLFsCache = slf.slfs()
 
         # Calculate the design limits of PSD and PFA beyond which EAL condition will not be met
         edp_limits = {"PSD": np.array([]), "PFA": np.array([])}

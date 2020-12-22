@@ -141,7 +141,7 @@ class OpenSeesRun:
                 op.element("elasticBeamColumn", et, inode, jnode, A, E, I, 1)
                 beams.append(et)
 
-        # Apply loads for static analysis and perform analysis
+        # Apply lateral loads for static analysis
         if lat_action is not None:
             op.timeSeries("Linear", 1)
             op.pattern("Plain", 1, 1)
@@ -169,63 +169,38 @@ class OpenSeesRun:
         op.loadConst("-time", 0.0)
 
         # Define recorders for the 2D model
-        if analysis in [1, 2, 3]:
-            b = np.zeros((self.i_d.nst, self.i_d.n_bays))
-            c = np.zeros((self.i_d.nst, self.i_d.n_bays + 1))
+        b = np.zeros((self.i_d.nst, self.i_d.n_bays))
+        c = np.zeros((self.i_d.nst, self.i_d.n_bays + 1))
 
-            results = {"Beams": {"M": {"Pos": b.copy(), "Neg": b.copy()}, "N": b.copy(), "V": b.copy()},
-                       "Columns": {"M": c.copy(), "N": c.copy(), "V": c.copy()}}
+        results = {"Beams": {"M": {"Pos": b.copy(), "Neg": b.copy()}, "N": b.copy(), "V": b.copy()},
+                   "Columns": {"M": c.copy(), "N": c.copy(), "V": c.copy()}}
 
-            # Beams, counting: bottom to top, left to right
-            ele = 0
-            for bay in range(self.i_d.n_bays):
-                for st in range(self.i_d.nst):
-                    # Note: Positive = Top, Negative = Bottom
-                    results["Beams"]["M"]["Pos"][st][bay] = abs(op.eleForce(beams[ele], 6))
-                    results["Beams"]["M"]["Neg"][st][bay] = abs(op.eleForce(beams[ele], 3))
-                    results["Beams"]["N"][st][bay] = max(op.eleForce(beams[ele], 1),
-                                                         op.eleForce(beams[ele], 4), key=abs)
-                    results["Beams"]["V"][st][bay] = max(abs(op.eleForce(beams[ele], 2)),
-                                                         abs(op.eleForce(beams[ele], 5)))
-                    ele += 1
+        # Beams, counting: bottom to top, left to right
+        ele = 0
+        for bay in range(self.i_d.n_bays):
+            for st in range(self.i_d.nst):
+                # Note: Positive = Top, Negative = Bottom
+                results["Beams"]["M"]["Pos"][st][bay] = abs(op.eleForce(beams[ele], 6))
+                results["Beams"]["M"]["Neg"][st][bay] = abs(op.eleForce(beams[ele], 3))
+                results["Beams"]["N"][st][bay] = max(op.eleForce(beams[ele], 1),
+                                                     op.eleForce(beams[ele], 4), key=abs)
+                results["Beams"]["V"][st][bay] = max(abs(op.eleForce(beams[ele], 2)),
+                                                     abs(op.eleForce(beams[ele], 5)))
+                ele += 1
 
-            # Columns
-            ele = 0
-            for bay in range(self.i_d.n_bays + 1):
-                for st in range(self.i_d.nst):
-                    results["Columns"]["M"][st][bay] = max(abs(op.eleForce(columns[ele], 3)),
-                                                           abs(op.eleForce(columns[ele], 6)))
-                    # Negative N is tension, Positive N is compression
-                    results["Columns"]["N"][st][bay] = max(op.eleForce(columns[ele], 2),
-                                                           op.eleForce(columns[ele], 5), key=abs)
-                    results["Columns"]["V"][st][bay] = max(abs(op.eleForce(columns[ele], 1)),
-                                                           abs(op.eleForce(columns[ele], 4)))
-                    ele += 1
-        else:
-            # TODO, fix recording when applying RMSA, analysis type if condition seems incorrect
-            n_beams = self.i_d.nst * self.i_d.n_bays
-            n_cols = self.i_d.nst * (self.i_d.n_bays + 1)
-            results = {"Beams": {}, "Columns": {}}
-            if analysis != 4 and analysis != 5:
-                for i in range(n_beams):
-                    results["Beams"][i] = {
-                        "M": abs(max(op.eleForce(beams[i], 3), op.eleForce(beams[i], 6), key=abs)),
-                        "N": abs(max(op.eleForce(beams[i], 1), op.eleForce(beams[i], 4), key=abs)),
-                        "V": abs(max(op.eleForce(beams[i], 2), op.eleForce(beams[i], 5), key=abs))}
-                for i in range(n_cols):
-                    results["Columns"][i] = {
-                        "M": abs(max(op.eleForce(columns[i], 3), op.eleForce(columns[i], 6), key=abs)),
-                        "N": abs(max(op.eleForce(columns[i], 2), op.eleForce(columns[i], 5), key=abs)),
-                        "V": abs(max(op.eleForce(columns[i], 1), op.eleForce(columns[i], 4), key=abs))}
-            else:
-                for i in range(n_beams):
-                    results["Beams"][i] = {"M": np.array([op.eleForce(beams[i], 3), op.eleForce(beams[i], 6)]),
-                                           "N": np.array([op.eleForce(beams[i], 1), op.eleForce(beams[i], 4)]),
-                                           "V": np.array([op.eleForce(beams[i], 2), op.eleForce(beams[i], 5)])}
-                for i in range(n_cols):
-                    results["Columns"][i] = {"M": np.array([op.eleForce(columns[i], 3), op.eleForce(columns[i], 6)]),
-                                             "N": np.array([op.eleForce(columns[i], 1), op.eleForce(columns[i], 5)]),
-                                             "V": np.array([op.eleForce(columns[i], 2), op.eleForce(columns[i], 4)])}
+        # Columns
+        ele = 0
+        for bay in range(self.i_d.n_bays + 1):
+            for st in range(self.i_d.nst):
+                results["Columns"]["M"][st][bay] = max(abs(op.eleForce(columns[ele], 3)),
+                                                       abs(op.eleForce(columns[ele], 6)))
+                # Negative N is tension, Positive N is compression
+                results["Columns"]["N"][st][bay] = max(op.eleForce(columns[ele], 2),
+                                                       op.eleForce(columns[ele], 5), key=abs)
+                results["Columns"]["V"][st][bay] = max(abs(op.eleForce(columns[ele], 1)),
+                                                       abs(op.eleForce(columns[ele], 4)))
+                ele += 1
+
         self.wipe()
 
         return results

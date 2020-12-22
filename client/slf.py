@@ -39,8 +39,8 @@ class SLF:
                 func = self.slfs_csv()
                 return func
             elif not os.path.isdir(self.slfDirectory / file) and (file.endswith(".pickle") or file.endswith(".pkl")):
-                func = self.slfs_pickle()
-                return func
+                func, SLFs = self.slfs_pickle()
+                return func, SLFs
             else:
                 raise ValueError("[EXCEPTION] Wrong SLF file format provided! Should be .csv or .pickle")
 
@@ -50,6 +50,7 @@ class SLF:
         SLFs for both PFA- and PSD-sensitive components are lumped at storey level, and not at each floor
         :return: dict                               SLF 1d interpolation functions and ELRs as arrays within a dict
         """
+        # TODO, add generation of SLFs
         for file in os.listdir(self.slfDirectory):
             if not os.path.isdir(self.slfDirectory / file):
                 # Read the file (needs to be single file)
@@ -247,4 +248,4 @@ class SLF:
                 func["y"][i][st] = max(slf_functions[i][st]) * self.y_sls
                 func["interpolation"][i][st] = interp1d(slf_functions[i][st], edp)
 
-        return func
+        return func, SLFs

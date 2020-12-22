@@ -334,6 +334,7 @@ class MomentCurvatureRC:
         :return: dict                               M-phi response data, reinforcement and concrete data for detailing
         """
         if reinforcements is not None:
+            reinforcements = np.array(reinforcements)
             self.AsTotal = sum(reinforcements)
             self.distAs = reinforcements / self.AsTotal
         if m_target is not None:

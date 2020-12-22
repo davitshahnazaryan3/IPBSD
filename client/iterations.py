@@ -41,11 +41,12 @@ class Iterations:
         else:
             return False
 
-    def compare_areas(self, x, y):
+    def compare_areas(self, x, y, tol=0.2):
         """
 
         :param x: dict
         :param y: dict
+        :param tol: float
         :return: bool
         """
         peak_x = x["a"]*(x["mc"] - 1) + 1
@@ -57,7 +58,7 @@ class Iterations:
         a2x = (x["mf"] - x["mc"]) * peak_x / 2
         a2y = (y["mf"] - y["mc"]) * peak_y / 2
 
-        return self.compare_value(a1x, a1y, tol=0.2) and self.compare_value(a2x, a2y, tol=0.2)
+        return self.compare_value(a1x, a1y, tol=tol) and self.compare_value(a2x, a2y, tol=tol)
 
     def derive_spo_shape(self, spo, residual=0.1):
         """
@@ -332,6 +333,7 @@ class Iterations:
         :return warnings: dict                          Dictionary of boolean warnings for each structural element
                                                         i.e. local ductility requirements not met in Detailing
         """
+        # Get Sa at each modal period of interest
         if self.analysis_type == 4 or self.analysis_type == 5:
             se_rmsa = self.ipbsd.get_sa_at_period(cy, sa, period_range, modes["Periods"])
         else:
@@ -365,9 +367,11 @@ class Iterations:
                 demands = {}
                 for mode in range(self.num_modes):
                     demands[f"Mode{mode + 1}"] = self.ipbsd.run_analysis(self.analysis_type, solution,
-                                                                         list(forces["Fi"][mode]), fstiff=self.fstiff,
-                                                                         hinge=hinge)
+                                                                         list(forces["Fi"][:, mode]),
+                                                                         fstiff=self.fstiff, hinge=hinge)
+
                 demands = self.ipbsd.perform_cqc(corr, demands)
+
                 if self.analysis_type == 5:
                     demands_gravity = self.ipbsd.run_analysis(self.analysis_type, solution,
                                                               grav_loads=list(forces["G"]),
@@ -485,7 +489,7 @@ class Iterations:
         # self.spo_validate = all(list(map(self.compare_value, self.spo_data.values(), spo_data_updated.values())))
 
         # Alternatively compare the area under the normalized SPO curves (possible update: compare actual SPO curves)
-        self.spo_validate = self.compare_areas(self.spo_shape, spo_data_updated)
+        self.spo_validate = self.compare_areas(self.spo_shape, spo_data_updated, tol=0.1)
 
         # Update the SPO parameters
         if not self.spo_validate:
