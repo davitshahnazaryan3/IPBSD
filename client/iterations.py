@@ -379,7 +379,13 @@ class Iterations:
                     # Combining gravity and RSMA results
                     for eleType in demands_gravity.keys():
                         for dem in demands_gravity[eleType].keys():
-                            demands[eleType][dem] = demands[eleType][dem] + demands_gravity[eleType][dem]
+                            if eleType == "Beams" and dem == "M":
+                                demands[eleType][dem]["Pos"] = demands[eleType][dem]["Pos"] + \
+                                                               demands_gravity[eleType][dem]["Pos"]
+                                demands[eleType][dem]["Neg"] = demands[eleType][dem]["Neg"] + \
+                                                               demands_gravity[eleType][dem]["Neg"]
+                            else:
+                                demands[eleType][dem] = demands[eleType][dem] + demands_gravity[eleType][dem]
 
             else:
                 raise ValueError("[EXCEPTION] Incorrect analysis type...")
