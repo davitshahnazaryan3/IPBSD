@@ -53,7 +53,7 @@ class Action:
     def forces(self):
         """
         gets the lateral forces
-        :return: DataFrame                  Lateral forces for ELFM
+        :return: DataFrame or dict          Lateral forces for ELFM
         """
         if self.analysis == 1 or self.analysis == 2 or self.analysis == 3:
             d = pd.DataFrame({'phi': np.array(self.df.loc['phi']),

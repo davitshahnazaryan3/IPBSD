@@ -9,7 +9,7 @@ import pandas as pd
 
 class CrossSection:
     def __init__(self, nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, fstiff, tlower, tupper, iteration=False,
-                 cache_dir=None):
+                 cache_dir=None, solution_perp=None):
         """
         Initializes the optimization function for the cross-section for a target fundamental period
         :param nst: int                                     Number of stories
@@ -25,6 +25,7 @@ class CrossSection:
         :param tupper: float                                Upper period bound
         :param iteration: bool                              Whether an iterative analysis is being performed
         :param cache_dir: str                               Directory to export the solution cache if provided
+        :param solution_perp: Series                        Solution in perpendicular direction
         """
         self.nst = nst
         self.nbays = nbays
@@ -37,11 +38,12 @@ class CrossSection:
         self.mi = np.array(mi)
         self.tlower = tlower
         self.tupper = tupper
+        self.solution_perp = solution_perp
         self.SWEIGHT = 25.
 
         # Export solution as cache in .csv (Initialize)
         if cache_dir is not None:
-            cache_path = cache_dir/"solution_cache.csv"
+            cache_path = cache_dir
             if not iteration and not cache_path.exists():
                 self.elements = self.constraint_function()
                 self.solutions = self.get_all_solutions()
@@ -103,6 +105,10 @@ class CrossSection:
             hci.append(float(ele[f'hi{st+1}']))
             b.append(float(ele[f'b{st+1}']))
             h.append(float(ele[f'h{st+1}']))
+        hce = np.array(hce)
+        hci = np.array(hci)
+        b = np.array(b)
+        h = np.array(h)
         return hce, hci, b, h
 
     def create_props(self, hce, hci, b, h):
@@ -114,14 +120,12 @@ class CrossSection:
         :param h: array                                         Beam height
         :return: arrays                                         Areas and moments of inertia of all possible elements
         """
-        # TODO, different beam sections along the height, once the OpenSees model can accommodate it, no grouping
-        #  for now
-        a_cols = [hce[i]*hce[i] for i in range(self.nst)]
-        i_cols = [hce[i]*hce[i]**3/12 for i in range(self.nst)]
-        a_cols_int = [hci[i]*hci[i] for i in range(self.nst)]
-        i_cols_int = [hci[i]*hci[i]**3/12 for i in range(self.nst)]
-        a_beams = [b[i]*h[i] for i in range(self.nst)]
-        i_beams = [b[i]*h[i]**3/12 for i in range(self.nst)]
+        a_cols = hce * hce
+        i_cols = hce * hce**3/12
+        a_cols_int = hci * hci
+        i_cols_int = hci * hci**3/12
+        a_beams = np.tile(b * h, (self.nbays, 1))
+        i_beams = np.tile(b * h**3/12, (self.nbays, 1))
         return a_cols, a_cols_int, i_cols, i_cols_int, a_beams, i_beams
 
     def run_ma(self, s_props, single_mode=True):
@@ -174,10 +178,15 @@ class CrossSection:
         problem = constraint.Problem()
         for i in range(self.nst):
             # Limits on cross-section dimensions and types of elements
+            if self.solution_perp is not None:
+                # Fix external column (as perpendicular or primary direction frame is already found)
+                problem.addVariable(f'he{i+1}', np.array([self.solution_perp[f"he{i+1}"]]))
+            else:
+                # A case where only one direction is being considered
+                problem.addVariable(f'he{i+1}', np.arange(0.25, 0.85, 0.05))
             problem.addVariable(f'b{i+1}', np.arange(0.25, 0.55, 0.05))
-            problem.addVariable(f'h{i+1}', np.arange(0.40, 0.75, 0.05))
-            problem.addVariable(f'hi{i+1}', np.arange(0.25, 0.75, 0.05))
-            problem.addVariable(f'he{i+1}', np.arange(0.25, 0.75, 0.05))
+            problem.addVariable(f'h{i+1}', np.arange(0.40, 0.85, 0.05))
+            problem.addVariable(f'hi{i+1}', np.arange(0.25, 0.85, 0.05))
             ele_types.append(f'he{i+1}')
             ele_types.append(f'hi{i+1}')
             ele_types.append(f'b{i+1}')
@@ -200,10 +209,15 @@ class CrossSection:
         # Force beam width equal to column height
         problem.addConstraint(eq_constraint, [f'b{self.nst}', f'he{self.nst}'])
         # Force allowable variation of beam c-s width and height
-        problem.addConstraint(beam_constraint, [f'b{self.nst}', f'h{self.nst}'])
-        for i in range(self.nst):
-            # Force allowable variation of internal and external column c-s dimensions
-            problem.addConstraint(bay_constraint, [f'hi{i+1}', f'he{i+1}'])
+        if self.solution_perp is None:
+            problem.addConstraint(beam_constraint, [f'b{self.nst}', f'h{self.nst}'])
+
+        if self.solution_perp is None:
+            for i in range(self.nst):
+                # Force allowable variation of internal and external column c-s dimensions
+                # but only for the primary direction
+                problem.addConstraint(bay_constraint, [f'hi{i+1}', f'he{i+1}'])
+
         # Find all possible solutions within the constraints specified
         solutions = problem.getSolutions()
 
@@ -238,7 +252,7 @@ class CrossSection:
         w = 0
         for st in range(self.nst):
             w += self.SWEIGHT * (props[0][st] ** self.heights[st] * 2 + props[1][st] * self.heights[st] *
-                                 (self.nbays - 1) + props[4][st] * sum(self.bay_widths))
+                                 (self.nbays - 1) + props[4][0][st] * sum(self.bay_widths))
         return w
 
     def find_optimal_solution(self, solution=None):

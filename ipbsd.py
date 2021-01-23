@@ -9,12 +9,14 @@ import numpy as np
 import pickle
 from client.master import Master
 from client.iterations import Iterations
+from pathlib import Path
 
 
 class IPBSD:
     def __init__(self, input_file, hazard_file, slfDir, spo_file, limit_eal, target_mafc, outputPath, analysis_type=1,
                  damping=.05, num_modes=3, iterate=False, system="Perimeter", maxiter=20, fstiff=0.5, rebar_cover=0.03,
-                 geometry="2D", solutionFile=None, export_cache=False, holdFlag=False, overstrength=None):
+                 flag3d=False, solutionFileX=None, solutionFileY=None, export_cache=False, holdFlag=False,
+                 overstrength=None, replCost=None):
         """
         Initializes IPBSD
         :param input_file: str              Input filename as '*.csv'
@@ -40,8 +42,10 @@ class IPBSD:
         :param maxiter: int                 Maximum number of iterations for seeking a solution
         :param fstiff: float                Stiffness reduction factor
         :param rebar_cover: float           Reinforcement cover in m
-        :param geometry: str                "2d" if a single frame is considered, "3d" if a full building is considered
-        :param solutionFile: str            Path to solution file to be used for design
+        :param flag3d: str                  True if 3D building is being considered (runs IPBSD in both directions)
+        :param solutionFileX: str           Path to solution file to be used for design in dir1 (X direction)
+        :param solutionFileY: str           Path to solution file to be used for design in dir2 (Y direction)
+                                            (optional: not necessary if flag3d is False)
         :param export_cache: bool           Whether to export cache at each major step into an outputs directory or not
         :param holdFlag: bool               Flag to stop the framework once the solution combinations have been computed
                                             This allows the user to subdivide the framework into two sections if it
@@ -52,6 +56,7 @@ class IPBSD:
                                             file containing all valid solutions.
         :param overstrength: float          Overstrength ratio, leave on default and the user will automatically assign
                                             a value
+        :param replCost: float              Replacement cost of the entire building
         """
         self.dir = Path.cwd()
         self.input_file = input_file
@@ -65,25 +70,25 @@ class IPBSD:
         self.num_modes = num_modes
         self.damping = damping
         self.iterate = iterate
-        self.system = system                # TODO, currently it does nothing, IPBSD is only working with Perimeter frames, Space (loads etc. to be updated) frames to be added
+        self.system = system                # TODO, currently does nothing, IPBSD is only working with Perimeter frames, Space (loads etc. to be updated) frames to be added
         self.maxiter = maxiter
         self.fstiff = fstiff
         self.rebar_cover = rebar_cover
-        self.solutionFile = solutionFile
+        self.solutionFileX = solutionFileX
+        self.solutionFileY = solutionFileY
         self.export_cache = export_cache
         self.holdFlag = holdFlag
         self.overstrength = overstrength
+        self.replCost = replCost
+
+        # 2d (False) means, that even if the SLFs are provided for the entire building, only 1 direction
+        # (defaulting to dir1) will be considered. This also entails the use of non-dimensional components,
+        # however, during loss assessment the non-dimensional factor will not be applied (i.e. nd_factor=1.0)
+        self.flag3d = flag3d
 
         if self.export_cache:
             # Create a folder for 'Cache' if none exists
             self.create_folder(self.outputPath / "Cache")
-        # 2d means, that even if the SLFs are provided for the entire building, only 1 direction (defaulting to dir1)
-        # will be considered. This also entails the use of non-dimensional components, however, during loss assessment
-        # the non-dimensional factor will not be applied (i.e. nd_factor=1.0)
-        if geometry.lower() == "2d":
-            self.geometry = 0
-        else:
-            self.geometry = 1
 
     @staticmethod
     def get_init_time():
@@ -343,10 +348,26 @@ class IPBSD:
         # Exporting the sections file for use by Modeler module as Haselton springs
         self.export_results(self.outputPath / "haselton_springs", sections, "csv")
 
+    def check_file(self, path):
+        """
+        Checks if DataFrame in path exists and returns it
+        :param path: str
+        :return: DataFrame
+        """
+
+        if path is not None:
+            try:
+                df = pd.read_csv(path)
+            except:
+                df = None
+        else:
+            df = None
+        return df
+
     def run_ipbsd(self):
 
         """Calling the master file"""
-        ipbsd = Master(self.dir)
+        ipbsd = Master(self.dir, flag3d=self.flag3d)
 
         """Generating and storing the input arguments"""
         ipbsd.read_input(self.input_file, self.hazard_file, self.outputPath)
@@ -367,17 +388,18 @@ class IPBSD:
         eal, y_fit, lam_fit = ipbsd.get_loss_curve(lam_ls, self.limit_EAL)
         lossCurve = {"y": ipbsd.data.y, "lam": lam_ls, "y_fit": y_fit, "lam_fit": lam_fit, "eal": eal,
                      "PLS": ipbsd.data.PLS}
+        print(f"[SUCCESS] EAL = {eal:.2f}")
 
         """Get design limits"""
-        theta_max, a_max, slfsCache = ipbsd.get_design_values(self.slfDir, self.geometry)
+        theta_max, a_max, slfsCache = ipbsd.get_design_values(self.slfDir, self.replCost)
         if self.export_cache:
             self.export_results(self.outputPath / "Cache/SLFs", slfsCache, "pickle")
         print("[SUCCESS] SLF successfully read, and design limits are calculated")
 
         """Transform design values into spectral coordinates"""
-        table_sls, delta_spectral, alpha_spectral = ipbsd.perform_transformations(theta_max, a_max)
+        tables, delta_spectral, alpha_spectral = ipbsd.perform_transformations(theta_max, a_max)
         if self.export_cache:
-            self.export_results(self.outputPath / "Cache/table_sls", table_sls, "pickle")
+            self.export_results(self.outputPath / "Cache/table_sls", tables, "pickle")
         print("[SUCCESS] Spectral values of design limits are obtained")
 
         """Get spectra at SLS"""
@@ -392,8 +414,15 @@ class IPBSD:
         print("[SUCCESS] Response spectra generated")
 
         """Get feasible fundamental period range"""
-        t_lower, t_upper = ipbsd.get_period_range(delta_spectral, alpha_spectral, sd, sa)
-        print("[SUCCESS] Feasible period range identified")
+        if method.flag3d:
+            period_limits = {"1": [], "2": []}
+        else:
+            period_limits = {"1": []}
+
+        for i in range(delta_spectral.shape[0]):
+            t_lower, t_upper = ipbsd.get_period_range(delta_spectral[i], alpha_spectral[i], sd, sa)
+            period_limits[str(i + 1)] = [t_lower, t_upper]
+            print(f"[SUCCESS] Feasible period range identified. T_lower = {t_lower:.2f}s, T_upper = {t_upper:.2f}s")
 
         """Get all section combinations satisfying period bound range
         Notes: If solutions cache exists in outputs directory, the file will be read and an optimal solution based on
@@ -404,57 +433,74 @@ class IPBSD:
         optimal solution. No solutions cache will be derived.
         """
         # Check whether solutions file was provided
-        if self.solutionFile is not None:
-            try:
-                solution = pd.read_csv(self.solutionFile)
-            except:
-                solution = None
-        else:
-            solution = None
+        solution_x = self.check_file(self.solutionFileX)
+        solution_y = self.check_file(self.solutionFileY)
 
-        sols, opt_sol, opt_modes = ipbsd.get_all_section_combinations(t_lower, t_upper, fstiff=self.fstiff,
-                                                                      cache_dir=self.outputPath/"Cache",
-                                                                      solution=solution)
+        results = ipbsd.get_all_section_combinations(period_limits, fstiff=self.fstiff,
+                                                     cache_dir=self.outputPath/"Cache",
+                                                     solution_x=solution_x, solution_y=solution_y)
         print("[SUCCESS] All section combinations were identified")
+
+        # Call the iterations function (iterations have not yet started though)
+        if method.flag3d:
+            # 3D option
+            frames = 2
+        else:
+            # 2D option
+            frames = 1
 
         # The main portion of IPBSD is completed. Now corrections should be made for the assumptions
         if not self.holdFlag:
 
-            # Call the iterations function (iterations have not yet started though)
-            iterations = Iterations(ipbsd, sols, self.spo_file, self.target_MAFC, self.analysis_type, self.damping,
-                                    self.num_modes, self.fstiff, self.rebar_cover, self.outputPath)
+            for i in range(frames):
+                if i == 0:
+                    print("[INITIATE] Designing frame in X direction!")
+                elif i == 1:
+                    print("[INITIATE] Designing frame in Y direction!")
 
-            # Run the validations and iterations if need be
-            ipbsd_outputs, spoResults, opt_sol, demands, details, hinge_models, action, modelOutputs = \
-                iterations.validations(opt_sol, opt_modes, sa, period_range, table_sls, t_lower, t_upper, self.iterate,
-                                       self.maxiter, omega=self.overstrength)
+                sols = results[i]["sols"]
+                opt_sol = results[i]["opt_sol"]
+                opt_modes = results[i]["opt_modes"]
+                t_lower, t_upper = period_limits[str(i + 1)]
+                table_sls = tables[i]
 
-            """Iterations are completed and IPBSD is finalized"""
-            # Export main outputs and cache
-            if self.export_cache:
-                """Storing the outputs"""
-                # Exporting the IPBSD outputs
-                self.export_results(self.outputPath / "Cache/spoShape", pd.DataFrame(iterations.spo_shape, index=[0]),
-                                    "csv")
-                self.export_results(self.outputPath / "Cache/lossCurve", lossCurve, "pickle")
-                self.export_results(self.outputPath / "Cache/spoAnalysisCurveShape", spoResults, "pickle")
-                self.export_results(self.outputPath / "optimal_solution", opt_sol, "csv")
-                self.export_results(self.outputPath / "Cache/action", action, "csv")
-                self.export_results(self.outputPath / "Cache/demands", demands, "pkl")
-                self.export_results(self.outputPath / "Cache/ipbsd", ipbsd_outputs, "pkl")
-                self.export_results(self.outputPath / "Cache/details", details, "pkl")
-                self.export_results(self.outputPath / "hinge_models", hinge_models, "csv")
-                self.export_results(self.outputPath / "Cache/modelOutputs", modelOutputs, "pickle")
+                # Call the iterations function (iterations have not yet started though)
+                iterations = Iterations(ipbsd, sols, self.spo_file, self.target_MAFC, self.analysis_type, self.damping,
+                                        self.num_modes, self.fstiff, self.rebar_cover, self.outputPath)
 
-                """Creating DataFrames to store for RCMRF input"""
-                self.cacheRCMRF(ipbsd, details, opt_sol, demands)
+                # Run the validations and iterations if need be
+                ipbsd_outputs, spoResults, opt_sol, demands, details, hinge_models, action, modelOutputs = \
+                    iterations.validations(opt_sol, opt_modes, sa, period_range, table_sls, t_lower, t_upper,
+                                           self.iterate, self.maxiter, omega=self.overstrength)
 
-            print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
-            # Note: stiffness based off first yield point, at nominal point the stiffness is actually lower, and
-            # might act as a more realistic value. Notably Haselton, 2016 limits the secant yield stiffness between
-            # 0.2EIg and 0.6EIg.
+                """Iterations are completed and IPBSD is finalized"""
+                # Export main outputs and cache
+                if self.export_cache:
+                    """Storing the outputs"""
+                    # Exporting the IPBSD outputs
+                    self.create_folder(self.outputPath / f"Cache/frame{i+1}")
+                    self.export_results(self.outputPath / f"Cache/frame{i+1}/spoShape",
+                                        pd.DataFrame(iterations.spo_shape, index=[0]), "csv")
+                    self.export_results(self.outputPath / f"Cache/frame{i+1}/lossCurve", lossCurve, "pickle")
+                    self.export_results(self.outputPath / f"Cache/frame{i+1}/spoAnalysisCurveShape", spoResults,
+                                        "pickle")
+                    self.export_results(self.outputPath / f"Cache/frame{i+1}/optimal_solution", opt_sol, "csv")
+                    self.export_results(self.outputPath / f"Cache/frame{i+1}/action", action, "csv")
+                    self.export_results(self.outputPath / f"Cache/frame{i+1}/demands", demands, "pkl")
+                    self.export_results(self.outputPath / f"Cache/frame{i+1}/ipbsd", ipbsd_outputs, "pkl")
+                    self.export_results(self.outputPath / f"Cache/frame{i+1}/details", details, "pkl")
+                    self.export_results(self.outputPath / f"Cache/frame{i+1}/hinge_models", hinge_models, "csv")
+                    self.export_results(self.outputPath / f"Cache/frame{i+1}/modelOutputs", modelOutputs, "pickle")
 
-            print("[END] IPBSD was performed successfully")
+                    """Creating DataFrames to store for RCMRF input"""
+                    self.cacheRCMRF(ipbsd, details, opt_sol, demands)
+
+                print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
+                # Note: stiffness based off first yield point, at nominal point the stiffness is actually lower, and
+                # might act as a more realistic value. Notably Haselton, 2016 limits the secant yield stiffness between
+                # 0.2EIg and 0.6EIg.
+
+                print("[END] IPBSD was performed successfully")
 
 
 if __name__ == "__main__":
@@ -479,36 +525,37 @@ if __name__ == "__main__":
     :param fstiff: float                        Section stiffness reduction factor
     """
     # Paths
-    from pathlib import Path
     path = Path.cwd()
-    outputPath = path.parents[0] / ".applications/case1/Output1"
+    outputPath = path.parents[0] / ".applications/LOSS Validation Manuscript/Case2"
 
     # Add input arguments
-    analysis_type = 5
-    input_file = path.parents[0] / ".applications/case1/ipbsd_input.csv"
-    hazard_file = path.parents[0] / ".applications/case1/Hazard-LAquila-Soil-C.pkl"
+    analysis_type = 3
+    input_file = path.parents[0] / ".applications/LOSS Validation Manuscript/Case2/ipbsd_input.csv"
+    hazard_file = path.parents[0] / ".applications/LOSS Validation Manuscript/Hazard/Hazard-LAquila-Soil-C.pkl"
     slfDir = outputPath / "slfoutput"
-    spo_file = path.parents[0] / ".applications/case1/spo.csv"
-    limit_eal = 0.8
+    spo_file = path.parents[0] / ".applications/LOSS Validation Manuscript/Case2/spo.csv"
+    limit_eal = 1.0
     mafc_target = 2.e-4
     damping = .05
     system = "Perimeter"
-    maxiter = 10
+    maxiter = 2
     fstiff = 0.5
     overstrength = 1.0
-    geometry = "2d"
+    flag3d = True
     export_cache = True
     holdFlag = False
     iterate = True
+    replCost = 349459.2 * 2
 
     # Design solution to use (leave None, if the tool needs to look for the solution)
     # solutionFile = path.parents[0] / ".applications/case1/designSol.csv"
-    solutionFile = None
+    solutionFileX = None
+    solutionFileY = None
 
     method = IPBSD(input_file, hazard_file, slfDir, spo_file, limit_eal, mafc_target, outputPath, analysis_type,
                    damping=damping, num_modes=2, iterate=iterate, system=system, maxiter=maxiter, fstiff=fstiff,
-                   geometry=geometry, solutionFile=solutionFile, export_cache=export_cache, holdFlag=holdFlag,
-                   overstrength=overstrength, rebar_cover=0.03)
+                   flag3d=flag3d, solutionFileX=solutionFileX, solutionFileY=solutionFileY, export_cache=export_cache,
+                   holdFlag=holdFlag, overstrength=overstrength, rebar_cover=0.03, replCost=replCost)
     start_time = method.get_init_time()
     method.run_ipbsd()
     method.get_time(start_time)

@@ -10,13 +10,14 @@ import pandas as pd
 
 
 class SLF:
-    def __init__(self, slfDirectory, y_sls, nst, geometry=0):
+    def __init__(self, slfDirectory, y_sls, nst, geometry=False, replCost=None):
         """
         initialize storey loss function definition
         :param slfDirectory: dict                   SLF data file
         :param y_sls: array                         Expected loss ratios (ELRs) associated with SLS
         :param nst: int                             Number of stories
-        :param geometry: int                        0 for "2d", 1 for "3d"
+        :param geometry: int                        False for "2d", True for "3d"
+        :param replCost: float                      Replacement cost of the entire building
         """
         self.slfDirectory = slfDirectory
         self.y_sls = y_sls
@@ -26,6 +27,8 @@ class SLF:
         self.S_KEY = 1
         self.NS_KEY = 2
         self.PERF_GROUP = ["PSD_S", "PSD_NS", "PFA_NS"]
+        self.replCost = replCost
+
         # Normalization, currently will do normalization regardless, whereby having summation of max values of SLFs
         # equalling to unity, however in future updates, this will become a user input
         self.NORMALIZE = True
@@ -53,6 +56,7 @@ class SLF:
         # TODO, add generation of SLFs
         for file in os.listdir(self.slfDirectory):
             if not os.path.isdir(self.slfDirectory / file):
+
                 # Read the file (needs to be single file)
                 filename = self.slfDirectory / file
                 df = pd.read_excel(io=filename)
@@ -79,9 +83,12 @@ class SLF:
 
                 # Get the total loss and normalize if specified
                 if self.NORMALIZE:
-                    # Addition
-                    add = sum(loss[-1][3:6]) * (self.nst - 3) if factor == 3 else 0
-                    maxCost = np.sum(loss, axis=1)[-1] + add
+                    if self.replCost is not None:
+                        maxCost = self.replCost
+                    else:
+                        # Addition
+                        add = sum(loss[-1][3:6]) * (self.nst - 3) if factor == 3 else 0
+                        maxCost = np.sum(loss, axis=1)[-1] + add
                     loss = loss / maxCost
 
                 # Assumption: typical storey SLFs are the same
@@ -118,7 +125,8 @@ class SLF:
             EAL_limit: In % or currency
             Normalize: True or False
 
-        If EAL is in %, then normalize should be set to True, normalization based on sum(max(SLFs))
+        If EAL is in %, then normalize should be set to True, normalization based on sum(max(SLFs)) 
+        unless a replacement cost is provided
         If EAL is in currency, normalize is an option
         If normalize is True, then normalization of SLFs will be carried out
 
@@ -126,9 +134,10 @@ class SLF:
         as the software will run successfully regardless.
         '''
         # SLF output file naming conversion is important (disaggregation is based on that)
-        # IPBSD currently supports use of 3 distinct performance groups
+        # IPBSD currently supports use of 3 distinct performance groups (more to be added)
         # i.e. PSD_NS, PSD_S, PFA_NS
-        # Initialize
+
+        # Initialize dictionary
         SLFs = {"Directional": {"PSD_NS": {}, "PSD_S": {}},
                 "Non-directional": {"PFA_NS": {}, "PSD_NS": {}, "PSD_S": {}}}
 
@@ -136,6 +145,8 @@ class SLF:
         pfa = None
         psd = None
         maxCost = 0
+
+        # Loop for each pickle file in the relevant directory
         for file in os.listdir(self.slfDirectory):
             if not os.path.isdir(self.slfDirectory / file) and not file.endswith(".csv") and not file.endswith(".xlsx"):
 
@@ -144,9 +155,11 @@ class SLF:
                 df = pickle.load(f)
                 f.close()
 
+                # Split file name into words ([direction, storey, EDP] or [storey, EDP])
                 str_list = re.split("_+", file)
-                # Test if "2d" structure is being considered only
-                if self.geometry == 0:
+
+                # Test if "2d" structure is being considered only (SEEMS REDUNDANT)
+                if not self.geometry:
                     if str_list[0][-1] == "1" or len(str_list) == 2:
                         # Perform the loop if dir1 or non-directional components
                         pass
@@ -154,23 +167,33 @@ class SLF:
                         # Skip the loop
                         continue
 
+                # Check if non-directional or not
                 if len(str_list) == 2:
                     direction = None
                     non_dir = "Non-directional"
                 else:
                     direction = str_list[0][-1]
                     non_dir = "Directional"
+
+                # EDP name (psd or pfa)
                 edp = str_list[-1][0:3]
 
+                # PFA-sensitive components
                 if edp == "pfa":
                     story = str_list[0][-1]
                     for key in df.keys():
                         if not key.startswith("SLF"):
                             loss = df[key]["slfs"]["mean"]
+
+                            # zero out the negative values (fitting function issue in SLF)
+                            idx = np.max(np.where(loss <= 0)[0])
+                            loss[:idx+1] = 0.0
+
                             SLFs[non_dir]["PFA_NS"][str(int(story) - 1)] = {"loss": loss,
-                                                                            "edp": df[key]["fragilities"]["EDP"]}
-                            pfa = df[key]["fragilities"]["EDP"]
+                                                                            "edp": df[key]["edp"]}
+                            pfa = df[key]["edp"]
                             maxCost += max(loss)
+                # PSD-sensitive components
                 else:
                     story = str_list[-2][-1]
                     for key in df.keys():
@@ -187,52 +210,87 @@ class SLF:
                                 if "dir" + direction not in SLFs[non_dir][tag].keys():
                                     SLFs[non_dir][tag]["dir" + direction] = {}
                                 loss = df[key]["slfs"]["mean"]
+
+                                # zero out the negative values (fitting function issue in SLF)
+                                idx = np.max(np.where(loss <= 0)[0])
+                                loss[:idx+1] = 0.0
+
                                 SLFs[non_dir][tag]["dir" + direction].update({story: {"loss": loss,
-                                                                                      "edp": df[key]["fragilities"][
-                                                                                          "EDP"]}})
+                                                                                      "edp": df[key]["edp"]}})
                                 maxCost += max(loss)
                             else:
                                 loss = df[key]["slfs"]["mean"]
+
+                                # zero out the negative values (fitting function issue in SLF)
+                                idx = np.max(np.where(loss <= 0)[0])
+                                loss[:idx+1] = 0.0
+
                                 SLFs[non_dir][tag].update({story: {"loss": loss,
-                                                                   "edp": df[key]["fragilities"]["EDP"]}})
+                                                                   "edp": df[key]["edp"]}})
                                 maxCost += max(loss)
-                            psd = df[key]["fragilities"]["EDP"]
+                            psd = df[key]["edp"]
 
         # SLFs should be exported for use in LOSS
         # SLFs are disaggregated based on story, direction and EDP-sensitivity
         # Next, the SLFs are lumped at each storey based on EDP-sensitivity
         # EDP range should be the same for each corresponding group
         # Create SLF functions based on number of stories
+        # slf_functions structure - EDP group -> direction -> story or floor level -> expected loss ratio values
         slf_functions = {}
         for group in self.PERF_GROUP:
-            slf_functions[group] = {}
+            # Adding direction
+            if self.geometry:
+                slf_functions[group] = {"dir1": {}, "dir2": {}}
+            else:
+                slf_functions[group] = {"dir1": {}}
+
             # Add for zero floor for PFA sensitive group
             if group == "PFA_NS":
-                slf_functions[group]["0"] = np.zeros(pfa.shape)
-            for st in range(1, self.nst + 1):
-                if group == "PFA_NS":
-                    edp = pfa
-                else:
-                    edp = psd
-                slf_functions[group][str(st)] = np.zeros(edp.shape)
+                for key in slf_functions[group].keys():
+                    # Placeholder for ground floor 0 for PFA_NS group
+                    slf_functions[group][key]["0"] = np.zeros(pfa.shape)
+
+            # Placeholders for the remaining stories and floors
+            for key in slf_functions[group].keys():
+                for st in range(1, self.nst + 1):
+                    if group == "PFA_NS":
+                        edp = pfa
+                    else:
+                        edp = psd
+                    slf_functions[group][key][str(st)] = np.zeros(edp.shape)
 
         # Generating the SLFs for each Performance Group of interest at each storey level
         if self.NORMALIZE:
-            factor = maxCost
+            if self.replCost is not None:
+                factor = self.replCost
+            else:
+                factor = maxCost
         else:
             factor = 1.0
 
+        # for directional and non-directional components
         for i in SLFs:
+            # for EDP performance groups
             for j in SLFs[i]:
                 if i == "Directional":
+                    # for direction 1 and 2
                     for k in SLFs[i][j]:
+                        # for each storey level
                         for st in SLFs[i][j][k]:
                             loss = SLFs[i][j][k][st]["loss"]
-                            slf_functions[j][st] += loss / factor
+                            slf_functions[j][k][st] += loss / factor
                 else:
-                    for st in SLFs[i][j]:
-                        loss = SLFs[i][j][st]["loss"]
-                        slf_functions[j][st] += loss / factor
+                    # Non-directional SLFs and directional (corresponding to dir1 or dir2) will be summed
+                    # for direction 1 and 2
+                    if self.geometry:
+                        n_dir = 2
+                    else:
+                        n_dir = 1
+                    for k in range(n_dir):
+                        k = f"dir{k+1}"
+                        for st in SLFs[i][j]:
+                            loss = SLFs[i][j][st]["loss"]
+                            slf_functions[j][k][st] += loss / factor
 
         # SLF interpolation functions and ELRs
         func = {"y": {}, "interpolation": {}}
@@ -242,10 +300,17 @@ class SLF:
             else:
                 # EPD range for both NS and S should be the same
                 edp = psd
+
+            # Expected loss ratios (ELR)
             func["y"][i] = {}
+            # Interpolation function for edp vs elr
             func["interpolation"][i] = {}
-            for st in slf_functions[i]:
-                func["y"][i][st] = max(slf_functions[i][st]) * self.y_sls
-                func["interpolation"][i][st] = interp1d(slf_functions[i][st], edp)
+
+            for k in slf_functions[i]:
+                func["y"][i][k] = {}
+                func["interpolation"][i][k] = {}
+                for st in slf_functions[i][k]:
+                    func["y"][i][k][st] = max(slf_functions[i][k][st]) * self.y_sls
+                    func["interpolation"][i][k][st] = interp1d(slf_functions[i][k][st], edp)
 
         return func, SLFs

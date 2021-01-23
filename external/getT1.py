@@ -139,14 +139,16 @@ class GetT1:
         # storey grouping
         for column in range(n_cols):
             column += 1
-            if column in np.arange(1, n_cols - nbays + 1, nbays + 1) or column in np.arange(nbays + 1, n_cols + 1,
-                                                                                            nbays + 1):
+            if column in np.arange(1, n_cols - nbays + 1, nbays + 1) or \
+                    column in np.arange(nbays + 1, n_cols + 1, nbays + 1):
+                # External columns
                 node_i = column
                 idx_col = math.floor(node_i / n_aligns_x - 0.00001)
                 l_col = self.h[idx_col]
                 a_col = self.a_cols[idx_col]
                 i_col = self.i_cols[idx_col]
             else:
+                # Internal columns
                 node_i = column
                 idx_col = math.floor(node_i / n_aligns_x - 0.00001)
                 l_col = self.h[idx_col]
@@ -163,20 +165,24 @@ class GetT1:
             k_frame[dofs_j_i:dofs_j_j, :][:, dofs_i_i:dofs_i_j] += k_column[3:, :][:, :3]
             k_frame[dofs_j_i:dofs_j_j, :][:, dofs_j_i:dofs_j_j] += k_column[3:, :][:, 3:]
             k_column_all[column - 1] = k_column
+
         # Fill frame K for beam matrices
         n_beams = (n_aligns_x - 1) * (n_aligns_y - 1)
         theta_beam = 0
         f_grav_frame = np.zeros(n_dofs)
         k_beam_all = np.zeros(n_beams * 6 * 6).reshape(n_beams, 6, 6)
-        count = 0
+        count_bay = 0
+        count_st = 0
         for beam in range(n_beams):
             beam += 1
             floor = math.floor((beam - 1) / (n_aligns_x - 1))
-            idx_beam = count
             node_i = beam + n_aligns_x + floor
-            l_beam = self.spans_x[idx_beam]
-            a_beam = self.a_beams[idx_beam]
-            i_beam = self.i_beams[idx_beam]
+            # Indices for beam parameters
+            idx_beam_bay = count_bay
+            idx_beam_st = count_st
+            l_beam = self.spans_x[idx_beam_bay]
+            a_beam = self.a_beams[idx_beam_bay][idx_beam_st]
+            i_beam = self.i_beams[idx_beam_bay][idx_beam_st]
             dofs_i = np.array([1, 2, 3]) + ((node_i - 1) * 3) - 1
             dofs_j = dofs_i + 3
             dofs_i_i, dofs_i_j = dofs_i[0], dofs_i[-1] + 1
@@ -195,9 +201,12 @@ class GetT1:
                 f_member = self.get_beam_fixed_fixed_reactions(w_member, l_beam)
                 f_grav_frame[dofs_i_i:dofs_i_j] += f_member[:3]
                 f_grav_frame[dofs_j_i:dofs_j_j] += f_member[3:]
-            count += 1
-            if count == n_aligns_x - 1:
-                count = 0
+            count_bay += 1
+            if count_bay == n_aligns_x - 1:
+                count_bay = 0
+            if count_bay == 0:
+                count_st += 1
+
         # Remove rows/columns of supports
         dof_start = n_aligns_x * 3
         k_frame = k_frame[dof_start:, :][:, dof_start:]
@@ -270,9 +279,9 @@ class GetT1:
             for beam in range(n_beams):
                 beam += 1
                 floor = math.floor((beam - 1) / (n_aligns_x - 1))
-                idx_beam = floor
+                idx_beam_bay = floor
                 node_i = beam + n_aligns_x + floor
-                My = self.mby[idx_beam]
+                My = self.mby[idx_beam_bay]
                 dofs_i = np.array([1, 2, 3]) + ((node_i - 1) * 3) - 1
                 dofs_j = dofs_i + 3
                 dofs_interest = list(dofs_i - dof_start) + list(dofs_j - dof_start)
@@ -337,16 +346,16 @@ class GetT1:
 
 if __name__ == "__main__":
 
-    nst = 2
+    nst = 3
     nbays = 2
 
-    b_col = [.35, .35]
+    b_col = [.55, .55, .55]
     h_col = b_col
-    b_beam = [.3, .3]
-    h_beam = [.5, .5]
-    spans_X = [5., 5.]
-    h = [3.5, 3.]
-    mi = np.array([91.74,76.45])
+    b_beam = np.array([[.55, .5, .45], [.55, .5, .45]])
+    h_beam = np.array([[.7, .65, .6], [.7, .65, .6]])
+    spans_X = [6., 6.5]
+    h = [3.5, 3., 3.]
+    mi = np.array([128.*2, 121.*2, 121.*2])
     n_seismic = 2
     fc = 25.
     fstiff = 0.5
@@ -354,18 +363,15 @@ if __name__ == "__main__":
 
     A_cols = []
     I_cols = []
-    A_beams = []
-    I_beams = []
+    A_beams = b_beam * h_beam
+    I_beams = b_beam * h_beam ** 3 / 12
     A_c_ints = []
     I_c_ints = []
     for i in range(nst):
         A_cols.append(b_col[i] * h_col[i])
         I_cols.append(b_col[i] * h_col[i] ** 3 / 12)
-        A_c_ints.append(b_col[i] * h_col[i])
-        I_c_ints.append(b_col[i] * h_col[i] ** 3 / 12)
-    for i in range(nst):
-        A_beams.append(b_beam[i] * h_beam[i])
-        I_beams.append(b_beam[i] * h_beam[i] ** 3 / 12)
+        A_c_ints.append(0.7 * 0.7)
+        I_c_ints.append(0.7 * 0.7 ** 3 / 12)
     gt = GetT1(A_cols, A_c_ints, I_cols, I_c_ints, A_beams, I_beams, nst, spans_X, h, mi, n_seismic, fc, fstiff,
                just_period=True, w_seismic=w_seismic)
     T1, phi_norm = gt.run_ma()

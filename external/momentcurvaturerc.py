@@ -322,6 +322,8 @@ class MomentCurvatureRC:
     
     def get_mphi(self, check_reinforcement=False, reinf_test=0., m_target=None, reinforcements=None, cover=None):
         # TODO, a bit too rigid, make it more flexible, easier to manipulate within IPBSD to achieve optimized designs
+        # TODO, issue where fracturing curvature is not computed correctly and is equal to hardening curvature,
+        #  look into it
         """
         Gives the Moment-curvature relationship
         :param check_reinforcement: bool            Gets moment for reinforcement provided (True) or applied
@@ -466,6 +468,10 @@ class MomentCurvatureRC:
 
         # Force phi_critical equal to max phi, if not exceeding (for columns), it is unlikely to have this situation
         phi_critical = max(phi[-1], phi_critical)
+        # TODO, check into phi_critical and get rid of the following if statement
+        if phi_critical == max(phi):
+            phi_critical = max(phi)*1.01
+
         phi_model = np.array([1e-9, phi_yield_nom, max(phi), phi_critical])
 
         # Identifying fracturing point

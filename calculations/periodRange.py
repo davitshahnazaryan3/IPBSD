@@ -81,4 +81,5 @@ class PeriodRange:
         :return: None
         """
         if t_lower >= t_upper:
-            raise ValueError("[EXCEPTION] Lower period is higher than upper period. No solution found!")
+            raise ValueError(f"[EXCEPTION] Lower period of {t_lower:.2f}s is higher than upper period {t_upper:.2f}s. "
+                             f"No solution found!")

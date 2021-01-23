@@ -20,12 +20,14 @@ from external.elf import ELF
 
 
 class Master:
-    def __init__(self, mainDirectory):
+    def __init__(self, mainDirectory, flag3d=False):
         """
         initialize IPBSD
         :param mainDirectory: str                   Main directory of tool
+        :param flag3d: bool                         False for "2d", True for "3d"
         """
         self.dir = mainDirectory
+        self.flag3d = flag3d
         self.coefs = None                           # Hazard fitting coefficients               dict
         self.hazard_data = None                     # Hazard information                        dict
         self.original_hazard = None                 # Original hazard information               dict
@@ -97,15 +99,15 @@ class Master:
         s = Spectra(lam, self.coefs, self.hazard_data['T'])
         return s.sa, s.sd, s.T_RANGE
 
-    def get_design_values(self, slfDirectory, geometry=0):
+    def get_design_values(self, slfDirectory, replCost=None):
         """
         gets the design values of IDR and PFA from the Storey-Loss-Functions
         :param slfDirectory: str                    Directory of SLFs derived via SLF Generator
-        :param geometry: int                        0 for "2d", 1 for "3d"
+        :param replCost: float                      Replacement cost of the entire building
         :return: float, float                       Peak storey drift, (PSD) [-] and Peak floor acceleration, (PFA) [g]
         """
         y_sls = self.data.y[1]
-        dl = DesignLimits(slfDirectory, y_sls, self.data.nst, geometry)
+        dl = DesignLimits(slfDirectory, y_sls, self.data.nst, self.flag3d, replCost)
         slfsCache = dl.SLFsCache
         return dl.theta_max, dl.a_max, slfsCache
 
@@ -116,11 +118,17 @@ class Master:
         :param a: float                             Peak floor acceleration, PFA, [g]
         :return: dict, float, float                 DDBD at SLS, Design spectral displacement and acceleration
         """
-        t = Transformations(self.data, th, a)
-        table, phi, deltas = t.table_generator()
-        g, m = t.get_modal_parameters(phi)
-        delta, alpha = t.get_design_values(deltas)
-        return table, delta, alpha
+        delta = np.zeros(th.shape)
+        alpha = np.zeros(a.shape)
+        tables = {}
+        for i in range(th.shape[0]):
+            t = Transformations(self.data, th[i], a[i])
+            table, phi, deltas = t.table_generator()
+            g, m = t.get_modal_parameters(phi)
+            delta[i], alpha[i] = t.get_design_values(deltas)
+            tables[i] = table
+
+        return tables, delta, alpha
 
     def get_period_range(self, d, a, sd, sa):
         """
@@ -138,38 +146,73 @@ class Master:
         pr.period_range_verification(t_lower, t_upper)
         return t_lower, t_upper
 
-    def get_all_section_combinations(self, t_lower, t_upper, fstiff=0.5, solution=None, data=None, cache_dir=None):
+    def get_all_section_combinations(self, period_limits, fstiff=0.5, solution_x=None, solution_y=None, data=None,
+                                     cache_dir=None):
         """
         gets all section combinations satisfying period bound range
-        :param t_lower: float                       Lower period limit
-        :param t_upper: float                       Upper period limit
+        :param period_limits: list                  Lower period limit and Upper period limit
         :param fstiff: float                        Stiffness reduction factor
-        :param solution: Series                     Solution to run analysis instead (for iterations)
+        :param solution_x: Series                   Solution to run analysis instead (for iterations, dir1
+        :param solution_y: Series                   Solution to run analysis instead (for iterations, dir2
         :param data: object                         Input arguments
         :param cache_dir: str                       Directory to export the cache csv solutions of
         :return cs.solutions: DataFrame             Solution combos
         :return opt_sol: DataFrame                  Optimal solution
         :return opt_modes: dict                     Periods and normalized modal shapes of the optimal solution
         """
-        if solution is None:
+        if solution_x is None:
+            t_lower, t_upper = period_limits["1"]
             cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
                               self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
-                              cache_dir=cache_dir)
+                              cache_dir=cache_dir/"solution_cache_x.csv")
             opt_sol, opt_modes = cs.find_optimal_solution()
-            return cs.solutions, opt_sol, opt_modes
-        elif solution is not None and data is None:
+            results_x = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
+
+        elif solution_x is not None and data is None:
+            t_lower, t_upper = period_limits["1"]
             cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
                               self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
-                              cache_dir=cache_dir)
-            opt_sol, opt_modes = cs.find_optimal_solution(solution)
-            return cs.solutions, opt_sol, opt_modes
+                              cache_dir=cache_dir/"solution_cache_x.csv")
+            opt_sol, opt_modes = cs.find_optimal_solution(solution_x)
+            results_x = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
+
         else:
+            t_lower, t_upper = period_limits["1"]
             self.data = data
             cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
                               self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
                               iteration=True)
-            opt_sol, opt_modes = cs.find_optimal_solution(solution)
-            return opt_sol, opt_modes
+            opt_sol, opt_modes = cs.find_optimal_solution(solution_x)
+            results_x = {"opt_sol": opt_sol, "opt_modes": opt_modes}
+
+        # Optimal solution in prmiary direction (dir1 or x)
+        opt_sol_x = results_x["opt_sol"]
+        if solution_y is None:
+            t_lower, t_upper = period_limits["2"]
+            cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc, self.data.spans_y,
+                              self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
+                              cache_dir=cache_dir/"solution_cache_y.csv", solution_perp=opt_sol_x)
+            opt_sol, opt_modes = cs.find_optimal_solution()
+            results_y = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
+
+        elif solution_y is not None and data is None:
+            t_lower, t_upper = period_limits["2"]
+            cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc, self.data.spans_y,
+                              self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
+                              cache_dir=cache_dir/"solution_cache_y.csv", solution_perp=opt_sol_x)
+            opt_sol, opt_modes = cs.find_optimal_solution(solution_y)
+            results_y = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
+
+        else:
+            t_lower, t_upper = period_limits["2"]
+            self.data = data
+            cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc, self.data.spans_y,
+                              self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
+                              iteration=True, solution_perp=opt_sol_x)
+            opt_sol, opt_modes = cs.find_optimal_solution(solution_y)
+            results_y = {"opt_sol": opt_sol, "opt_modes": opt_modes}
+
+        return results_x, results_y
 
     def perform_spo2ida(self, spo_pars):
         """

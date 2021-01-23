@@ -272,7 +272,7 @@ class Iterations:
             raise ValueError("[EXCEPTION] No solution satisfying the period range condition was found!")
         else:
             solution, modes = self.ipbsd.get_all_section_combinations(t_lower=None, t_upper=None,
-                                                                      solution=solution.iloc[0], data=self.ipbsd.data,
+                                                                      solution_x=solution.iloc[0], data=self.ipbsd.data,
                                                                       cache_dir=self.outputPath / "Cache")
             return solution, modes
 
@@ -399,6 +399,7 @@ class Iterations:
             self.ipbsd.design_elements(demands, solution, modes, dy, cover=self.rebar_cover)
 
         print("[SUCCESS] Section detailing done. Element idealized Moment-Curvature relationships obtained")
+
         # Rerun elastic analysis with updated stiffness reduction factors for all structural elements
         if rerun:
             demands = analyze(hinge=hinge_models)
@@ -435,10 +436,19 @@ class Iterations:
             period_error = model_periods[0] - opt_sol["T"]
             # Look for a new period for the design solution (probably not the best way to guess)
             tnew = t_upper - period_error
-            # Select all solutions in the vicinity of the new period
-            sols = self.sols[(self.sols["T"] >= tnew - tnew * tol) & (self.sols["T"] <= tnew + tnew * tol)]
-            # Select the solution with the least weight
-            opt_sol = sols[sols["Weight"] == sols["Weight"].min()].iloc[0]
+            # # Select all solutions in the vicinity of the new period
+            # sols = self.sols[(self.sols["T"] >= tnew - tnew * tol) & (self.sols["T"] <= tnew + tnew * tol)]
+            # # Select the solution with the least weight
+            # opt_sol = sols[sols["Weight"] == sols["Weight"].min()].iloc[0]
+
+            try:
+                # Select all solutions in the vicinity of the new period
+                sols = self.sols[(self.sols["T"] >= tnew - tnew * tol) & (self.sols["T"] <= tnew + tnew * tol)]
+                # Select the solution with the least weight
+                opt_sol = sols[sols["Weight"] == sols["Weight"].min()].iloc[0]
+            except:
+                opt_sol = self.sols[self.sols["T"] == self.sols["T"].min()].iloc[0]
+
             # Actual period of the structure is guessed to be (opt_sol period + error)
             self.period_to_use = opt_sol["T"] + period_error
             self.warnT = True
@@ -665,6 +675,9 @@ class Iterations:
                         opt_sol["T"] = model_periods[0]
                         # TODO, rerun for new cy, detailing and MA. Or significant changes not expected?
                         print("[RERUN COMPLETE] Rerun for fundamental period correction")
+                    # Break if T cannot be found
+                    if cntTrerun > 3:
+                        break
 
                 # Exiting while warnT
                 # Correction if unsatisfactory detailing, modifying only towards increasing c-s
