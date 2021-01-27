@@ -176,13 +176,42 @@ class IPBSD:
         X = sum(spansX)
         Y = sum(spansY)
 
-        if self.system == "Perimeter":
-            distLength = spansY[0] / 2
-        else:
-            distLength = spansY[0]
+        if self.flag3d:
+            # Along X direction
+            f_loads = []
+            r_loads = []
+            for x in spansX:
+                if x <= spansY[0]:
+                    f_loads.append(floorLoad * x**2 / 4)
+                    r_loads.append(roofLoad * x**2 / 4)
+                else:
+                    f_loads.append(1/4 * floorLoad * spansY[0] * (2 * x - spansY[0]))
+                    r_loads.append(1/4 * roofLoad * spansY[0] * (2 * x - spansY[0]))
 
-        # Distributed loads
-        distLoads = [floorLoad * distLength, roofLoad * distLength]
+            # Along Y direction
+            f_loads = []
+            r_loads = []
+            for y in spansY:
+                if y <= spansX[0]:
+                    f_loads.append(floorLoad * y**2 / 4)
+                    r_loads.append(roofLoad * y**2 / 4)
+                else:
+                    f_loads.append(1/4 * floorLoad * spansX[0] * (2 * y - spansX[0]))
+                    r_loads.append(1/4 * roofLoad * spansX[0] * (2 * y - spansX[0]))
+
+            # Assuming uniform distribution (not quite precise)
+            dist_x = [sum(f_loads) / sum(spansX), sum(r_loads) / sum(spansX)]
+            dist_y = [sum(f_loads) / sum(spansY), sum(r_loads) / sum(spansY)]
+            distLoads = [dist_x, dist_y]
+
+        else:
+            if self.system == "Perimeter":
+                distLength = spansY[0] / 2
+            else:
+                distLength = spansY[0]
+
+            # Distributed loads
+            distLoads = [floorLoad * distLength, roofLoad * distLength]
 
         # Point loads, for now will be left as zero
         pLoads = 0.0
@@ -200,10 +229,20 @@ class IPBSD:
         loads = pd.DataFrame(columns=["Storey", "Pattern", "Load"])
 
         for st in range(1, nst + 1):
-            l = distLoads[1] if st == nst else distLoads[0]
+            if self.flag3d:
+                lx = distLoads[0][1] if st == nst else distLoads[0][0]
+                ly = distLoads[1][1] if st == nst else distLoads[1][0]
+            else:
+                lx = distLoads[1] if st == nst else distLoads[0]
+                ly = 0.0
+
             loads = loads.append({"Storey": st,
                                   "Pattern": "distributed",
-                                  "Load": l}, ignore_index=True)
+                                  "Load": lx}, ignore_index=True)
+            if self.flag3d:
+                loads = loads.append({"Storey": st,
+                                      "Pattern": "distributed_y",
+                                      "Load": ly}, ignore_index=True)
 
             # Point loads will be left as zeros for now
             loads = loads.append({"Storey": st,
@@ -215,10 +254,10 @@ class IPBSD:
 
             # PDelta loads
             if nGravity > 0:
-                l = pDeltaLoad[st-1] / ipbsd.data.n_seismic
+                lx = pDeltaLoad[st-1] / ipbsd.data.n_seismic
                 loads = loads.append({"Storey": st,
                                       "Pattern": "pdelta",
-                                      "Load": l}, ignore_index=True)
+                                      "Load": lx}, ignore_index=True)
             else:
                 loads = loads.append({"Storey": st,
                                       "Pattern": "pdelta",
@@ -230,6 +269,11 @@ class IPBSD:
                                   "Load": masses[st - 1] / ipbsd.data.n_seismic}, ignore_index=True)
 
         # Exporting action for use by a Modeler module
+        # TODO - fix load distributions
+        """
+        For a two-way slab assumption, load distribution will not be uniform.
+        For now and for simplicity, total load over each directions is computed and then divided by global length to 
+        assume a uniform distribution. """
         self.export_results(self.outputPath / "action", loads, "csv")
 
         # Materials
@@ -463,10 +507,18 @@ class IPBSD:
                 opt_modes = results[i]["opt_modes"]
                 t_lower, t_upper = period_limits[str(i + 1)]
                 table_sls = tables[i]
+                if self.flag3d:
+                    if i == 0:
+                        gravity_loads = ipbsd.data.loads_x
+                    else:
+                        gravity_loads = ipbsd.data.loads_y
+                else:
+                    gravity_loads = ipbsd.data.w_seismic
 
                 # Call the iterations function (iterations have not yet started though)
                 iterations = Iterations(ipbsd, sols, self.spo_file, self.target_MAFC, self.analysis_type, self.damping,
-                                        self.num_modes, self.fstiff, self.rebar_cover, self.outputPath)
+                                        self.num_modes, self.fstiff, self.rebar_cover, self.outputPath,
+                                        gravity_loads=gravity_loads)
 
                 # Run the validations and iterations if need be
                 ipbsd_outputs, spoResults, opt_sol, demands, details, hinge_models, action, modelOutputs = \

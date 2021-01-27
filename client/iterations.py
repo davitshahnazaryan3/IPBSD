@@ -6,7 +6,7 @@ from numpy.linalg import lstsq
 
 class Iterations:
     def __init__(self, ipbsd, sols, spo_file, target_MAFC, analysis_type, damping, num_modes, fstiff, rebar_cover,
-                 outputPath):
+                 outputPath, gravity_loads):
         """
         Initialize
         """
@@ -27,6 +27,7 @@ class Iterations:
         self.model_outputs = None
         self.period_to_use = None
         self.modified = "spo"
+        self.gravity_loads = gravity_loads
 
     def compare_value(self, x, y, tol=0.05):
         """
@@ -344,7 +345,9 @@ class Iterations:
             corr = self.ipbsd.get_correlation_matrix(modes["Periods"], self.num_modes, damping=self.damping)
         else:
             corr = None
-        forces = self.ipbsd.get_action(solution, cy, pd.DataFrame.from_dict(table_sls), self.ipbsd.data.w_seismic,
+
+        # Gravity loads
+        forces = self.ipbsd.get_action(solution, cy, pd.DataFrame.from_dict(table_sls), self.gravity_loads,
                                        self.analysis_type, self.num_modes, modes, modal_sa=se_rmsa)
 
         print("[SUCCESS] Actions on the structure for analysis were estimated")
