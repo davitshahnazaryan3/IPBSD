@@ -6,7 +6,7 @@ from numpy.linalg import lstsq
 
 class Iterations:
     def __init__(self, ipbsd, sols, spo_file, target_MAFC, analysis_type, damping, num_modes, fstiff, rebar_cover,
-                 outputPath, gravity_loads):
+                 outputPath, gravity_loads, direction=0):
         """
         Initialize
         """
@@ -28,6 +28,7 @@ class Iterations:
         self.period_to_use = None
         self.modified = "spo"
         self.gravity_loads = gravity_loads
+        self.direction = direction
 
     def compare_value(self, x, y, tol=0.05):
         """
@@ -272,9 +273,20 @@ class Iterations:
         if solution.empty:
             raise ValueError("[EXCEPTION] No solution satisfying the period range condition was found!")
         else:
-            solution, modes = self.ipbsd.get_all_section_combinations(t_lower=None, t_upper=None,
-                                                                      solution_x=solution.iloc[0], data=self.ipbsd.data,
-                                                                      cache_dir=self.outputPath / "Cache")
+            if self.direction == 0:
+                solution_x = solution.iloc[0]
+                solution_y = None
+            else:
+                solution_x = None
+                solution_y = solution.iloc[0]
+
+            results = self.ipbsd.get_all_section_combinations(t_lower=None, t_upper=None, solution_x=solution_x,
+                                                              solution_y=solution_y, data=self.ipbsd.data,
+                                                              cache_dir=self.outputPath / "Cache")
+
+            solution = results[self.direction]["opt_sol"]
+            modes = results[self.direction]["opt_modes"]
+
             return solution, modes
 
     def iterate_phase_3(self, opt_sol, omega, read=True):
@@ -351,34 +363,37 @@ class Iterations:
                                        self.analysis_type, self.num_modes, modes, modal_sa=se_rmsa)
 
         print("[SUCCESS] Actions on the structure for analysis were estimated")
-        # if self.export_cache:
-        #     self.export_results(self.outputPath / "Cache/action", forces, "csv")
         yield forces
 
         """Perform ELF analysis"""
         def analyze(hinge=None):
             if self.analysis_type == 1:
-                demands = self.ipbsd.run_muto_approach(solution, list(forces["Fi"]), self.ipbsd.data.h,
-                                                       self.ipbsd.data.spans_x)
+                if self.direction == 0:
+                    spans = self.ipbsd.data.spans_x
+                else:
+                    spans = self.ipbsd.data.spans_y
+
+                demands = self.ipbsd.run_muto_approach(solution, list(forces["Fi"]), self.ipbsd.data.h, spans)
             elif self.analysis_type == 2:
                 demands = self.ipbsd.run_analysis(self.analysis_type, solution, list(forces["Fi"]), fstiff=self.fstiff,
-                                                  hinge=hinge)
+                                                  hinge=hinge, direction=self.direction)
             elif self.analysis_type == 3:
                 demands = self.ipbsd.run_analysis(self.analysis_type, solution, list(forces["Fi"]), list(forces["G"]),
-                                                  fstiff=self.fstiff, hinge=hinge)
+                                                  fstiff=self.fstiff, hinge=hinge, direction=self.direction)
             elif self.analysis_type == 4 or self.analysis_type == 5:
                 demands = {}
                 for mode in range(self.num_modes):
                     demands[f"Mode{mode + 1}"] = self.ipbsd.run_analysis(self.analysis_type, solution,
                                                                          list(forces["Fi"][:, mode]),
-                                                                         fstiff=self.fstiff, hinge=hinge)
+                                                                         fstiff=self.fstiff, hinge=hinge,
+                                                                         direction=self.direction)
 
                 demands = self.ipbsd.perform_cqc(corr, demands)
 
                 if self.analysis_type == 5:
                     demands_gravity = self.ipbsd.run_analysis(self.analysis_type, solution,
                                                               grav_loads=list(forces["G"]),
-                                                              fstiff=self.fstiff, hinge=hinge)
+                                                              fstiff=self.fstiff, hinge=hinge, direction=self.direction)
                     # Combining gravity and RSMA results
                     for eleType in demands_gravity.keys():
                         for dem in demands_gravity[eleType].keys():
@@ -399,7 +414,7 @@ class Iterations:
 
         """Design the structural elements"""
         details, hinge_models, mu_c, mu_f, warnMax, warnMin, warnings = \
-            self.ipbsd.design_elements(demands, solution, modes, dy, cover=self.rebar_cover)
+            self.ipbsd.design_elements(demands, solution, modes, dy, cover=self.rebar_cover, direction=self.direction)
 
         print("[SUCCESS] Section detailing done. Element idealized Moment-Curvature relationships obtained")
 
@@ -408,7 +423,8 @@ class Iterations:
             demands = analyze(hinge=hinge_models)
 
             details, hinge_models, mu_c, mu_f, warnMax, warnMin, warnings = \
-                self.ipbsd.design_elements(demands, solution, modes, dy, cover=self.rebar_cover)
+                self.ipbsd.design_elements(demands, solution, modes, dy, cover=self.rebar_cover,
+                                           direction=self.direction)
 
             print("[RERUN COMPLETE] Rerun of analysis and detailing complete due to modified stiffness.")
 
@@ -430,7 +446,8 @@ class Iterations:
         :return mstar: float                        First mode effective mass from MA
         :return opt_sol: DataFrame                  Corrected optimal solution (new c-s and T1)
         """
-        model_periods, modalShape, gamma, mstar = self.ipbsd.ma_analysis(opt_sol, hinge, forces, self.fstiff)
+        model_periods, modalShape, gamma, mstar = self.ipbsd.ma_analysis(opt_sol, hinge, forces, self.fstiff,
+                                                                         direction=self.direction)
 
         # There is a high likelihood that Fundamental period and SPO curve shape will not match the assumptions
         # Therefore the first iteration should correct both assumptions (further corrections are likely not to be large)
@@ -476,7 +493,8 @@ class Iterations:
         :return: tuple                          Idealized SPO curve fit (Top displacement vs. Base Shear)
         :return: float                          Overstrength factor
         """
-        spoResults = self.ipbsd.spo_opensees(opt_sol, hinge_models, forces, self.fstiff, modalShape)
+        spoResults = self.ipbsd.spo_opensees(opt_sol, hinge_models, forces, self.fstiff, modalShape,
+                                             direction=self.direction)
 
         # Get the idealized version of the SPO curve and create a warningSPO = True if the assumed shape was
         # incorrect

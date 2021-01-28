@@ -9,7 +9,7 @@ import numpy as np
 
 
 class OpenSeesRun:
-    def __init__(self, i_d, cs, fstiff=0.5, hinge=None, pflag=False):
+    def __init__(self, i_d, cs, fstiff=0.5, hinge=None, pflag=False, direction=0):
         """
         initializes model creation for analysing
         :param i_d: dict                        Provided input arguments for the framework
@@ -17,6 +17,7 @@ class OpenSeesRun:
         :param fstiff: float                    Stiffness reduction factor
         :param hinge: DataFrame                 Idealized plastic hinge model parameters
         :param pflag: bool                      Print info
+        :param direction: bool                  0 for x direction, 1 for y direction
         """
         self.i_d = i_d
         self.cs = cs
@@ -26,6 +27,7 @@ class OpenSeesRun:
         self.NEGLIGIBLE = 1.e-10
         self.pflag = pflag
         self.hinge = hinge
+        self.direction = direction
         # Base nodes for SPO recorder
         self.base_nodes = []
         # Base columns (base node reaction recorders seem to be not working)
@@ -40,13 +42,20 @@ class OpenSeesRun:
         :param lat_action: list                     Acting lateral loads in kN
         :param grav_loads: list                     Acting gravity loads in kN/m
         """
+        if self.direction == 0:
+            nbays = self.i_d.n_bays
+            spans = self.i_d.spans_x
+        else:
+            nbays = len(self.i_d.spans_y)
+            spans = self.i_d.spans_y
+
         self.wipe()
         # Create the model
         op.model('Basic', '-ndm', 2)
 
         # Add the nodes
         xloc = 0.
-        for bay in range(0, int(self.i_d.n_bays + 1)):
+        for bay in range(0, int(nbays + 1)):
             zloc = 0.
             nodetag = int(str(1 + bay) + '0')
             self.base_nodes.append(nodetag)
@@ -59,15 +68,15 @@ class OpenSeesRun:
                 nodetag = int(str(1 + bay) + str(st))
                 op.node(nodetag, xloc, zloc)
 
-            if bay == int(self.i_d.n_bays):
+            if bay == int(nbays):
                 pass
             else:
-                xloc += self.i_d.spans_x[bay]
+                xloc += spans[bay]
 
         # Rigid floor constraints
         for st in range(1, self.i_d.nst + 1):
             nodeTagR = int(f"1{st}")
-            for bay in range(2, int(self.i_d.n_bays + 2)):
+            for bay in range(2, int(nbays + 2)):
                 nodeTag = int(f"{bay}{st}")
                 op.equalDOF(nodeTagR, nodeTag, 1)
 
@@ -76,12 +85,12 @@ class OpenSeesRun:
         # Add the column elements
         col_id = 0
         columns = []
-        for bay in range(1, int(self.i_d.n_bays + 2)):
+        for bay in range(1, int(nbays + 2)):
             for st in range(1, int(self.i_d.nst + 1)):
                 # Parameters for elastic static analysis
                 previous_st = st - 1
                 col_id += 1
-                if bay == 1 or bay == 1 + int(self.i_d.n_bays):
+                if bay == 1 or bay == 1 + int(nbays):
                     b_col = h_col = self.cs[f'he{st}']
                 else:
                     b_col = h_col = self.cs[f'hi{st}']
@@ -113,7 +122,7 @@ class OpenSeesRun:
         # Add the beam elements
         beam_id = 0
         beams = []
-        for bay in range(1, int(self.i_d.n_bays + 1)):
+        for bay in range(1, int(nbays + 1)):
             for st in range(1, int(self.i_d.nst + 1)):
                 # Parameters for elastic static analysis
                 next_bay = bay + 1
@@ -146,8 +155,8 @@ class OpenSeesRun:
             op.timeSeries("Linear", 1)
             op.pattern("Plain", 1, 1)
             for st in range(1, int(self.i_d.nst + 1)):
-                for bay in range(1, int(self.i_d.n_bays + 2)):
-                    op.load(int(f"{bay}{st}"), lat_action[st - 1] / (self.i_d.n_bays + 1), 0, 0)
+                for bay in range(1, int(nbays + 2)):
+                    op.load(int(f"{bay}{st}"), lat_action[st - 1] / (nbays + 1), 0, 0)
 
         if analysis == 3 or analysis == 5:
             if grav_loads is not None:
@@ -169,15 +178,15 @@ class OpenSeesRun:
         op.loadConst("-time", 0.0)
 
         # Define recorders for the 2D model
-        b = np.zeros((self.i_d.nst, self.i_d.n_bays))
-        c = np.zeros((self.i_d.nst, self.i_d.n_bays + 1))
+        b = np.zeros((self.i_d.nst, nbays))
+        c = np.zeros((self.i_d.nst, nbays + 1))
 
         results = {"Beams": {"M": {"Pos": b.copy(), "Neg": b.copy()}, "N": b.copy(), "V": b.copy()},
                    "Columns": {"M": c.copy(), "N": c.copy(), "V": c.copy()}}
 
         # Beams, counting: bottom to top, left to right
         ele = 0
-        for bay in range(self.i_d.n_bays):
+        for bay in range(nbays):
             for st in range(self.i_d.nst):
                 # Note: Positive = Top, Negative = Bottom
                 results["Beams"]["M"]["Pos"][st][bay] = abs(op.eleForce(beams[ele], 6))
@@ -190,7 +199,7 @@ class OpenSeesRun:
 
         # Columns
         ele = 0
-        for bay in range(self.i_d.n_bays + 1):
+        for bay in range(nbays + 1):
             for st in range(self.i_d.nst):
                 results["Columns"]["M"][st][bay] = max(abs(op.eleForce(columns[ele], 3)),
                                                        abs(op.eleForce(columns[ele], 6)))
@@ -247,8 +256,15 @@ class OpenSeesRun:
         :param fix_out_of_plane: bool           If 3D space is used for a 2D model then True
         :return: None
         """
+        if self.direction == 0:
+            nbays = self.i_d.n_bays
+            spans = self.i_d.spans_x
+        else:
+            nbays = len(self.i_d.spans_y)
+            spans = self.i_d.spans_y
+
         xloc = 0.
-        for bay in range(0, int(self.i_d.n_bays + 1)):
+        for bay in range(0, int(nbays + 1)):
             zloc = 0.
             nodetag = int(str(1 + bay) + '0')
             self.base_nodes.append(nodetag)
@@ -258,13 +274,13 @@ class OpenSeesRun:
                 zloc += self.i_d.heights[st - 1]
                 nodetag = int(str(1 + bay) + str(st))
                 op.node(nodetag, xloc, 0, zloc)
-                if bay == self.i_d.n_bays:
+                if bay == nbays:
                     self.spo_nodes.append(nodetag)
 
-            if bay == int(self.i_d.n_bays):
+            if bay == int(nbays):
                 pass
             else:
-                xloc += self.i_d.spans_x[bay]
+                xloc += spans[bay]
         if fix_out_of_plane:
             op.fixY(0.0, 0, 1, 0, 0, 0, 1)
         if self.pflag:
@@ -276,12 +292,17 @@ class OpenSeesRun:
         frames.
         :return: None
         """
+        if self.direction == 0:
+            nbays = self.i_d.n_bays
+        else:
+            nbays = len(self.i_d.spans_y)
+
         for st in range(self.i_d.nst):
-            for bay in range(self.i_d.n_bays+1):
-                if bay == 0 or bay == self.i_d.n_bays:
-                    mass = self.i_d.masses[st] / (2*self.i_d.n_bays) / self.i_d.n_seismic
+            for bay in range(nbays+1):
+                if bay == 0 or bay == nbays:
+                    mass = self.i_d.masses[st] / (2*nbays) / self.i_d.n_seismic
                 else:
-                    mass = self.i_d.masses[st] / self.i_d.n_bays / self.i_d.n_seismic
+                    mass = self.i_d.masses[st] / nbays / self.i_d.n_seismic
                 op.mass(int(f"{bay+1}{st+1}"), mass, self.NEGLIGIBLE, mass, self.NEGLIGIBLE, self.NEGLIGIBLE,
                         self.NEGLIGIBLE)
 
@@ -291,6 +312,11 @@ class OpenSeesRun:
         :param num_modes: DataFrame                 Design solution, cross-section dimensions
         :return: list                               Modal periods
         """
+        if self.direction == 0:
+            nbays = self.i_d.n_bays
+        else:
+            nbays = len(self.i_d.spans_y)
+
         # Compute the eigenvectors (solver)
         lam = None
         try:
@@ -325,7 +351,7 @@ class OpenSeesRun:
         # Calculate the first modal shape
         modalShape = np.zeros(self.i_d.nst)
         for st in range(self.i_d.nst):
-            modalShape[st] = op.nodeEigenvector(int(f"{self.i_d.n_bays+1}{st+1}"), 1, 1)
+            modalShape[st] = op.nodeEigenvector(int(f"{nbays+1}{st+1}"), 1, 1)
 
         # Normalize the modal shapes
         modalShape = modalShape / max(modalShape, key=abs)
@@ -431,14 +457,19 @@ class OpenSeesRun:
         consideration given only for ELFM, so capacities are arbitrary
         :return: list                               Element tags
         """
-        n_beams = self.i_d.nst * self.i_d.n_bays
-        n_cols = self.i_d.nst * (self.i_d.n_bays + 1)
+        if self.direction == 0:
+            nbays = self.i_d.n_bays
+        else:
+            nbays = len(self.i_d.spans_y)
+
+        n_beams = self.i_d.nst * nbays
+        n_cols = self.i_d.nst * (nbays + 1)
         capacities_beam = [5000.0] * n_beams
         capacities_col = [5000.0] * n_cols
         # beam generation
         beam_id = 0
         beams = []
-        for bay in range(1, int(self.i_d.n_bays + 1)):
+        for bay in range(1, int(nbays + 1)):
             for st in range(1, int(self.i_d.nst + 1)):
                 # Read hinge model if provided
                 if self.hinge is not None:
@@ -468,7 +499,7 @@ class OpenSeesRun:
         # column generation
         col_id = 0
         columns = []
-        for bay in range(1, int(self.i_d.n_bays + 2)):
+        for bay in range(1, int(nbays + 2)):
             for st in range(1, int(self.i_d.nst + 1)):
                 # Read hinge model if provided
                 if self.hinge is not None:
@@ -481,7 +512,7 @@ class OpenSeesRun:
                 previous_st = st - 1
                 my = capacities_col[col_id]
                 col_id += 1
-                if bay == 1 or bay == 1 + int(self.i_d.n_bays):
+                if bay == 1 or bay == 1 + int(nbays):
                     b_col = h_col = self.cs[f'he{st}']
                 else:
                     b_col = h_col = self.cs[f'hi{st}']
@@ -508,17 +539,24 @@ class OpenSeesRun:
         :param system: str                              System type (for now supports only Perimeter)
         :return: None
         """
+        if self.direction == 0:
+            nbays = self.i_d.n_bays
+            spans = self.i_d.spans_x
+        else:
+            nbays = len(self.i_d.spans_y)
+            spans = self.i_d.spans_y
+
         # Elastic modulus of concrete
         elastic_modulus = float((3320 * np.sqrt(self.i_d.fc) + 6900) * 1000 * self.fstiff)
         # Check whether Pdelta forces were provided (if not, skips step)
         if "pdelta" in loads.columns:
             # Material definition
-            pdelta_mat_tag = self.i_d.n_bays + 2
+            pdelta_mat_tag = nbays + 2
             if system == "Perimeter":
                 op.uniaxialMaterial("Elastic", pdelta_mat_tag, elastic_modulus)
 
             # X coordinate of the columns
-            x_coord = sum(self.i_d.spans_x) + 3.
+            x_coord = sum(spans) + 3.
 
             # Geometric transformation for the columns
             pdelta_transf_tag = pdelta_mat_tag
@@ -534,9 +572,9 @@ class OpenSeesRun:
                     op.fix(node, 1, 1, 1, 0, 0, 0)
 
                 else:
-                    nodeFrame = int(f"{self.i_d.n_bays + 1}{st}")
+                    nodeFrame = int(f"{nbays + 1}{st}")
                     node = int(f"{pdelta_mat_tag}{st}")
-                    ele = int(f"1{self.i_d.n_bays + 1}{st}")
+                    ele = int(f"1{nbays + 1}{st}")
 
                     # Create the node
                     zloc += self.i_d.heights[st - 1]
@@ -546,7 +584,7 @@ class OpenSeesRun:
                         op.element("Truss", ele, nodeFrame, node, 5., pdelta_mat_tag)
 
                     elif option.lower() == "equaldof":
-                        for bay in range(self.i_d.n_bays+1):
+                        for bay in range(nbays+1):
                             op.equalDOF(node, int(f"{bay + 1}{st}"), 1)
 
                     else:
@@ -597,11 +635,16 @@ class OpenSeesRun:
         :param action: list                         Acting lateral loads
         :return: None
         """
+        if self.direction == 0:
+            nbays = self.i_d.n_bays
+        else:
+            nbays = len(self.i_d.spans_y)
+
         op.timeSeries("Linear", 1)
         op.pattern("Plain", 1, 1)
         for st in range(1, int(self.i_d.nst + 1)):
-            for bay in range(1, int(self.i_d.n_bays + 2)):
-                op.load(int(f"{bay}{st}"), action[st - 1] / (self.i_d.n_bays + 1), 0, 0, 0, 0, 0)
+            for bay in range(1, int(nbays + 2)):
+                op.load(int(f"{bay}{st}"), action[st - 1] / (nbays + 1), 0, 0, 0, 0, 0)
 
     def static_analysis(self):
         """
@@ -741,15 +784,20 @@ class OpenSeesRun:
         :param analysis: int                        Analysis type
         :return: ndarray                            Demands on beams and columns
         """
+        if self.direction == 0:
+            nbays = self.i_d.n_bays
+        else:
+            nbays = len(self.i_d.spans_y)
+
         if analysis in [1, 2, 3]:
-            b = np.zeros((self.i_d.nst, self.i_d.n_bays))
-            c = np.zeros((self.i_d.nst, self.i_d.n_bays + 1))
+            b = np.zeros((self.i_d.nst, nbays))
+            c = np.zeros((self.i_d.nst, nbays + 1))
 
             results = {"Beams": {"M": {"Pos": b.copy(), "Neg": b.copy()}, "N": b.copy(), "V": b.copy()},
                        "Columns": {"M": c.copy(), "N": c.copy(), "V": c.copy()}}
             # Beams, counting: bottom to top, left to right
             ele = 0
-            for bay in range(self.i_d.n_bays):
+            for bay in range(nbays):
                 for st in range(self.i_d.nst):
                     results["Beams"]["M"]["Pos"][st][bay] = abs(op.eleForce(beams[ele], 11))
                     results["Beams"]["M"]["Neg"][st][bay] = abs(op.eleForce(beams[ele], 5))
@@ -761,7 +809,7 @@ class OpenSeesRun:
 
             # Columns
             ele = 0
-            for bay in range(self.i_d.n_bays + 1):
+            for bay in range(nbays + 1):
                 for st in range(self.i_d.nst):
                     results["Columns"]["M"][st][bay] = max(abs(op.eleForce(columns[ele], 5)),
                                                            abs(op.eleForce(columns[ele], 11)))
@@ -773,8 +821,8 @@ class OpenSeesRun:
                     ele += 1
         else:
             # TODO, fix recording when applying RMSA, analysis type if condition seems incorrect
-            n_beams = self.i_d.nst * self.i_d.n_bays
-            n_cols = self.i_d.nst * (self.i_d.n_bays + 1)
+            n_beams = self.i_d.nst * nbays
+            n_cols = self.i_d.nst * (nbays + 1)
             results = {"Beams": {}, "Columns": {}}
             if analysis != 4 and analysis != 5:
                 for i in range(n_beams):

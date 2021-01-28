@@ -507,6 +507,7 @@ class IPBSD:
                 opt_modes = results[i]["opt_modes"]
                 t_lower, t_upper = period_limits[str(i + 1)]
                 table_sls = tables[i]
+
                 if self.flag3d:
                     if i == 0:
                         gravity_loads = ipbsd.data.loads_x
@@ -518,7 +519,7 @@ class IPBSD:
                 # Call the iterations function (iterations have not yet started though)
                 iterations = Iterations(ipbsd, sols, self.spo_file, self.target_MAFC, self.analysis_type, self.damping,
                                         self.num_modes, self.fstiff, self.rebar_cover, self.outputPath,
-                                        gravity_loads=gravity_loads)
+                                        gravity_loads=gravity_loads, direction=i)
 
                 # Run the validations and iterations if need be
                 ipbsd_outputs, spoResults, opt_sol, demands, details, hinge_models, action, modelOutputs = \

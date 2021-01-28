@@ -6,13 +6,12 @@ import pandas as pd
 
 
 class Action:
-    def __init__(self, solution, n_seismic, nbays, nst, masses, cy, df, analysis, gravity_loads, num_modes=None,
+    def __init__(self, solution, n_seismic, nst, masses, cy, df, analysis, gravity_loads, num_modes=None,
                  opt_modes=None, modal_sa=None, pdelta_loads=None):
         """
 
         :param solution: DataFrame          Solution containing cross-section and modal properties
         :param n_seismic: int               Number of seismic frames
-        :param nbays: int                   Number of bays
         :param masses: array                Lumped storey masses
         :param cy: float                    Spectral acceleration at yield
         :param df: DataFrame                SLS table generated through Transformations object
@@ -25,7 +24,6 @@ class Action:
         """
         self.solution = solution
         self.n_seismic = n_seismic
-        self.nbays = nbays
         self.nst = nst
         self.masses = masses
         self.cy = cy

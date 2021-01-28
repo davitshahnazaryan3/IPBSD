@@ -11,7 +11,8 @@ import pandas as pd
 
 class Detailing:
     def __init__(self, demands, nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, dy, sections,
-                 rebar_cover=0.04, ductility_class="DCM", young_mod_s=200e3, k_hard=1.0, est_ductilities=True):
+                 rebar_cover=0.04, ductility_class="DCM", young_mod_s=200e3, k_hard=1.0, est_ductilities=True,
+                 direction=0):
         """
         initializes detailing phase
         :param demands: dict                Demands on structural elements
@@ -30,6 +31,7 @@ class Detailing:
         :param young_mod_s: float           Young modulus of reinforcement
         :param k_hard: float                Hardening slope of reinforcement (i.e. fu/fy)
         :param est_ductilities: bool        Whether to estimate global ductilities
+        :param direction: bool
         """
         self.demands = demands
         self.nst = nst
@@ -45,6 +47,7 @@ class Detailing:
         self.sections = sections
         self.rebar_cover = rebar_cover
         self.ductility_class = ductility_class
+        self.direction = direction
         # Reinforcement characteristic yield strength in MPa
         self.FYK = 500.
         self.k_hard = k_hard
@@ -377,6 +380,7 @@ class Detailing:
 
                     # TODO, once local ductility is ensured, M-phi relationship might change, also after mphiNeg, pos reinforcement might change
                     # So, ideally it should go back and forth to correct the reinforcements, however, no iterations are done there
+                    # The impact is higher, if the initial reinforcements were way off compared to the min or max values required
                     warnings["MAX"]["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE_MAX
                     warnings["MIN"]["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE_MIN
                     if d_temp is not None:
@@ -501,11 +505,12 @@ class Detailing:
         :return: DataFrame                          Lumped hinge model information for RCMRF Hysteretic model
         """
         # Initialize DataFrame with its columns
-        columns = ["Element", "Bay", "Storey", "Position", "b", "h", "coverNeg", "coverPos", "lp", "length",
-                   "phi1Neg", "phi2Neg", "phi3Neg", "m1Neg", "m2Neg", "m3Neg", "phi1", "phi2", "phi3", "m1", "m2", "m3"]
+        columns = ["Element", "Bay", "Storey", "Direction", "Position", "b", "h", "coverNeg", "coverPos", "lp",
+                   "length", "phi1Neg", "phi2Neg", "phi3Neg", "m1Neg", "m2Neg", "m3Neg", "phi1", "phi2", "phi3", "m1",
+                   "m2", "m3"]
 
-        numericCols = ["Bay", "Storey", "b", "h", "coverNeg", "coverPos", "lp", "length", "phi1Neg", "phi2Neg",
-                       "phi3Neg", "m1Neg", "m2Neg", "m3Neg", "phi1", "phi2", "phi3", "m1", "m2", "m3"]
+        numericCols = ["Bay", "Storey", "Direction", "b", "h", "coverNeg", "coverPos", "lp", "length", "phi1Neg",
+                       "phi2Neg", "phi3Neg", "m1Neg", "m2Neg", "m3Neg", "phi1", "phi2", "phi3", "m1", "m2", "m3"]
 
         df = pd.DataFrame(columns=columns)
         for ele in model:
@@ -524,16 +529,17 @@ class Detailing:
                 lp = mTemp[j][0]["lp"]
 
                 if ele.lower() == "beams":
-                    temp = np.array([ele[:-1], bay, st, pos, model[ele]["Neg"][j][0]["b"], model[ele]["Neg"][j][0]["h"],
-                                     model[ele]["Neg"][j][0]["cover"], model[ele]["Pos"][j][0]["cover"], lp,
-                                     self.bay_widths[bay-1]])
+                    temp = np.array([ele[:-1], bay, st, self.direction, pos, model[ele]["Neg"][j][0]["b"],
+                                     model[ele]["Neg"][j][0]["h"], model[ele]["Neg"][j][0]["cover"],
+                                     model[ele]["Pos"][j][0]["cover"], lp, self.bay_widths[bay-1]])
                     phiNeg = model[ele]["Neg"][j][4]["phi"][1:]
                     mNeg = model[ele]["Neg"][j][4]["m"][1:]
                     phiPos = model[ele]["Pos"][j][4]["phi"][1:]
                     mPos = model[ele]["Pos"][j][4]["m"][1:]
                 else:
-                    temp = np.array([ele[:-1], bay, st, pos, model[ele][j][0]["b"], model[ele][j][0]["h"],
-                                     model[ele][j][0]["cover"], model[ele][j][0]["cover"], lp, self.heights[st-1]])
+                    temp = np.array([ele[:-1], bay, st, self.direction, pos, model[ele][j][0]["b"],
+                                     model[ele][j][0]["h"], model[ele][j][0]["cover"], model[ele][j][0]["cover"], lp,
+                                     self.heights[st-1]])
                     phiNeg = phiPos = model[ele][j][4]["phi"][1:]
                     mNeg = mPos = model[ele][j][4]["m"][1:]
 
