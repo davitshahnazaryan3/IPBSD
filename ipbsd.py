@@ -9,14 +9,13 @@ import numpy as np
 import pickle
 from client.master import Master
 from client.iterations import Iterations
-from pathlib import Path
 
 
 class IPBSD:
     def __init__(self, input_file, hazard_file, slfDir, spo_file, limit_eal, target_mafc, outputPath, analysis_type=1,
                  damping=.05, num_modes=3, iterate=False, system="Perimeter", maxiter=20, fstiff=0.5, rebar_cover=0.03,
                  flag3d=False, solutionFileX=None, solutionFileY=None, export_cache=False, holdFlag=False,
-                 overstrength=None, replCost=None):
+                 overstrength=None, replCost=None, gravity_cs=None):
         """
         Initializes IPBSD
         :param input_file: str              Input filename as '*.csv'
@@ -42,10 +41,8 @@ class IPBSD:
         :param maxiter: int                 Maximum number of iterations for seeking a solution
         :param fstiff: float                Stiffness reduction factor
         :param rebar_cover: float           Reinforcement cover in m
-        :param flag3d: str                  True if 3D building is being considered (runs IPBSD in both directions)
-        :param solutionFileX: str           Path to solution file to be used for design in dir1 (X direction)
-        :param solutionFileY: str           Path to solution file to be used for design in dir2 (Y direction)
-                                            (optional: not necessary if flag3d is False)
+        :param solutionFileX: str           Path to solution file to be used for design in X direction
+        :param solutionFileY: str           Path to solution file to be used for design in Y direction (for 3D)
         :param export_cache: bool           Whether to export cache at each major step into an outputs directory or not
         :param holdFlag: bool               Flag to stop the framework once the solution combinations have been computed
                                             This allows the user to subdivide the framework into two sections if it
@@ -57,6 +54,7 @@ class IPBSD:
         :param overstrength: float          Overstrength ratio, leave on default and the user will automatically assign
                                             a value
         :param replCost: float              Replacement cost of the entire building
+        :param gravity_cs: str              Path to gravity solution (for 3D modelling)
         """
         self.dir = Path.cwd()
         self.input_file = input_file
@@ -70,16 +68,17 @@ class IPBSD:
         self.num_modes = num_modes
         self.damping = damping
         self.iterate = iterate
-        self.system = system                # TODO, currently does nothing, IPBSD is only working with Perimeter frames, Space (loads etc. to be updated) frames to be added
+        self.system = system                # TODO, currently it does nothing, IPBSD is only working with Perimeter frames, Space (loads etc. to be updated) frames to be added
         self.maxiter = maxiter
         self.fstiff = fstiff
         self.rebar_cover = rebar_cover
-        self.solutionFileX = solutionFileX
-        self.solutionFileY = solutionFileY
         self.export_cache = export_cache
         self.holdFlag = holdFlag
         self.overstrength = overstrength
         self.replCost = replCost
+        self.gravity_cs = gravity_cs
+        self.solutionFileX = solutionFileX
+        self.solutionFileY = solutionFileY
 
         # 2d (False) means, that even if the SLFs are provided for the entire building, only 1 direction
         # (defaulting to dir1) will be considered. This also entails the use of non-dimensional components,
@@ -173,45 +172,13 @@ class IPBSD:
         spansY = np.array([ipbsd.data.i_d["spans_Y"][x] for x in ipbsd.data.i_d["spans_Y"]])
         heights = np.array([ipbsd.data.i_d["h_storeys"][x] for x in ipbsd.data.i_d["h_storeys"]])
 
-        X = sum(spansX)
-        Y = sum(spansY)
-
-        if self.flag3d:
-            # Along X direction
-            f_loads = []
-            r_loads = []
-            for x in spansX:
-                if x <= spansY[0]:
-                    f_loads.append(floorLoad * x**2 / 4)
-                    r_loads.append(roofLoad * x**2 / 4)
-                else:
-                    f_loads.append(1/4 * floorLoad * spansY[0] * (2 * x - spansY[0]))
-                    r_loads.append(1/4 * roofLoad * spansY[0] * (2 * x - spansY[0]))
-
-            # Along Y direction
-            f_loads = []
-            r_loads = []
-            for y in spansY:
-                if y <= spansX[0]:
-                    f_loads.append(floorLoad * y**2 / 4)
-                    r_loads.append(roofLoad * y**2 / 4)
-                else:
-                    f_loads.append(1/4 * floorLoad * spansX[0] * (2 * y - spansX[0]))
-                    r_loads.append(1/4 * roofLoad * spansX[0] * (2 * y - spansX[0]))
-
-            # Assuming uniform distribution (not quite precise)
-            dist_x = [sum(f_loads) / sum(spansX), sum(r_loads) / sum(spansX)]
-            dist_y = [sum(f_loads) / sum(spansY), sum(r_loads) / sum(spansY)]
-            distLoads = [dist_x, dist_y]
-
+        if self.system == "Perimeter":
+            distLength = spansY[0] / 2
         else:
-            if self.system == "Perimeter":
-                distLength = spansY[0] / 2
-            else:
-                distLength = spansY[0]
+            distLength = spansY[0]
 
-            # Distributed loads
-            distLoads = [floorLoad * distLength, roofLoad * distLength]
+        # Distributed loads
+        distLoads = [floorLoad * distLength, roofLoad * distLength]
 
         # Point loads, for now will be left as zero
         pLoads = 0.0
@@ -229,20 +196,12 @@ class IPBSD:
         loads = pd.DataFrame(columns=["Storey", "Pattern", "Load"])
 
         for st in range(1, nst + 1):
-            if self.flag3d:
-                lx = distLoads[0][1] if st == nst else distLoads[0][0]
-                ly = distLoads[1][1] if st == nst else distLoads[1][0]
-            else:
-                lx = distLoads[1] if st == nst else distLoads[0]
-                ly = 0.0
+
+            load = distLoads[1] if st == nst else distLoads[0]
 
             loads = loads.append({"Storey": st,
                                   "Pattern": "distributed",
-                                  "Load": lx}, ignore_index=True)
-            if self.flag3d:
-                loads = loads.append({"Storey": st,
-                                      "Pattern": "distributed_y",
-                                      "Load": ly}, ignore_index=True)
+                                  "Load": load}, ignore_index=True)
 
             # Point loads will be left as zeros for now
             loads = loads.append({"Storey": st,
@@ -254,10 +213,12 @@ class IPBSD:
 
             # PDelta loads
             if nGravity > 0:
-                lx = pDeltaLoad[st-1] / ipbsd.data.n_seismic
+
+                load = pDeltaLoad[st-1] / ipbsd.data.n_seismic
                 loads = loads.append({"Storey": st,
                                       "Pattern": "pdelta",
-                                      "Load": lx}, ignore_index=True)
+                                      "Load": load}, ignore_index=True)
+
             else:
                 loads = loads.append({"Storey": st,
                                       "Pattern": "pdelta",
@@ -269,7 +230,6 @@ class IPBSD:
                                   "Load": masses[st - 1] / ipbsd.data.n_seismic}, ignore_index=True)
 
         # Exporting action for use by a Modeler module
-        # TODO - fix load distributions
         """
         For a two-way slab assumption, load distribution will not be uniform.
         For now and for simplicity, total load over each directions is computed and then divided by global length to 
@@ -392,22 +352,6 @@ class IPBSD:
         # Exporting the sections file for use by Modeler module as Haselton springs
         self.export_results(self.outputPath / "haselton_springs", sections, "csv")
 
-    def check_file(self, path):
-        """
-        Checks if DataFrame in path exists and returns it
-        :param path: str
-        :return: DataFrame
-        """
-
-        if path is not None:
-            try:
-                df = pd.read_csv(path)
-            except:
-                df = None
-        else:
-            df = None
-        return df
-
     def run_ipbsd(self):
 
         """Calling the master file"""
@@ -432,7 +376,6 @@ class IPBSD:
         eal, y_fit, lam_fit = ipbsd.get_loss_curve(lam_ls, self.limit_EAL)
         lossCurve = {"y": ipbsd.data.y, "lam": lam_ls, "y_fit": y_fit, "lam_fit": lam_fit, "eal": eal,
                      "PLS": ipbsd.data.PLS}
-        print(f"[SUCCESS] EAL = {eal:.2f}")
 
         """Get design limits"""
         theta_max, a_max, slfsCache = ipbsd.get_design_values(self.slfDir, self.replCost)
@@ -458,15 +401,10 @@ class IPBSD:
         print("[SUCCESS] Response spectra generated")
 
         """Get feasible fundamental period range"""
-        if method.flag3d:
-            period_limits = {"1": [], "2": []}
-        else:
-            period_limits = {"1": []}
-
+        period_limits = {}
         for i in range(delta_spectral.shape[0]):
-            t_lower, t_upper = ipbsd.get_period_range(delta_spectral[i], alpha_spectral[i], sd, sa)
-            period_limits[str(i + 1)] = [t_lower, t_upper]
-            print(f"[SUCCESS] Feasible period range identified. T_lower = {t_lower:.2f}s, T_upper = {t_upper:.2f}s")
+            period_limits[f"{i+1}"] = ipbsd.get_period_range(delta_spectral[i], alpha_spectral[i], sd, sa)
+        print("[SUCCESS] Feasible period range identified")
 
         """Get all section combinations satisfying period bound range
         Notes: If solutions cache exists in outputs directory, the file will be read and an optimal solution based on
@@ -477,83 +415,121 @@ class IPBSD:
         optimal solution. No solutions cache will be derived.
         """
         # Check whether solutions file was provided
-        solution_x = self.check_file(self.solutionFileX)
-        solution_y = self.check_file(self.solutionFileY)
+        if self.solutionFileX is not None:
+            try:
+                solution_x = pd.read_csv(self.solutionFileX)
+            except:
+                solution_x = None
+        else:
+            solution_x = None
+
+        if self.solutionFileY is not None:
+            try:
+                solution_y = pd.read_csv(self.solutionFileY)
+            except:
+                solution_y = None
+        else:
+            solution_y = None
 
         results = ipbsd.get_all_section_combinations(period_limits, fstiff=self.fstiff,
                                                      cache_dir=self.outputPath/"Cache",
                                                      solution_x=solution_x, solution_y=solution_y)
         print("[SUCCESS] All section combinations were identified")
 
-        # Call the iterations function (iterations have not yet started though)
-        if method.flag3d:
-            # 3D option
-            frames = 2
-        else:
-            # 2D option
-            frames = 1
-
         # The main portion of IPBSD is completed. Now corrections should be made for the assumptions
         if not self.holdFlag:
 
-            for i in range(frames):
-                if i == 0:
-                    print("[INITIATE] Designing frame in X direction!")
-                elif i == 1:
-                    print("[INITIATE] Designing frame in Y direction!")
-
-                sols = results[i]["sols"]
-                opt_sol = results[i]["opt_sol"]
-                opt_modes = results[i]["opt_modes"]
-                t_lower, t_upper = period_limits[str(i + 1)]
-                table_sls = tables[i]
-
-                if self.flag3d:
-                    if i == 0:
-                        gravity_loads = ipbsd.data.loads_x
-                    else:
-                        gravity_loads = ipbsd.data.loads_y
+            if self.flag3d:
+                if self.gravity_cs is None:
+                    # In case gravity solution was not provided, create a generic one; for 3D modelling only
+                    csg = {}
+                    for i in range(1, ipbsd.data.nst + 1):
+                        column_size = 0.4 if i <= ipbsd.data.nst / 2 else 0.35
+                        csg[f"hi{i}"] = [column_size]
+                        csg[f"bx{i}"] = column_size
+                        csg[f"hx{i}"] = 0.6
+                        csg[f"by{i}"] = column_size
+                        csg[f"hy{i}"] = 0.6
+                    csg = pd.DataFrame.from_dict(csg, orient='columns').iloc[0]
                 else:
-                    gravity_loads = ipbsd.data.w_seismic
+                    csg = pd.read_csv(self.gravity_cs, index_col=0).iloc[0]
 
-                # Call the iterations function (iterations have not yet started though)
-                iterations = Iterations(ipbsd, sols, self.spo_file, self.target_MAFC, self.analysis_type, self.damping,
-                                        self.num_modes, self.fstiff, self.rebar_cover, self.outputPath,
-                                        gravity_loads=gravity_loads, direction=i)
+                # Using the second direction for modelling the entire building
+                opt_sol = {"x_seismic": results[0]["opt_sol"], "y_seismic": results[1]["opt_sol"], "gravity": csg}
+                sols = {"x": results[0]["sols"], "y": results[1]["sols"]}
+                opt_modes = {"x": results[0]["opt_modes"], "y": results[1]["opt_modes"]}
+                period_limits = {"x": period_limits["1"], "y": period_limits["2"]}
+                table_sls = {"x": tables[0], "y": tables[1]}
 
+            else:
+                # Just the direction of interest (modelling a 2D frame, without the perpendicular frame or
+                # gravity frames
+                opt_sol = results["opt_sol"]
+                sols = results["sols"]
+                opt_modes = results["opt_modes"]
+                period_limits = period_limits["1"]
+                table_sls = tables
+
+            if self.flag3d:
+                # To be calculated automatically (assuming a uniform distribution) - trapezoidal is more appropriate
+                gravity_loads = None
+            else:
+                gravity_loads = ipbsd.data.w_seismic
+
+            # Call the iterations function (iterations have not yet started though)
+            iterations = Iterations(ipbsd, sols, self.spo_file, self.target_MAFC, self.analysis_type, self.damping,
+                                    self.num_modes, self.fstiff, self.rebar_cover, self.outputPath,
+                                    gravity_loads=gravity_loads, flag3d=self.flag3d)
+
+            # Initiate design of the entire building / frame
+            if self.flag3d:
+                init_design = iterations.generate_initial_solutions(opt_sol, opt_modes, self.overstrength, sa,
+                                                                    period_range, table_sls)
+                # TODO, here comes the run_iterations_for_3d
+
+            else:
                 # Run the validations and iterations if need be
                 ipbsd_outputs, spoResults, opt_sol, demands, details, hinge_models, action, modelOutputs = \
-                    iterations.validations(opt_sol, opt_modes, sa, period_range, table_sls, t_lower, t_upper,
+                    iterations.validations(opt_sol, opt_modes, sa, period_range, table_sls, period_limits,
                                            self.iterate, self.maxiter, omega=self.overstrength)
 
-                """Iterations are completed and IPBSD is finalized"""
-                # Export main outputs and cache
-                if self.export_cache:
-                    """Storing the outputs"""
-                    # Exporting the IPBSD outputs
-                    self.create_folder(self.outputPath / f"Cache/frame{i+1}")
-                    self.export_results(self.outputPath / f"Cache/frame{i+1}/spoShape",
-                                        pd.DataFrame(iterations.spo_shape, index=[0]), "csv")
-                    self.export_results(self.outputPath / f"Cache/frame{i+1}/lossCurve", lossCurve, "pickle")
-                    self.export_results(self.outputPath / f"Cache/frame{i+1}/spoAnalysisCurveShape", spoResults,
-                                        "pickle")
-                    self.export_results(self.outputPath / f"Cache/frame{i+1}/optimal_solution", opt_sol, "csv")
-                    self.export_results(self.outputPath / f"Cache/frame{i+1}/action", action, "csv")
-                    self.export_results(self.outputPath / f"Cache/frame{i+1}/demands", demands, "pkl")
-                    self.export_results(self.outputPath / f"Cache/frame{i+1}/ipbsd", ipbsd_outputs, "pkl")
-                    self.export_results(self.outputPath / f"Cache/frame{i+1}/details", details, "pkl")
-                    self.export_results(self.outputPath / f"Cache/frame{i+1}/hinge_models", hinge_models, "csv")
-                    self.export_results(self.outputPath / f"Cache/frame{i+1}/modelOutputs", modelOutputs, "pickle")
+            # TODO stop analysis here
+            print("[EXIT] Force quit!")
+            import sys
+            sys.exit()
 
-                    """Creating DataFrames to store for RCMRF input"""
-                    self.cacheRCMRF(ipbsd, details, opt_sol, demands)
+            # Update results file for new opt_sol
+            results[i]["opt_sol"] = opt_sol
 
-                print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
-                # Note: stiffness based off first yield point, at nominal point the stiffness is actually lower, and
-                # might act as a more realistic value. Notably Haselton, 2016 limits the secant yield stiffness between
-                # 0.2EIg and 0.6EIg.
+            """Iterations are completed and IPBSD is finalized"""
+            # Export main outputs and cache
+            if self.export_cache:
+                """Storing the outputs"""
+                # Exporting the IPBSD outputs
 
-                print("[END] IPBSD was performed successfully")
+                self.create_folder(self.outputPath / f"Cache/frame{i+1}")
+                self.export_results(self.outputPath / f"Cache/frame{i+1}/spoShape",
+                                    pd.DataFrame(iterations.spo_shape, index=[0]), "csv")
+                self.export_results(self.outputPath / f"Cache/frame{i+1}/lossCurve", lossCurve, "pickle")
+                self.export_results(self.outputPath / f"Cache/frame{i+1}/spoAnalysisCurveShape", spoResults,
+                                    "pickle")
+                self.export_results(self.outputPath / f"Cache/frame{i+1}/optimal_solution", opt_sol, "csv")
+                self.export_results(self.outputPath / f"Cache/frame{i+1}/action", action, "csv")
+                self.export_results(self.outputPath / f"Cache/frame{i+1}/demands", demands, "pkl")
+                self.export_results(self.outputPath / f"Cache/frame{i+1}/ipbsd", ipbsd_outputs, "pkl")
+                self.export_results(self.outputPath / f"Cache/frame{i+1}/details", details, "pkl")
+                self.export_results(self.outputPath / f"Cache/frame{i+1}/hinge_models", hinge_models, "csv")
+                self.export_results(self.outputPath / f"Cache/frame{i+1}/modelOutputs", modelOutputs, "pickle")
+
+                """Creating DataFrames to store for RCMRF input"""
+                self.cacheRCMRF(ipbsd, details, opt_sol, demands)
+
+            print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
+            # Note: stiffness based off first yield point, at nominal point the stiffness is actually lower, and
+            # might act as a more realistic value. Notably Haselton, 2016 limits the secant yield stiffness between
+            # 0.2EIg and 0.6EIg.
+
+            print("[END] IPBSD was performed successfully")
 
 
 if __name__ == "__main__":
@@ -578,37 +554,43 @@ if __name__ == "__main__":
     :param fstiff: float                        Section stiffness reduction factor
     """
     # Paths
+    from pathlib import Path
     path = Path.cwd()
     outputPath = path.parents[0] / ".applications/LOSS Validation Manuscript/Case2"
 
     # Add input arguments
     analysis_type = 3
     input_file = path.parents[0] / ".applications/LOSS Validation Manuscript/Case2/ipbsd_input.csv"
-    hazard_file = path.parents[0] / ".applications/LOSS Validation Manuscript/Hazard/Hazard-LAquila-Soil-C.pkl"
+    hazard_file = path.parents[0] / ".applications/LOSS Validation Manuscript/Case2/Hazard-LAquila-Soil-C.pkl"
     slfDir = outputPath / "slfoutput"
     spo_file = path.parents[0] / ".applications/LOSS Validation Manuscript/Case2/spo.csv"
+    gravity_cs = None
     limit_eal = 1.0
     mafc_target = 2.e-4
     damping = .05
     system = "Perimeter"
-    maxiter = 2
+    maxiter = 10
     fstiff = 0.5
     overstrength = 1.0
-    flag3d = True
+    geometry = "2d"
     export_cache = True
     holdFlag = False
     iterate = True
-    replCost = 349459.2 * 2
+    solutionFileX = None
+    solutionFileY = None
+    flag3d = True
+    replCost = 349459.2
 
     # Design solution to use (leave None, if the tool needs to look for the solution)
     # solutionFile = path.parents[0] / ".applications/case1/designSol.csv"
-    solutionFileX = None
-    solutionFileY = None
+    solutionFile = None
 
     method = IPBSD(input_file, hazard_file, slfDir, spo_file, limit_eal, mafc_target, outputPath, analysis_type,
                    damping=damping, num_modes=2, iterate=iterate, system=system, maxiter=maxiter, fstiff=fstiff,
                    flag3d=flag3d, solutionFileX=solutionFileX, solutionFileY=solutionFileY, export_cache=export_cache,
-                   holdFlag=holdFlag, overstrength=overstrength, rebar_cover=0.03, replCost=replCost)
+                   holdFlag=holdFlag, overstrength=overstrength, rebar_cover=0.03, replCost=replCost,
+                   gravity_cs=gravity_cs)
+
     start_time = method.get_init_time()
     method.run_ipbsd()
     method.get_time(start_time)

@@ -17,7 +17,7 @@ class Input:
         initializes the input functions
         """
         # TODO, separate definition of structure type into a different method
-        # TODO, add dead structural weights to input loads as well?
+        # TODO, add dead structural weights to input loads as well (optional)?
         # input arguments
         self.i_d = None                             # Dictionary containing the original input arguments    dict
         self.case_id = None                         # Case ID for storing the data                          str
@@ -41,9 +41,6 @@ class Input:
         self.w_seismic = None                       # Seismic weights in kN/m2                              dict
         self.pdelta_loads = None                    # Gravity loads over P Delta columns                    dict
         self.elastic_modulus_steel = 200000.        # Steel elastic modulus in MPa                          float
-        # Following two arguments required for 3D modelling
-        self.loads_x = None                         # Gravity loads along X direction                       float
-        self.loads_y = None                         # Gravity loads along Y direction                       float
 
     def read_inputs(self, filename):
         """
@@ -99,37 +96,6 @@ class Input:
         q_beam_floor = self.bay_perp / 2 * q_floor
         q_beam_roof = self.bay_perp / 2 * q_roof
         self.w_seismic = {'roof': q_beam_roof, 'floor': q_beam_floor}
-
-        # Loads for 3D modelling
-        # Along X direction
-        f_loads = []
-        r_loads = []
-        for x in self.spans_x:
-            if x <= self.spans_y[0]:
-                f_loads.append(q_floor * x ** 2 / 4)
-                r_loads.append(q_roof * x ** 2 / 4)
-            else:
-                f_loads.append(1 / 4 * q_floor * self.spans_y[0] * (2 * x - self.spans_y[0]))
-                r_loads.append(1 / 4 * q_roof * self.spans_y[0] * (2 * x - self.spans_y[0]))
-
-        # Along Y direction
-        f_loads = []
-        r_loads = []
-        for y in self.spans_y:
-            if y <= self.spans_x[0]:
-                f_loads.append(q_floor * y ** 2 / 4)
-                r_loads.append(q_roof * y ** 2 / 4)
-            else:
-                f_loads.append(1 / 4 * q_floor * self.spans_x[0] * (2 * y - self.spans_x[0]))
-                r_loads.append(1 / 4 * q_roof * self.spans_x[0] * (2 * y - self.spans_x[0]))
-
-        # Assuming uniform distribution (not quite precise)
-        dist_x = [sum(f_loads) / sum(self.spans_x), sum(r_loads) / sum(self.spans_x)]
-        dist_y = [sum(f_loads) / sum(self.spans_y), sum(r_loads) / sum(self.spans_y)]
-        distLoads = [dist_x, dist_y]
-
-        self.loads_x = {'roof': distLoads[0][1], 'floor': distLoads[0][0]}
-        self.loads_y = {'roof': distLoads[1][1], 'floor': distLoads[1][0]}
 
     def read_hazard(self, flname, outputPath):
         """

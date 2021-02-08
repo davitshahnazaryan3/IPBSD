@@ -15,6 +15,7 @@ from external.crossSection import CrossSection
 from verifications.mafcCheck import MAFCCheck
 from postprocessing.action import Action
 from external.openseesrun import OpenSeesRun
+from external.openseesrun3d import OpenSeesRun3D
 from postprocessing.detailing import Detailing
 from external.elf import ELF
 
@@ -154,7 +155,7 @@ class Master:
         :param fstiff: float                        Stiffness reduction factor
         :param solution_x: Series                   Solution to run analysis instead (for iterations, dir1
         :param solution_y: Series                   Solution to run analysis instead (for iterations, dir2
-        :param data: object                         Input arguments
+        :param data: object                         Input arguments (TODO, be more specific)
         :param cache_dir: str                       Directory to export the cache csv solutions of
         :return cs.solutions: DataFrame             Solution combos
         :return opt_sol: DataFrame                  Optimal solution
@@ -185,34 +186,37 @@ class Master:
             opt_sol, opt_modes = cs.find_optimal_solution(solution_x)
             results_x = {"opt_sol": opt_sol, "opt_modes": opt_modes}
 
-        # Optimal solution in prmiary direction (dir1 or x)
-        opt_sol_x = results_x["opt_sol"]
-        if solution_y is None:
-            t_lower, t_upper = period_limits["2"]
-            cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc, self.data.spans_y,
-                              self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
-                              cache_dir=cache_dir/"solution_cache_y.csv", solution_perp=opt_sol_x)
-            opt_sol, opt_modes = cs.find_optimal_solution()
-            results_y = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
+        if self.flag3d:
+            # Optimal solution in prmiary direction (dir1 or x)
+            opt_sol_x = results_x["opt_sol"]
+            if solution_y is None:
+                t_lower, t_upper = period_limits["2"]
+                cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc, self.data.spans_y,
+                                  self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
+                                  cache_dir=cache_dir/"solution_cache_y.csv", solution_perp=opt_sol_x)
+                opt_sol, opt_modes = cs.find_optimal_solution()
+                results_y = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
 
-        elif solution_y is not None and data is None:
-            t_lower, t_upper = period_limits["2"]
-            cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc, self.data.spans_y,
-                              self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
-                              cache_dir=cache_dir/"solution_cache_y.csv", solution_perp=opt_sol_x)
-            opt_sol, opt_modes = cs.find_optimal_solution(solution_y)
-            results_y = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
+            elif solution_y is not None and data is None:
+                t_lower, t_upper = period_limits["2"]
+                cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc, self.data.spans_y,
+                                  self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
+                                  cache_dir=cache_dir/"solution_cache_y.csv", solution_perp=opt_sol_x)
+                opt_sol, opt_modes = cs.find_optimal_solution(solution_y)
+                results_y = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
 
+            else:
+                t_lower, t_upper = period_limits["2"]
+                self.data = data
+                cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc, self.data.spans_y,
+                                  self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
+                                  iteration=True, solution_perp=opt_sol_x)
+                opt_sol, opt_modes = cs.find_optimal_solution(solution_y)
+                results_y = {"opt_sol": opt_sol, "opt_modes": opt_modes}
+
+            return results_x, results_y
         else:
-            t_lower, t_upper = period_limits["2"]
-            self.data = data
-            cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc, self.data.spans_y,
-                              self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
-                              iteration=True, solution_perp=opt_sol_x)
-            opt_sol, opt_modes = cs.find_optimal_solution(solution_y)
-            results_y = {"opt_sol": opt_sol, "opt_modes": opt_modes}
-
-        return results_x, results_y
+            return results_x
 
     def perform_spo2ida(self, spo_pars):
         """
@@ -416,8 +420,13 @@ class Master:
                 response['Mci'][st] = 0.6 * self.data.h[st] * shear_internal
                 response['Mce'][st] = 0.6 * self.data.h[st] * shear_external
         else:
-            op = OpenSeesRun(self.data, solution, fstiff=fstiff, hinge=hinge, direction=direction)
-            response = op.elastic_analysis(analysis, lat_action, grav_loads)
+            if self.flag3d:
+                op = OpenSeesRun3D(self.data, solution, fstiff=fstiff, hinge=hinge, direction=direction)
+                response = op.elastic_analysis_3d(analysis, lat_action, grav_loads)
+
+            else:
+                op = OpenSeesRun(self.data, solution, fstiff=fstiff, hinge=hinge)
+                response = op.elastic_analysis(analysis, lat_action, grav_loads)
 
         return response
 
@@ -431,11 +440,18 @@ class Master:
         :param direction: bool
         :return: list                               Modal periods
         """
-        ma = OpenSeesRun(self.data, solution, fstiff, hinge=hinge, direction=direction)
+        if self.flag3d:
+            ma = OpenSeesRun3D(self.data, solution, fstiff, hinge=hinge, direction=direction)
+        else:
+            ma = OpenSeesRun(self.data, solution, fstiff, hinge=hinge)
         ma.create_model()
         ma.define_masses()
-        ma.pdelta_columns(action)
-        model_periods, modalShape, gamma, mstar = ma.ma_analysis(1)
+        if not self.flag3d:
+            ma.pdelta_columns(action)
+            num_modes = 1
+        else:
+            num_modes = self.data.nst if self.data.nst <= 9 else 9
+        model_periods, modalShape, gamma, mstar = ma.ma_analysis(num_modes)
         ma.wipe()
         return model_periods, modalShape, gamma, mstar
 
@@ -450,15 +466,19 @@ class Master:
         :param direction: bool
         :return: dict                               SPO response in terms of top displacement vs base shear
         """
-        spo = OpenSeesRun(self.data, solution, fstiff, hinge=hinge, direction=direction)
+        if self.flag3d:
+            spo = OpenSeesRun3D(self.data, solution, fstiff, hinge=hinge, direction=direction)
+        else:
+            spo = OpenSeesRun(self.data, solution, fstiff, hinge=hinge)
         spo.create_model()
-        spo.pdelta_columns(action)
+        if not self.flag3d:
+            spo.pdelta_columns(action)
         topDisp, baseShear = spo.spo_analysis(mode_shape=modalShape)
         spo.wipe()
         return topDisp, baseShear
 
     def design_elements(self, demands, sections, modes, dy, ductility_class="DCM", cover=0.03, est_ductilities=True,
-                        direction=0):
+                        direction=0, gravity=False):
         """
         Runs M-phi to optimize for reinforcement for each section
         :param demands: DataFrame or dict           Demands identified from a structural analysis (lateral+gravity)
@@ -469,6 +489,7 @@ class Master:
         :param cover: float                         Reinforcement cover in m
         :param est_ductilities: bool                Estimate global ductilities?
         :param direction: bool                      0 for x direction, 1 for y direction
+        :param gravity: bool                        Design gravity frames condition
         :return: dict                               Designed element properties from the moment-curvature relationship
         """
         if direction == 0:
@@ -481,9 +502,14 @@ class Master:
         d = Detailing(demands, self.data.nst, nbays, self.data.fy, self.data.fc, spans, self.data.heights,
                       self.data.n_seismic, self.data.masses, dy, sections, ductility_class=ductility_class,
                       rebar_cover=cover, est_ductilities=est_ductilities, direction=direction)
-        data, hinge_models, mu_c, mu_f, warnings = d.design_elements(modes)
-        warnMax = d.WARNING_MAX
-        warnMin = d.WARNING_MIN
+        if gravity:
+            hinge_models = d.design_gravity()
+
+            return hinge_models
+        else:
+            data, hinge_models, mu_c, mu_f, warnings = d.design_elements(modes)
+            warnMax = d.WARNING_MAX
+            warnMin = d.WARNING_MIN
 
         return data, hinge_models, mu_c, mu_f, warnMax, warnMin, warnings
 

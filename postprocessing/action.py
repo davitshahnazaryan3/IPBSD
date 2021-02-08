@@ -51,7 +51,7 @@ class Action:
     def forces(self):
         """
         gets the lateral forces
-        :return: DataFrame or dict          Lateral forces for ELFM
+        :return: DataFrame                  Lateral forces for ELFM
         """
         if self.analysis == 1 or self.analysis == 2 or self.analysis == 3:
             d = pd.DataFrame({'phi': np.array(self.df.loc['phi']),
@@ -70,12 +70,14 @@ class Action:
 
             # Check for gravity loads
             if self.analysis == 3:
-                grav_loads = np.array([])
-                for n in range(self.nst):
-                    if n == self.nst - 1:
-                        grav_loads = np.append(grav_loads, self.gravity_loads['roof'])
-                    else:
-                        grav_loads = np.append(grav_loads, self.gravity_loads['floor'])
+                grav_loads = None
+                if self.gravity_loads is not None:
+                    grav_loads = np.array([])
+                    for n in range(self.nst):
+                        if n == self.nst - 1:
+                            grav_loads = np.append(grav_loads, self.gravity_loads['roof'])
+                        else:
+                            grav_loads = np.append(grav_loads, self.gravity_loads['floor'])
                 d["G"] = grav_loads
             return d
 

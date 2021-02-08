@@ -6,24 +6,23 @@ from client.slf import SLF
 
 
 class DesignLimits:
-    def __init__(self, slfDirectory, y, nst, geometry=False, replCost=None):
+    def __init__(self, slfDirectory, y, nst, flag3d=False, replCost=None):
         """
         Initialize SLF reading
         :param slfDirectory: str            Directory of SLFs derived via SLF Generator
         :param y: float                     Expected loss ratios (ELRs) associated with SLS
         :param nst: int                     Number of stories
-        :param geometry: int                False for "2d", True for "3d"
+        :param flag3d: bool                 False for "2d", True for "3d"
         :param replCost: float              Replacement cost of the entire building
         """
         self.slfDirectory = slfDirectory
         self.y = y
         self.nst = nst
-        self.geometry = geometry
+        self.flag3d = flag3d
         self.theta_max = None               # Peak storey drift
         self.a_max = None                   # Peak floor acceleration in g
         self.SLFsCache = None
         self.replCost = replCost
-
         self.get_design_edps()
         
     def get_design_edps(self):
@@ -32,7 +31,7 @@ class DesignLimits:
         For a 3D building EDP limits will be calculated for each direction
         Non-directional SLFs and directional (corresponding to dir1 or dir2) will be summed
         """
-        slf = SLF(self.slfDirectory, self.y, self.nst, self.geometry, self.replCost)
+        slf = SLF(self.slfDirectory, self.y, self.nst, self.flag3d, self.replCost)
         slfs, self.SLFsCache = slf.slfs()
 
         # Calculate the design limits of PSD and PFA beyond which EAL condition will not be met
@@ -60,7 +59,7 @@ class DesignLimits:
                     edp_limits[group][k] = np.append(edp_limits[group][k], float(s(y)))
 
         # Design limits as min of the found values along the height
-        if self.geometry:
+        if self.flag3d:
             n_dir = 2
         else:
             n_dir = 1
