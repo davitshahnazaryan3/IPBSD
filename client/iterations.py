@@ -156,15 +156,22 @@ class Iterations:
         spo_data = {"mc": muC, "a": a, "ac": ap, "r": r, "mf": muF, "pw": pw, "T": t}
         return spo_data
 
-    def seek_solution(self, warnings, opt):
+    def seek_solution(self, warnings, opt_sol, direction="x"):
         """
         Seeks a solution within the already generated section combinations file if any warnings were recorded
         :param warnings: dict                       Dictionary of boolean warnings for each structural element
                                                     For any warning cross-section dimensions will be modified
-        :param opt: Series                          Optimal solution
+        :param opt_sol: Series                      Optimal solution
+        :param direction: str                       Direction to look for the solution
         :return: Series                             Solution containing c-s and modal properties
         :return: dict                               Modes corresponding to the solution for RSMA
         """
+        # Get the solution of interest
+        if self.flag3d:
+            opt = opt_sol[direction + "_seismic"]
+        else:
+            opt = opt_sol
+
         # Number of storeys
         nst = self.ipbsd.data.nst
 
@@ -270,12 +277,32 @@ class Iterations:
         solution = self.sols[self.sols == opt].dropna(thresh=len(self.sols.columns) - 4)
         solution = self.sols.loc[solution.index]
 
+        # Solutions to look for
+        if self.flag3d:
+            if direction == "x":
+                solution_x = solution.iloc[0]
+                solution_y = opt_sol["y_seismic"]
+            else:
+                solution_x = opt_sol["x_seismic"]
+                solution_y = solution.iloc[0]
+        else:
+            solution_x = solution.iloc[0]
+            solution_y = None
+
         if solution.empty:
             raise ValueError("[EXCEPTION] No solution satisfying the period range condition was found!")
         else:
-            solution, modes = self.ipbsd.get_all_section_combinations(t_lower=None, t_upper=None,
-                                                                      solution=solution.iloc[0], data=self.ipbsd.data,
-                                                                      cache_dir=self.outputPath / "Cache")
+            results = self.ipbsd.get_all_section_combinations(period_limits=None, solution_x=solution_x,
+                                                              solution_y=solution_y, data=self.ipbsd.data,
+                                                              cache_dir=self.outputPath / "Cache")
+
+            if self.flag3d:
+                solution = results[0]["opt_sol"] if direction == "x" else results[1]["opt_sol"]
+                modes = results[0]["opt_modes"] if direction == "x" else results[1]["opt_modes"]
+            else:
+                solution = results["opt_sol"]
+                modes = results["opt_modes"]
+
             return solution, modes
 
     def iterate_phase_3(self, opt_sol, omega, read=True):
@@ -457,7 +484,7 @@ class Iterations:
         yield details, hinge_models, mu_c, mu_f
         yield warnMax, warnMin, warnings
 
-    def run_ma(self, opt_sol, hinge, forces, t_upper, tol=0.05):
+    def run_ma(self, opt_sol, hinge, forces, t_upper, tol=0.05, direction="x"):
         """
         Creates a nonlinear model and runs Modal Analysis with the aim of correcting opt_sol and fundamental period
         :param opt_sol: DataFrame                   Optimal solution
@@ -465,39 +492,70 @@ class Iterations:
         :param forces: DataFrame                    Acting forces (gravity, lateral)
         :param t_upper: float                       Upper period limit from IPBSD
         :param tol: float                           Tolerance of upper period limit satisfaction
+        :param direction: str                       Direction of action (x for 2D, x or y for 3D)
         :return model_periods: ndarray              Model periods from MA
         :return modalShape: list                    Modal shapes from MA
         :return gamma: float                        First mode participation factor from MA
         :return mstar: float                        First mode effective mass from MA
         :return opt_sol: DataFrame                  Corrected optimal solution (new c-s and T1)
         """
+        print("[MA] Running modal analysis")
         model_periods, modalShape, gamma, mstar = self.ipbsd.ma_analysis(opt_sol, hinge, forces, self.fstiff)
+
+        if self.flag3d:
+            if direction == "x":
+                if opt_sol["x_seismic"]["T"] >= opt_sol["y_seismic"]["T"]:
+                    idx = 0
+                else:
+                    idx = 1
+                seismic_solution = opt_sol["x_seismic"]
+            else:
+                if opt_sol["x_seismic"]["T"] >= opt_sol["y_seismic"]["T"]:
+                    idx = 1
+                else:
+                    idx = 0
+                seismic_solution = opt_sol["y_seismic"]
+            model_periods = model_periods[idx]
+            modalShape = modalShape[:, idx]
+            gamma = gamma[idx]
+            mstar = mstar[idx]
+        else:
+            # Interested only in first mode for the 2D approach
+            model_periods = model_periods[0]
+            seismic_solution = opt_sol
 
         # There is a high likelihood that Fundamental period and SPO curve shape will not match the assumptions
         # Therefore the first iteration should correct both assumptions (further corrections are likely not to be large)
-        # TODO index of model_periods would change for Y direction, how to also figure out which one is which,
-        #  because x direction might not have an index of 0
-        if model_periods[0] > t_upper + model_periods[0] * tol:
+        if model_periods > t_upper + model_periods * tol:
             # Period error
-            period_error = model_periods[0] - opt_sol["T"]
+            period_error = model_periods - seismic_solution["T"]
             # Look for a new period for the design solution (probably not the best way to guess)
             tnew = t_upper - period_error
             # Select all solutions in the vicinity of the new period
             sols = self.sols[(self.sols["T"] >= tnew - tnew * tol) & (self.sols["T"] <= tnew + tnew * tol)]
             # Select the solution with the least weight
-            opt_sol = sols[sols["Weight"] == sols["Weight"].min()].iloc[0]
+            seismic_solution = sols[sols["Weight"] == sols["Weight"].min()].iloc[0]
             # Actual period of the structure is guessed to be (opt_sol period + error)
-            self.period_to_use = opt_sol["T"] + period_error
+            self.period_to_use = seismic_solution["T"] + period_error
             self.warnT = True
+
+            if self.flag3d:
+                # Update the optimal solution
+                if direction == "x":
+                    opt_sol["x_seismic"] = seismic_solution
+                else:
+                    opt_sol["y_seismic"] = seismic_solution
+            else:
+                opt_sol = seismic_solution
 
         else:
             # If the model period was within the confidence
-            self.period_to_use = model_periods[0]
+            self.period_to_use = model_periods
             self.warnT = False
 
         return model_periods, modalShape, gamma, mstar, opt_sol
 
-    def run_spo(self, opt_sol, hinge_models, forces, vy, modalShape, omega):
+    def run_spo(self, opt_sol, hinge_models, forces, vy, modalShape, omega, direction="x"):
         """
         Create a nonlinear model in OpenSees and runs SPO
         :param opt_sol: DataFrame               Design solution
@@ -506,27 +564,26 @@ class Iterations:
         :param vy: float                        Design base shear of the MDOF system (excludes Omega)
         :param modalShape: list                 First-mode shape from MA
         :param omega: float                     Overstrength factor
+        :pararm direction: str of               Direction of pushover action
         :return: tuple                          SPO outputs (Top displacement vs. Base Shear)
         :return: tuple                          Idealized SPO curve fit (Top displacement vs. Base Shear)
         :return: float                          Overstrength factor
         """
-
         print("[SPO] Starting SPO analysis")
-        spoResults = self.ipbsd.spo_opensees(opt_sol, hinge_models, forces, self.fstiff, modalShape,
-                                             direction=self.direction)
+        d = 0 if direction == "x" else 1
+        spoResults = self.ipbsd.spo_opensees(opt_sol, hinge_models, forces, self.fstiff, modalShape, direction=d)
 
-        # Get the idealized version of the SPO curve and create a warningSPO = True if the assumed shape was
-        # incorrect
+        # Get the idealized version of the SPO curve and create a warningSPO = True if the assumed shape was incorrect
         d, v = self.derive_spo_shape(spoResults, residual=0.1)
 
         # Actual overstrength
-        omegaNew = v[1] / vy
-        print(spoResults)
-        print(omegaNew)
-        # TODO stop analysis here, SPO not working as of now
-        print("[EXIT] Force quit!")
-        import sys
-        sys.exit()
+        if self.flag3d:
+            # Assumption: since only perimeter seismic frames are supported, we will always have 2 seismic frames
+            factor = 0.5
+        else:
+            factor = 1.0
+        omegaNew = v[1] / vy * factor
+
         # Check if the new overstrength is correct
         if omega * 0.95 <= omegaNew <= omega * 1.05:
             omegaNew = omega
@@ -617,7 +674,9 @@ class Iterations:
             design_outputs[i]["demands"] = demands
             design_outputs[i]["details"] = details
             design_outputs[i]["hinge_models"] = hinge_models
-            design_outputs[i]["warnings"] = {"wanrMax": warnMax, "warnMin": warnMin, "warnings": warnings}
+            design_outputs[i]["warnings"] = {"warnMax": warnMax, "warnMin": warnMin, "warnings": warnings}
+            design_outputs[i]["phase3"] = {"cy": cy, "dy": dy, "spo2ida_data": spo2ida_data, "gamma": gamma,
+                                           "mstar": mstar}
 
         # Detail the gravity frames in either direction (envelope)
         hinge_gravity = self.ipbsd.design_elements(demands_gravity, opt_sol["gravity"], None, None,
@@ -628,18 +687,49 @@ class Iterations:
 
     def run_iterations_for_3d(self, design_outputs, period_limits, opt_sol, opt_modes, sa, period_range, table_sls,
                               iterate=True, maxiter=20, omega=None):
-
+        """
+        Runs iterations for 3D approach in both directions of action
+        :param design_outputs: dict
+        :param period_limits: dict
+        :param opt_sol: DataFrame
+        :param opt_modes: dict
+        :param sa: ndarray
+        :param period_range: ndarray
+        :param table_sls: dict
+        :param iterate: bool
+        :param maxiter: int
+        :param omega: float
+        :return: dict
+        """
+        outputs = {"ipbsd_outputs": {}, "spoResults": {}, "opt_sol": {}, "demands": {}, "details": {},
+                   "hinge_models": {}, "action": {}, "modelOutputs": {}}
         for i in ["x", "y"]:
-
+            # TODO, redesign external seismic columns only if the new demands are larger than the old ones
+            print(f"[INITIATE 3D] Running framework in {i} direction!")
             table = table_sls[i]
             periods = period_limits[i]
-            self.validations(opt_sol, opt_modes, sa, period_range, table, periods, iterate=iterate, maxiter=maxiter,
-                             omega=omega, direction=i, initial_design_sols=design_outputs)
+            ipbsd_outputs, spo2ida_data, opt_sol, demands, details, hinge_models, forces, model_outputs = \
+                self.validations(opt_sol, opt_modes, sa, period_range, table, periods, iterate=iterate, maxiter=maxiter,
+                                 omega=omega, direction=i, initial_design_sols=design_outputs)
 
-            # TODO stop analysis here
-            print("[EXIT] Force quit!")
-            import sys
-            sys.exit()
+            outputs["ipbsd_outputs"][i] = ipbsd_outputs
+            outputs["spoResults"][i] = spo2ida_data
+            outputs["opt_sol"][i] = opt_sol
+            outputs["demands"][i] = demands
+            outputs["details"][i] = details
+            outputs["hinge_models"][i] = hinge_models
+            outputs["action"][i] = forces
+            outputs["modelOutputs"][i] = model_outputs
+
+            # Reset global variables
+            self.spo_shape = None
+            self.omegaWarn = False
+            self.warnT = True
+            self.spo_validate = False
+            self.model_outputs = None
+            self.period_to_use = None
+
+        return outputs
 
     def validations(self, opt_sol, modes, sa, period_range, table_sls, period_limits, iterate=True, maxiter=20,
                     omega=None, direction="x", initial_design_sols=None):
@@ -697,6 +787,9 @@ class Iterations:
         5. Create nonlinear model and run static pushover analysis (SPO shape and overstrength might change here)
         ---- Fourth correction: if SPO shape or overstrength change, rerun from 1 to 5
         '''
+        # Upper period bound
+        t_upper = period_limits[1]
+
         if not self.flag3d:
             # 2D frame consideration only
             # Initialize period to use
@@ -721,6 +814,16 @@ class Iterations:
             hinge_models = {"x_seismic": initial_design_sols["x"]["hinge_models"],
                             "y_seismic": initial_design_sols["y"]["hinge_models"],
                             "gravity": initial_design_sols["gravity"]["hinge_models"]}
+            warnMax = initial_design_sols[direction]["warnings"]["warnMax"]
+            warnMin = initial_design_sols[direction]["warnings"]["warnMin"]
+            warnings = initial_design_sols[direction]["warnings"]["warnings"]
+            cy = initial_design_sols[direction]["phase3"]["cy"]
+            dy = initial_design_sols[direction]["phase3"]["dy"]
+            spo2ida_data = initial_design_sols[direction]["phase3"]["spo2ida_data"]
+            gamma = initial_design_sols[direction]["phase3"]["gamma"]
+            mstar = initial_design_sols[direction]["phase3"]["mstar"]
+            demands = initial_design_sols[direction]["demands"]
+            details = initial_design_sols[direction]["details"]
 
         # Reading SPO parameters from file
         read = True
@@ -734,45 +837,85 @@ class Iterations:
             :param omegaWarn: bool                  Overstrength assumption check (if True, run iterations)
             """
             # Start with the correction of SPO curve shape. Also, recalculate the mode shape of new design solution
+            # Star the counter
             cnt = 0
-            if self.flag3d:
-                periodCache = opt_sol[f"{direction}_seismic"]["T"]
 
             # Correction for period
             """Create an OpenSees model and run modal analysis"""
-            model_periods, modalShape, gamma, mstar, opt_sol = self.run_ma(opt_sol, hinge_models, forces, t_upper)
-            # Update modes
-            modes["Periods"] = np.array(model_periods)
-            modes["Modes"][0, :] = np.array(modalShape)
+            model_periods, modalShape, gamma, mstar, opt_sol = self.run_ma(opt_sol, hinge_models, forces, t_upper,
+                                                                           direction=direction)
+
+            # Reread initial assumption of pushover shape (Same as for X direction)
+            if direction == "y":
+                self.spo_shape = self.ipbsd.data.initial_spo_data(self.period_to_use, self.spo_file)
+
+            # Update modes and some utility variables
+            if self.flag3d:
+                idx = 0 if direction == "x" else 1
+                # Modal properties
+                modes[direction]["Periods"] = np.array([model_periods])
+                modes[direction]["Modes"][idx, :] = np.array(modalShape)
+                # Spo load pattern as first-mode proportional
+                spoPattern = np.abs(modes[direction]["Modes"][idx, :])
+                # Seismic solution
+                solution = opt_sol[direction + "_seismic"]
+                # Seismic direction tag
+                tag = direction + "_seismic"
+                # Period to cache
+                periodCache = opt_sol[tag]["T"]
+            else:
+                idx = 0
+                modes["Periods"] = np.array(model_periods)
+                modes["Modes"][0, :] = np.array(modalShape)
+                spoPattern = np.abs(modalShape)
+                solution = opt_sol
+                tag = None
+                periodCache = opt_sol["T"]
 
             # Iterate until all conditions are met
             while (self.warnT or warnMax or not self.spo_validate or self.omegaWarn) and cnt + 1 <= maxiter:
 
-                # Iterations related to SPO corrections (skip first iteration, before runnning SPO)
+                # Iterations related to SPO corrections (skip first iteration, before running SPO)
                 if (not self.spo_validate or self.omegaWarn) and cnt > 0:
+                    # Not being run at first iteration
                     # Reruns
                     print("[RERUN] Rerun for SPO shape correction...")
                     # Calculates the new cy for the corrected SPO shape, period, Overstrength and c-s
-                    gamma, mstar, cy, dy, spo2ida_data = self.iterate_phase_3(opt_sol, omega, read=read)
+                    gamma, mstar, cy, dy, spo2ida_data = self.iterate_phase_3(solution, omega, read=read)
 
                     # Run elastic analysis and detail the structure
-                    phase_4 = self.iterate_phase_4(cy, dy, sa, period_range, opt_sol, modes, table_sls)
+                    modes_to_use = modes[direction] if self.flag3d else modes
+                    phase_4 = self.iterate_phase_4(cy, dy, sa, period_range, opt_sol, modes_to_use, table_sls,
+                                                   direction=idx)
                     forces = next(phase_4)
-                    demands, demands_gravity = next(phase_4)
-                    details, hinge_models, hard_ductility, fract_ductility = next(phase_4)
+                    demands, temp = next(phase_4)
+                    details, new_hinge_model, hard_ductility, fract_ductility = next(phase_4)
                     warnMax, warnMin, warnings = next(phase_4)
+                    if self.flag3d:
+                        # Update the hinge models related to the direction of interest
+                        hinge_models[tag] = new_hinge_model
+                    else:
+                        hinge_models = new_hinge_model
 
                     # Run modal analysis to check the T1
                     model_periods, modalShape, gamma, mstar, opt_sol = self.run_ma(opt_sol, hinge_models, forces,
-                                                                                   t_upper)
+                                                                                   t_upper, direction=direction)
                     # Update modes
-                    modes["Periods"] = np.array(model_periods)
-                    modes["Modes"][0, :] = np.array(modalShape)
+                    if self.flag3d:
+                        modes[direction]["Periods"] = np.array([model_periods])
+                        modes[direction]["Modes"][idx, :] = np.array(modalShape)
+                        spoPattern = np.abs(modes[direction]["Modes"][idx, :])
+                    else:
+                        modes["Periods"] = np.array(model_periods)
+                        modes["Modes"][0, :] = np.array(modalShape)
+                        spoPattern = np.abs(modalShape)
+
                     print("[RERUN COMPLETE] Rerun for SPO shape correction.")
 
                 # Iterations related to Period corrections, only if run MA indicated T1 not being within period range
                 cntTrerun = 0
                 while self.warnT:
+                    # Generally not being run at first iteration
                     if cntTrerun > 0:
                         rerun = True
                     else:
@@ -780,69 +923,93 @@ class Iterations:
 
                     # Reruns
                     print("[RERUN] Rerun for fundamental period correction...")
-                    gamma, mstar, cy, dy, spo2ida_data = self.iterate_phase_3(opt_sol, omega, read=read)
-                    phase_4 = self.iterate_phase_4(cy, dy, sa, period_range, opt_sol, modes, table_sls, rerun=rerun)
+                    gamma, mstar, cy, dy, spo2ida_data = self.iterate_phase_3(solution, omega, read=read)
+                    modes_to_use = modes[direction] if self.flag3d else modes
+                    phase_4 = self.iterate_phase_4(cy, dy, sa, period_range, opt_sol, modes_to_use, table_sls,
+                                                   rerun=rerun, direction=idx)
                     forces = next(phase_4)
-                    demands, demands_gravity = next(phase_4)
+                    demands, temp = next(phase_4)
                     # TODO, increasing cover results in issues, fix (maybe fixed with recent changes, verify)
-                    details, hinge_models, hard_ductility, fract_ductility = next(phase_4)
+                    details, new_hinge_model, hard_ductility, fract_ductility = next(phase_4)
                     warnMax, warnMin, warnings = next(phase_4)
+                    if self.flag3d:
+                        # Update the hinge models related to the direction of interest
+                        hinge_models[tag] = new_hinge_model
+                    else:
+                        hinge_models = new_hinge_model
 
                     # Run modal analysis
                     model_periods, modalShape, gamma, mstar, opt_sol = self.run_ma(opt_sol, hinge_models, forces,
-                                                                                   t_upper)
-                    # Update modes
-                    modes["Periods"] = np.array(model_periods)
-                    modes["Modes"][0, :] = np.array(modalShape)
+                                                                                   t_upper, direction=direction)
+                    # Update modes and period to cache
+                    if self.flag3d:
+                        modes[direction]["Periods"] = np.array([model_periods])
+                        modes[direction]["Modes"][idx, :] = np.array(modalShape)
+                        spoPattern = np.abs(modes[direction]["Modes"][idx, :])
+                        periodCache = opt_sol[tag]["T"]
+                    else:
+                        modes["Periods"] = np.array(model_periods)
+                        modes["Modes"][0, :] = np.array(modalShape)
+                        spoPattern = np.abs(modalShape)
+                        periodCache = opt_sol["T"]
 
-                    periodCache = opt_sol["T"]
                     cntTrerun += 1
                     if not self.warnT:
                         # Update optimal solution (the update difference should be minimal as significant changes
                         # not expected)
-                        opt_sol["Mstar"] = mstar
-                        opt_sol["Part Factor"] = gamma
-                        opt_sol["T"] = model_periods[0]
+                        if self.flag3d:
+                            opt_sol[tag]["Mstar"] = mstar
+                            opt_sol[tag]["Part Factor"] = gamma
+                            opt_sol[tag]["T"] = model_periods[0]
+                        else:
+                            opt_sol["Mstar"] = mstar
+                            opt_sol["Part Factor"] = gamma
+                            opt_sol["T"] = model_periods[0]
                         # TODO, rerun for new cy, detailing and MA. Or significant changes not expected?
                         print("[RERUN COMPLETE] Rerun for fundamental period correction")
 
-                # Exiting while warnT
+                # Exiting warnT correction
                 # Correction if unsatisfactory detailing, modifying only towards increasing c-s, based on phase 4
                 if warnMax:
+                    # Generally not being run at first iteration
                     """Look for a different solution"""
                     # Get the new design solution and the modal shapes
-                    opt_sol, modes = self.seek_solution(warnings, opt_sol)
+                    solution, m_temp = self.seek_solution(warnings, opt_sol, direction=direction)
                     print("[RERUN COMPLETE] New design solution has been selected due to unsatisfactory detailing...")
+                    # Update the solutions
+                    if self.flag3d:
+                        opt_sol[tag] = solution
+                        modes[direction]["Periods"] = m_temp["Periods"]
+                        modes[direction]["Modes"] = m_temp["Modes"]
+                    else:
+                        opt_sol = solution
+                        modes = m_temp
 
-                """Create an OpenSees model and run static pushover analysis"""
+                """Create an OpenSees model and run static pushoveriterate analysis"""
+                # For a single frame assumed yield base shear
                 vy_assumed = cy * gamma * mstar * 9.81
                 omegaCache = omega
                 spoShapeCache = self.spo_shape
-                print(cy, vy_assumed, mstar)
-                spoResults, spo_idealized, omega = self.run_spo(opt_sol, hinge_models, forces, vy_assumed, modalShape,
-                                                                omega)
-
-                # TODO stop analysis here
-                print("[EXIT] Force quit!")
-                import sys
-                sys.exit()
+                spoResults, spo_idealized, omega = self.run_spo(opt_sol, hinge_models, forces, vy_assumed, spoPattern,
+                                                                omega, direction=direction)
 
                 # Record OpenSees outputs
                 self.model_outputs = {"MA": {"T": model_periods, "modes": modalShape, "gamma": gamma, "mstar": mstar},
                                       "SPO": spoResults, "SPO_idealized": spo_idealized}
 
-                # Reading SPO parameters from file
+                # Reading SPO parameters from file (Set to False, as the actual shape is already identified)
                 read = False
 
                 print("[SUCCESS] Static pushover analysis was successfully performed.")
 
                 # Print out information
+                new_period = opt_sol[tag]["T"] if self.flag3d else opt_sol["T"]
                 print("--------------------------")
                 print(f"[ITERATION {cnt + 1} END] Actual over assumed values of variables are provided: \n"
                       f"Yield strength overstrength: {omega / omegaCache * 100:.0f}%, \n"
                       f"Hardening ductility: {self.spo_shape['mc'] / spoShapeCache['mc'] * 100:.0f}%, \n"
                       f"Fracturing ductility: {self.spo_shape['mf'] / spoShapeCache['mf'] * 100:.0f}%, \n"
-                      f"Fundamental period: {opt_sol['T'] / periodCache:.0f}%.")
+                      f"Fundamental period: {new_period / periodCache:.0f}%.")
                 print("--------------------------")
 
                 # Increase count of iterations
@@ -851,7 +1018,7 @@ class Iterations:
             if cnt == maxiter:
                 print("[WARNING] Maximum number of iterations reached!")
 
-        ipbsd_outputs = {"part_factor": gamma, "Mstar": mstar, "Period range": [t_lower, t_upper],
+        ipbsd_outputs = {"part_factor": gamma, "Mstar": mstar, "Period range": period_limits,
                          "overstrength": omega, "yield": [cy, dy], "muc": float(self.spo_shape["mc"])}
 
         return ipbsd_outputs, spo2ida_data, opt_sol, demands, details, hinge_models, forces, self.model_outputs

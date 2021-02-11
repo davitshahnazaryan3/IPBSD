@@ -155,7 +155,7 @@ class Master:
         :param fstiff: float                        Stiffness reduction factor
         :param solution_x: Series                   Solution to run analysis instead (for iterations, dir1
         :param solution_y: Series                   Solution to run analysis instead (for iterations, dir2
-        :param data: object                         Input arguments (TODO, be more specific)
+        :param data: object                         IPBSD initial input arguments (object Input)
         :param cache_dir: str                       Directory to export the cache csv solutions of
         :return cs.solutions: DataFrame             Solution combos
         :return opt_sol: DataFrame                  Optimal solution
@@ -471,9 +471,10 @@ class Master:
         else:
             spo = OpenSeesRun(self.data, solution, fstiff, hinge=hinge)
         spo.create_model()
+        # spo.define_masses()
         if not self.flag3d:
             spo.pdelta_columns(action)
-        topDisp, baseShear = spo.spo_analysis(mode_shape=modalShape)
+        topDisp, baseShear = spo.spo_analysis(load_pattern=2, mode_shape=modalShape)
         spo.wipe()
         return topDisp, baseShear
 

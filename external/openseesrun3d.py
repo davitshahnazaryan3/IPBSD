@@ -66,7 +66,7 @@ class OpenSeesRun3D:
         return el_mod
 
     def static_analysis(self):
-        op.constraints("Lagrange")
+        op.constraints("Penalty", 1.0e15, 1.0e15)
         op.numberer("RCM")
         op.system("UmfPack")
         op.test("EnergyIncr", 1.0e-8, 6)
@@ -76,7 +76,24 @@ class OpenSeesRun3D:
         op.analyze(1)
         op.loadConst("-time", 0.0)
 
-    def recorders(self, nbays_x, nbays_y):
+    def recorders(self, nbays_x, nbays_y, direction=0):
+
+        # Indices for recorders
+        if direction == 0:
+            # Along X axis
+            midx = [11, 5]
+            vidx_c = [1, 7]
+            vidx_b = [3, 9]
+            nidx_c = [3, 9]
+            nidx_b = [1, 7]
+        else:
+            # Along Y axis
+            midx = [10, 4]
+            vidx_c = [2, 8]
+            vidx_b = [3, 9]
+            nidx_c = [3, 9]
+            nidx_b = [2, 8]
+
         # Define recorders
         # Seismic frame element recorders initialization
         bx_seismic = np.zeros((self.i_d.nst, nbays_x))
@@ -109,33 +126,33 @@ class OpenSeesRun3D:
         for bay in range(nbays_x):
             for st in range(self.i_d.nst):
                 et = int(f"3{bay+1}1{st+1}")
-                results["x_seismic"]["Beams"]["M"]["Pos"][st][bay] = abs(op.eleForce(et, 11))
-                results["x_seismic"]["Beams"]["M"]["Neg"][st][bay] = abs(op.eleForce(et, 5))
-                results["x_seismic"]["Beams"]["N"][st][bay] = max(op.eleForce(et, 1),
-                                                                  op.eleForce(et, 7), key=abs)
-                results["x_seismic"]["Beams"]["V"][st][bay] = max(abs(op.eleForce(et, 3)),
-                                                                  abs(op.eleForce(et, 9)))
+                results["x_seismic"]["Beams"]["M"]["Pos"][st][bay] = abs(op.eleForce(et, midx[1]))
+                results["x_seismic"]["Beams"]["M"]["Neg"][st][bay] = abs(op.eleForce(et, midx[0]))
+                results["x_seismic"]["Beams"]["N"][st][bay] = max(op.eleForce(et, nidx_b[0]),
+                                                                  op.eleForce(et, nidx_b[1]), key=abs)
+                results["x_seismic"]["Beams"]["V"][st][bay] = max(abs(op.eleForce(et, vidx_b[0])),
+                                                                  abs(op.eleForce(et, vidx_b[1])))
 
         # Beams of seismic frame along Y direction
         for bay in range(nbays_y):
             for st in range(self.i_d.nst):
                 et = int(f"21{bay+1}{st+1}")
-                results["y_seismic"]["Beams"]["M"]["Pos"][st][bay] = abs(op.eleForce(et, 10))
-                results["y_seismic"]["Beams"]["M"]["Neg"][st][bay] = abs(op.eleForce(et, 4))
-                results["y_seismic"]["Beams"]["N"][st][bay] = max(op.eleForce(et, 1),
-                                                                  op.eleForce(et, 7), key=abs)
-                results["y_seismic"]["Beams"]["V"][st][bay] = max(abs(op.eleForce(et, 3)),
-                                                                  abs(op.eleForce(et, 9)))
+                results["y_seismic"]["Beams"]["M"]["Pos"][st][bay] = abs(op.eleForce(et, midx[1]))
+                results["y_seismic"]["Beams"]["M"]["Neg"][st][bay] = abs(op.eleForce(et, midx[0]))
+                results["y_seismic"]["Beams"]["N"][st][bay] = max(op.eleForce(et, nidx_b[0]),
+                                                                  op.eleForce(et, nidx_b[1]), key=abs)
+                results["y_seismic"]["Beams"]["V"][st][bay] = max(abs(op.eleForce(et, vidx_b[0])),
+                                                                  abs(op.eleForce(et, vidx_b[1])))
 
         # Beams of gravity frames along X direction
         for ybay in range(nbays_y - 1):
             for xbay in range(nbays_x):
                 for st in range(self.i_d.nst):
                     et = int(f"3{xbay+1}{ybay+2}{st+1}")
-                    results["gravity"]["Beams_x"]["M"]["Pos"][st][xbay][ybay] = abs(op.eleForce(et, 11))
-                    results["gravity"]["Beams_x"]["M"]["Neg"][st][xbay][ybay] = abs(op.eleForce(et, 5))
-                    results["gravity"]["Beams_x"]["N"][st][xbay][ybay] = max(op.eleForce(et, 1),
-                                                                             op.eleForce(et, 7), key=abs)
+                    results["gravity"]["Beams_x"]["M"]["Pos"][st][xbay][ybay] = abs(op.eleForce(et, midx[1]))
+                    results["gravity"]["Beams_x"]["M"]["Neg"][st][xbay][ybay] = abs(op.eleForce(et, midx[0]))
+                    results["gravity"]["Beams_x"]["N"][st][xbay][ybay] = max(op.eleForce(et, nidx_b[0]),
+                                                                             op.eleForce(et, nidx_b[1]), key=abs)
                     results["gravity"]["Beams_x"]["V"][st][xbay][ybay] = max(abs(op.eleForce(et, 3)),
                                                                              abs(op.eleForce(et, 9)))
 
@@ -144,50 +161,64 @@ class OpenSeesRun3D:
             for ybay in range(nbays_y):
                 for st in range(self.i_d.nst):
                     et = int(f"2{xbay + 2}{ybay + 1}{st + 1}")
-                    results["gravity"]["Beams_y"]["M"]["Pos"][st][xbay][ybay] = abs(op.eleForce(et, 10))
-                    results["gravity"]["Beams_y"]["M"]["Neg"][st][xbay][ybay] = abs(op.eleForce(et, 4))
-                    results["gravity"]["Beams_y"]["N"][st][xbay][ybay] = max(op.eleForce(et, 1),
-                                                                             op.eleForce(et, 7), key=abs)
-                    results["gravity"]["Beams_y"]["V"][st][xbay][ybay] = max(abs(op.eleForce(et, 3)),
-                                                                             abs(op.eleForce(et, 9)))
+                    results["gravity"]["Beams_y"]["M"]["Pos"][st][xbay][ybay] = abs(op.eleForce(et, midx[1]))
+                    results["gravity"]["Beams_y"]["M"]["Neg"][st][xbay][ybay] = abs(op.eleForce(et, midx[0]))
+                    results["gravity"]["Beams_y"]["N"][st][xbay][ybay] = max(op.eleForce(et, nidx_b[0]),
+                                                                             op.eleForce(et, nidx_b[1]), key=abs)
+                    results["gravity"]["Beams_y"]["V"][st][xbay][ybay] = max(abs(op.eleForce(et, vidx_b[0])),
+                                                                             abs(op.eleForce(et, vidx_b[1])))
 
         # Columns
         # Columns of seismic frame along x direction
         # Columns [Vx, Vy, N, Mx, My, Mz]; jNode [Vx, Vy, N, Mx, My, Mz]
+        # Columns for X direction demand estimations [V, 2, N, 3, M, 6]
+        # Columns for Y direction demand estimations [0, V, N, M, 5, 6]
         for bay in range(nbays_x + 1):
             for st in range(self.i_d.nst):
                 et = int(f"1{bay+1}1{st+1}")
-                results["x_seismic"]["Columns"]["M"][st][bay] = max(abs(op.eleForce(et, 5)), abs(op.eleForce(et, 11)))
+                results["x_seismic"]["Columns"]["M"][st][bay] = max(abs(op.eleForce(et, midx[0])),
+                                                                    abs(op.eleForce(et, midx[1])))
                 # Negative N is tension, Positive N is compression
-                results["x_seismic"]["Columns"]["N"][st][bay] = max(op.eleForce(et, 3), op.eleForce(et, 9), key=abs)
-                results["x_seismic"]["Columns"]["V"][st][bay] = max(abs(op.eleForce(et, 1)), abs(op.eleForce(et, 7)))
+                results["x_seismic"]["Columns"]["N"][st][bay] = max(op.eleForce(et, nidx_c[0]),
+                                                                    op.eleForce(et, nidx_c[1]), key=abs)
+                results["x_seismic"]["Columns"]["V"][st][bay] = max(abs(op.eleForce(et, vidx_c[0])),
+                                                                    abs(op.eleForce(et, vidx_c[1])))
 
         # Columns of seismic frame along y direction
         for bay in range(nbays_y + 1):
             for st in range(self.i_d.nst):
                 et = int(f"11{bay+1}{st+1}")
-                results["y_seismic"]["Columns"]["M"][st][bay] = max(abs(op.eleForce(et, 5)), abs(op.eleForce(et, 11)))
+                results["y_seismic"]["Columns"]["M"][st][bay] = max(abs(op.eleForce(et, midx[0])),
+                                                                    abs(op.eleForce(et, midx[1])))
                 # Negative N is tension, Positive N is compression
-                results["y_seismic"]["Columns"]["N"][st][bay] = max(op.eleForce(et, 3), op.eleForce(et, 9), key=abs)
-                results["y_seismic"]["Columns"]["V"][st][bay] = max(abs(op.eleForce(et, 1)), abs(op.eleForce(et, 7)))
+                results["y_seismic"]["Columns"]["N"][st][bay] = max(op.eleForce(et, nidx_c[0]),
+                                                                    op.eleForce(et, nidx_c[1]), key=abs)
+                results["y_seismic"]["Columns"]["V"][st][bay] = max(abs(op.eleForce(et, vidx_c[0])),
+                                                                    abs(op.eleForce(et, vidx_c[1])))
 
         # Columns of gravity frames
         for xbay in range(nbays_x - 1):
             for ybay in range(nbays_y - 1):
                 for st in range(self.i_d.nst):
                     et = int(f"1{xbay+2}{ybay+2}{st+1}")
-                    results["gravity"]["Columns"]["M"][st][xbay][ybay] = max(abs(op.eleForce(et, 5)),
-                                                                             abs(op.eleForce(et, 11)))
+                    results["gravity"]["Columns"]["M"][st][xbay][ybay] = max(abs(op.eleForce(et, midx[0])),
+                                                                             abs(op.eleForce(et, midx[1])))
                     # Negative N is tension, Positive N is compression
-                    results["gravity"]["Columns"]["N"][st][xbay][ybay] = max(op.eleForce(et, 3),
-                                                                             op.eleForce(et, 9), key=abs)
-                    results["gravity"]["Columns"]["V"][st][xbay][ybay] = max(abs(op.eleForce(et, 1)),
-                                                                             abs(op.eleForce(et, 7)))
+                    results["gravity"]["Columns"]["N"][st][xbay][ybay] = max(op.eleForce(et, nidx_c[0]),
+                                                                             op.eleForce(et, nidx_c[1]), key=abs)
+                    results["gravity"]["Columns"]["V"][st][xbay][ybay] = max(abs(op.eleForce(et, vidx_c[0])),
+                                                                             abs(op.eleForce(et, vidx_c[1])))
+
+        # Recording Base node reactions
+        op.reactions()
+        for xbay in range(1, nbays_x + 2):
+            for ybay in range(1, nbays_y + 2):
+                nodetag = int(f"{xbay}{ybay}0")
+                # print(op.nodeReaction(nodetag))
 
         return results
 
     def apply_gravity_loads(self, beams, q_floor, q_roof, spans_x, spans_y):
-
         for d in beams:
             for beam in beams[d]:
                 st = int(str(beam)[-1])
@@ -243,7 +274,7 @@ class OpenSeesRun3D:
                                spans_y[ybay - 1]
 
                     # Applying the load
-                    op.eleLoad('-ele', beam, '-type', '-beamUniform', -load, self.NEGLIGIBLE)
+                    op.eleLoad('-ele', beam, '-type', '-beamUniform', load, self.NEGLIGIBLE)
 
                     # Additional load for interior beams
                     if 1 < xbay < len(spans_x) + 1:
@@ -256,7 +287,7 @@ class OpenSeesRun3D:
                                    spans_y[ybay - 1]
 
                         # Applying the load
-                        op.eleLoad('-ele', beam, '-type', '-beamUniform', -load, self.NEGLIGIBLE)
+                        op.eleLoad('-ele', beam, '-type', '-beamUniform', load, self.NEGLIGIBLE)
 
     def rigid_diaphragm(self, spans_x, spans_y, nbays_x, nbays_y):
         # Define Rigid floor diaphragm
@@ -304,9 +335,9 @@ class OpenSeesRun3D:
                 if (xloc == 0. or xloc == sum(spans_x)) and (yloc == 0. or yloc == sum(spans_y)):
                     op.fix(nodetag, 1, 1, 1, 1, 1, 1)
                 elif 0. < xloc < sum(spans_x) and (yloc == 0. or yloc == sum(spans_y)):
-                    op.fix(nodetag, 1, 1, 1, 1, 0, 0)
-                elif 0. < yloc < sum(spans_y) and (xloc == 0. or xloc == sum(spans_x)):
                     op.fix(nodetag, 1, 1, 1, 0, 1, 0)
+                elif 0. < yloc < sum(spans_y) and (xloc == 0. or xloc == sum(spans_x)):
+                    op.fix(nodetag, 1, 1, 1, 1, 0, 0)
                 else:
                     op.fix(nodetag, 1, 1, 1, 0, 0, 0)
 
@@ -340,7 +371,10 @@ class OpenSeesRun3D:
         :return: None
         """
         # Geometric transformations
-        op.geomTransf("PDelta", self.COL_TRANSF_TAG, 0, 1, 0)
+        if self.direction == 0:
+            op.geomTransf("PDelta", self.COL_TRANSF_TAG, 0, 1, 0)
+        else:
+            op.geomTransf("PDelta", self.COL_TRANSF_TAG, 1, 0, 0)
         op.geomTransf("Linear", self.BEAM_X_TRANSF_TAG, 0, 1, 0)
         op.geomTransf("Linear", self.BEAM_Y_TRANSF_TAG, 1, 0, 0)
 
@@ -486,9 +520,11 @@ class OpenSeesRun3D:
         beams, columns = self.create_elements(nbays_x, nbays_y, elastic=True)
 
         # Apply lateral loads for static analysis
+        # lat_action represents loads for each seismic frame
         if lat_action is not None:
             op.timeSeries("Linear", 1)
             op.pattern("Plain", 1, 1)
+            total_load = 0
             for st in range(1, int(self.i_d.nst + 1)):
                 if self.direction == 0:
                     # Along x direction
@@ -497,7 +533,6 @@ class OpenSeesRun3D:
                                 self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE)
                         op.load(int(f"{bay}{nbays_y+1}{st}"), lat_action[st - 1] / (nbays_x + 1), self.NEGLIGIBLE,
                                 self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE)
-
                 else:
                     # Along y direction
                     for bay in range(1, int(nbays_y + 2)):
@@ -539,7 +574,7 @@ class OpenSeesRun3D:
         self.static_analysis()
 
         # Define recorders
-        results = self.recorders(nbays_x, nbays_y)
+        results = self.recorders(nbays_x, nbays_y, direction=self.direction)
 
         self.wipe()
 
@@ -677,6 +712,7 @@ class OpenSeesRun3D:
                     # Base columns (for recorders, because for some reason base node recorders did not record)
                     if st == 1:
                         self.base_cols.append(et)
+
         if self.pflag:
             print("[ELEMENT] Columns created!")
 
@@ -710,7 +746,6 @@ class OpenSeesRun3D:
                     et = int(f"3{xbay}{ybay}{st}")
                     inode = int(f"{xbay}{ybay}{st}")
                     jnode = int(f"{next_bay_x}{ybay}{st}")
-
                     area = b_beam * h_beam
                     inertia = b_beam * h_beam ** 3 / 12
                     inertiay = h_beam * b_beam ** 3 / 12
@@ -911,112 +946,132 @@ class OpenSeesRun3D:
             period.append(2*np.pi/np.sqrt(lam[m]))
 
         # Calculate the first modal shape
-        modalShape = np.zeros(self.i_d.nst)
+        modalShape = np.zeros((self.i_d.nst, 2))
         for st in range(self.i_d.nst):
-            nodetag = int(f"{nbays+1}1{st+1}")
-            # TODO, different values than 1, 1 for Y direction
-            modalShape[st] = op.nodeEigenvector(nodetag, 1, 1)
+            if self.direction == 0:
+                nodetag = int(f"{nbays+1}1{st+1}")
+            else:
+                nodetag = int(f"1{nbays+1}{st+1}")
+            # First mode shape
+            modalShape[st, 0] = op.nodeEigenvector(nodetag, 1, 1)
+            # Second mode shape
+            modalShape[st, 1] = op.nodeEigenvector(nodetag, 2, 2)
 
-        # Normalize the modal shapes
-        modalShape = modalShape / max(modalShape, key=abs)
+        # Normalize the modal shapes (first two modes, most likely assocaited with X and Y directions unless there are
+        # large torsional effects)
+        modalShape = np.abs(modalShape) / np.max(np.abs(modalShape), axis=0)
+
         # Calculate the first mode participation factor and effective modal mass
         M = np.zeros((self.i_d.nst, self.i_d.nst))
         for st in range(self.i_d.nst):
             M[st][st] = self.i_d.masses[st] / self.i_d.n_seismic
 
+        # Identity matrix
         identity = np.ones((1, self.i_d.nst))
-        gamma = (modalShape.transpose().dot(M)).dot(identity.transpose()) / \
-                (modalShape.transpose().dot(M)).dot(modalShape)
-        mstar = (modalShape.transpose().dot(M)).dot(identity.transpose())
 
-        return period, modalShape, float(gamma), float(mstar)
+        gamma = np.zeros(2)
+        mstar = np.zeros(2)
+        for i in range(2):
+            # Modal participation factor
+            gamma[i] = (modalShape[:, i].transpose().dot(M)).dot(identity.transpose()) / \
+                       (modalShape[:, i].transpose().dot(M)).dot(modalShape[:, i])
 
-    def spo_analysis(self, load_pattern=1, mode_shape=None):
-        """
-        Starts static pushover analysis
-        :param load_pattern: str                    Load pattern shape for static pushover analysis
-                                                    0 = Uniform pattern
-                                                    1 = Triangular pattern
-                                                    2 = First-mode proportional pattern
-        :param mode_shape: list                     1st mode shape (compatible with 2nd load pattern)
-        :return: None
-        """
-        # Number of steps
-        nsteps = 1000
-        tol = 1.e-8
-        iterInit = 50
-        testType = "EnergyIncr"
-        algorithmType = "KrylovNewton"
+            # Modal mass
+            mstar[i] = (modalShape[:, i].transpose().dot(M)).dot(identity.transpose())
 
-        '''Load pattern definition'''
-        loads = []
-        if load_pattern == 0:
-            # print("[STEP] Applying Uniform load pattern...")
-            for i in self.spo_nodes:
-                loads.append(1.)
-        elif load_pattern == 1:
-            # print("[STEP] Applying triangular load pattern...")
-            for h in range(len(self.i_d.heights)):
-                if self.i_d.heights[h] != 0.:
-                    loads.append(self.i_d.heights[h] / sum(self.i_d.heights[:h]))
-        elif load_pattern == 2:
-            # print("[STEP] Applying 1st mode proportional load pattern...")
-            for i in mode_shape:
-                loads.append(i)
+        return period, modalShape, gamma, mstar
+
+    def singlePush(self, ctrlNode, ctrlDOF, nSteps):
+        LoadFactor = [0]
+        DispCtrlNode = [0]
+        # Test Types
+        test = {0: 'EnergyIncr', 1: 'NormDispIncr', 2: 'RelativeEnergyIncr', 3: 'RelativeNormUnbalance',
+                4: 'RelativeNormDispIncr', 5: 'NormUnbalance'}
+        # Algorithm Types
+        algorithm = {0: 'Newton', 1: 'KrylovNewton', 2: 'SecantNewton', 3: 'RaphsonNewton', 4: 'PeriodicNewton',
+                     5: 'BFGS',
+                     6: 'Broyden', 7: 'NewtonLineSearch'}
+        # Integrator Types
+        integrator = {0: 'DisplacementControl', 1: 'LoadControl', 2: 'Parallel DisplacementControl',
+                      3: 'Minimum Unbalanced Displacement Norm', 4: 'Arc-Length Control'}
+
+        tol = 1e-12  # Set the tolerance to use during the analysis
+        iterInit = 10  # Set the initial max number of iterations
+        maxIter = 1000  # Set the max number of iterations to use with other integrators
+
+        dU = 0.1 * sum(self.i_d.heights) / nSteps
+        op.test(test[0], tol, iterInit)  # lets start with energyincr as test
+        op.algorithm(algorithm[0])
+        op.integrator(integrator[0], ctrlNode, ctrlDOF, dU)
+        op.analysis('Static')
+
+        # Set the initial values to start the while loop
+        ok = 0.0
+        step = 1.0
+        loadf = 1.0
+
+        # This feature of disabling the possibility of having a negative loading has been included.
+        # This has been adapted from a similar script by Prof. Garbaggio
+
+        i = 1  # counter for the tests, if the analysis fails starts with new test directly
+        j = 0  # counter for the algorithm
+
+        current_test = test[0]
+        current_algorithm = algorithm[0]
+
+        while step <= nSteps and ok == 0 and loadf > 0:
+            ok = op.analyze(1)
+
+            # If the analysis fails, try the following changes to achieve convergence
+            while ok != 0:
+                if j == 7:  # this is the final algorithm to try, if the analysis did not converge
+                    j = 0
+                    i += 1  # reset the algorithm to use
+                    if i == 6:  # we have tried everything
+                        break
+
+                j += 1  # change the algorithm
+
+                if j < 3:
+                    op.algorithm(algorithm[j], '-initial')
+
+                else:
+                    op.algorithm(algorithm[j])
+
+                op.test(test[i], tol, maxIter)
+                ok = op.analyze(1)
+                current_test = test[i]
+                current_algorithm = algorithm[j]
+
+            # disp in dir 1
+            temp1 = op.nodeDisp(ctrlNode, 1)
+            # disp in dir 2
+            temp2 = op.nodeDisp(ctrlNode, 2)
+            # SRSS of disp in two dirs
+            temp = (temp1 ** 2 + temp2 ** 2) ** 0.5
+            loadf = op.getTime()
+            step += 1.0
+            LoadFactor.append(loadf)
+            DispCtrlNode.append(temp)
+
+            # Print the current displacement
+
+        if ok != 0:
+            print("Displacement Control Analysis is FAILED")
+            print('-------------------------------------------------------------------------')
+
         else:
-            raise ValueError("[EXCEPTION] Wrong load pattern is supplied.")
+            print("Displacement Control Analysis is SUCCESSFUL")
+            print('-------------------------------------------------------------------------')
 
-        # Applying the load pattern
-        op.timeSeries("Linear", 4)
-        op.pattern("Plain", 400, 4)
+        if loadf <= 0:
+            print("Stopped because of Load factor below zero:", loadf)
+            print('-------------------------------------------------------------------------')
 
-        # Pushing the nodes of seismic frames only
-        # if self.direction == 0:
-        #     for fpush, nodepush in zip(loads, self.spo_nodes[:self.i_d.nst]):
-        #         op.load(nodepush, fpush / 2, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE,
-        #                 self.NEGLIGIBLE)
-        #
-        #     op.pattern("Plain", 401, 4)
-        #     for fpush, nodepush in zip(loads, self.spo_nodes[self.i_d.nst:]):
-        #         op.load(nodepush, fpush / 2, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE,
-        #                 self.NEGLIGIBLE)
-        # else:
-        #     for fpush, nodepush in zip(loads, self.spo_nodes[:self.i_d.nst]):
-        #         op.load(nodepush, self.NEGLIGIBLE, fpush / 2, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE,
-        #                 self.NEGLIGIBLE)
-        #
-        #     op.pattern("Plain", 401, 4)
-        #     for fpush, nodepush in zip(loads, self.spo_nodes[self.i_d.nst:]):
-        #         op.load(nodepush, self.NEGLIGIBLE, fpush / 2, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE,
-        #                 self.NEGLIGIBLE)
+    def spo_algorithm2(self):
+        pass
 
-        # Pushing all nodes with masses assigned to them
-        nbays_x = self.i_d.n_bays
-        nbays_y = len(self.i_d.spans_y)
-        # Number of nodes per storey
-        n_nodes = (nbays_x + 1) * (nbays_y + 1)
-
-        for xbay in range(1, nbays_x + 2):
-            for ybay in range(1, nbays_y + 2):
-                for st in range(1, self.i_d.nst + 1):
-                    nodepush = int(f"{xbay}{ybay}{st}")
-                    fpush = loads[st-1]
-                    if self.direction == 0:
-                        op.load(nodepush, fpush / n_nodes, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE,
-                                self.NEGLIGIBLE, self.NEGLIGIBLE)
-                    else:
-                        op.load(nodepush, self.NEGLIGIBLE, fpush / n_nodes, self.NEGLIGIBLE, self.NEGLIGIBLE,
-                                self.NEGLIGIBLE, self.NEGLIGIBLE)
-
-        '''Set initial analysis parameters'''
-        op.constraints("Penalty", 1e15, 1e15)
-        op.numberer("RCM")
-        op.system("UmfPack")
-        op.test(testType, tol, iterInit, 0)
-        op.algorithm(algorithmType)
-        op.integrator("DisplacementControl", self.spo_nodes[-1], self.direction + 1, 1.5 / nsteps)
-        op.analysis("Static")
-
+    def spo_algorithm(self, testType, algorithmType, nsteps, iterInit, tol):
         '''Seek for a solution using different test conditions or algorithms'''
         # Set the initial values to start the while loop
         # The feature of disabling the possibility of having a negative loading has been included.
@@ -1079,6 +1134,10 @@ class OpenSeesRun3D:
             else:
                 topDisp = np.append(topDisp, (op.nodeResponse(self.spo_nodes[-1], 2, 1)))
 
+            # topDisp1 = np.append(topDisp, (op.nodeResponse(self.spo_nodes[-1], 1, 1)))
+            # topDisp2 = np.append(topDisp, (op.nodeResponse(self.spo_nodes[-1], 2, 1)))
+            # topDisp = (topDisp1**2 + topDisp2**2) ** 0.5
+
             eleForceTemp = 0.
             for col in self.base_cols:
                 if self.direction == 0:
@@ -1087,7 +1146,6 @@ class OpenSeesRun3D:
                     eleForceTemp += op.eleForce(col, 2)
 
             baseShear = np.append(baseShear, eleForceTemp)
-
             loadf = op.getTime()
             step += 1
 
@@ -1097,12 +1155,105 @@ class OpenSeesRun3D:
 
         return topDisp, baseShear
 
+    def spo_analysis(self, load_pattern=1, mode_shape=None):
+        """
+        Starts static pushover analysis
+        :param load_pattern: str                    Load pattern shape for static pushover analysis
+                                                    0 = Uniform pattern
+                                                    1 = Triangular pattern
+                                                    2 = First-mode proportional pattern
+        :param mode_shape: list                     1st mode shape (compatible with 2nd load pattern)
+        :return: None
+        """
+        # Number of steps
+        nsteps = 1000
+        tol = 1.e-8
+        iterInit = 10
+        testType = "EnergyIncr"
+        algorithmType = "KrylovNewton"
+
+        '''Load pattern definition'''
+        loads = []
+        if load_pattern == 0:
+            # print("[STEP] Applying Uniform load pattern...")
+            for i in self.spo_nodes:
+                loads.append(1.)
+        elif load_pattern == 1:
+            # print("[STEP] Applying triangular load pattern...")
+            for h in range(len(self.i_d.heights)):
+                if self.i_d.heights[h] != 0.:
+                    loads.append(self.i_d.heights[h] / sum(self.i_d.heights[:h+1]))
+        elif load_pattern == 2:
+            # print("[STEP] Applying 1st mode proportional load pattern...")
+            for i in mode_shape:
+                loads.append(i)
+        else:
+            raise ValueError("[EXCEPTION] Wrong load pattern is supplied.")
+
+        # Applying the load pattern
+        op.timeSeries("Linear", 4)
+        op.pattern("Plain", 400, 4)
+
+        # Pushing the nodes of seismic frames only
+        # if self.direction == 0:
+        #     for fpush, nodepush in zip(loads, self.spo_nodes[:self.i_d.nst]):
+        #         op.load(nodepush, fpush / 2, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE,
+        #                 self.NEGLIGIBLE)
+        #
+        #     op.pattern("Plain", 401, 4)
+        #     for fpush, nodepush in zip(loads, self.spo_nodes[self.i_d.nst:]):
+        #         op.load(nodepush, fpush / 2, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE,
+        #                 self.NEGLIGIBLE)
+        # else:
+        #     for fpush, nodepush in zip(loads, self.spo_nodes[:self.i_d.nst]):
+        #         op.load(nodepush, self.NEGLIGIBLE, fpush / 2, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE,
+        #                 self.NEGLIGIBLE)
+        #
+        #     op.pattern("Plain", 401, 4)
+        #     for fpush, nodepush in zip(loads, self.spo_nodes[self.i_d.nst:]):
+        #         op.load(nodepush, self.NEGLIGIBLE, fpush / 2, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE,
+        #                 self.NEGLIGIBLE)
+
+        # Pushing all nodes with masses assigned to them
+        nbays_x = self.i_d.n_bays
+        nbays_y = len(self.i_d.spans_y)
+        # Number of nodes per storey
+        n_nodes = (nbays_x + 1) * (nbays_y + 1)
+
+        for xbay in range(1, nbays_x + 2):
+            for ybay in range(1, nbays_y + 2):
+                for st in range(1, self.i_d.nst + 1):
+                    nodepush = int(f"{xbay}{ybay}{st}")
+                    fpush = loads[st-1]
+                    if self.direction == 0:
+                        op.load(nodepush, fpush / n_nodes, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE,
+                                self.NEGLIGIBLE, self.NEGLIGIBLE)
+                    else:
+                        op.load(nodepush, self.NEGLIGIBLE, fpush / n_nodes, self.NEGLIGIBLE, self.NEGLIGIBLE,
+                                self.NEGLIGIBLE, self.NEGLIGIBLE)
+
+        '''Set initial analysis parameters'''
+        op.constraints("Penalty", 1e15, 1e15)
+        # op.constraints("Transformation")
+        op.numberer("RCM")
+        op.system("UmfPack")
+        op.test(testType, tol, iterInit, 0)
+        op.algorithm(algorithmType)
+        op.integrator("DisplacementControl", self.spo_nodes[-1], self.direction + 1,
+                      0.1 * sum(self.i_d.heights) / nsteps)
+        op.analysis("Static")
+
+        topDisp, baseShear = self.spo_algorithm(testType, algorithmType, nsteps, iterInit, tol)
+
+        return topDisp, baseShear
+
 
 if __name__ == "__main__":
 
     from pathlib import Path
     from client.input import Input
     import pandas as pd
+    import pickle
 
     directory = Path.cwd().parents[1] / ".applications/LOSS Validation Manuscript/sample"
 
@@ -1112,10 +1263,12 @@ if __name__ == "__main__":
     csy = directory / "solution_cache_y.csv"
     csg = directory / "gravity_cs.csv"
     input_file = directory.parents[0] / "case2/ipbsd_input.csv"
+    hinge_models = directory / "hinge_models.pickle"
+    direction = 1
 
     # Read the cross-section files
-    idx_x = 40
-    idx_y = 127
+    idx_x = 38
+    idx_y = 20
 
     csx = pd.read_csv(csx, index_col=0).iloc[idx_x]
     csy = pd.read_csv(csy, index_col=0).iloc[idx_y]
@@ -1126,17 +1279,36 @@ if __name__ == "__main__":
     actionx = pd.read_csv(actionx)
     actiony = pd.read_csv(actiony)
 
-    grav_loads = {"x": list(actionx["G"]), "y": list(actiony["G"])}
-    lat_action = list(actionx["Fi"])
+    lat_action = list(actiony["Fi"])
 
     # Hinge models
-    hinge = {"x_seismic": None, "y_seismic": None, "gravity": None}
+    with open(hinge_models, 'rb') as file:
+        hinge = pickle.load(file)
+
+    hinge_elastic = {"x_seismic": None, "y_seismic": None, "gravity": None}
     fstiff = 0.5
 
     # Read input data
     data = Input()
     data.read_inputs(input_file)
 
-    analysis = OpenSeesRun3D(data, cs, hinge=hinge, direction=0, fstiff=fstiff)
-    results = analysis.elastic_analysis_3d(analysis=3, lat_action=lat_action, grav_loads=None)
-    # print(results["gravity"]["Beams_y"])
+    # analysis = OpenSeesRun3D(data, cs, hinge=hinge_elastic, direction=direction, fstiff=fstiff)
+    # results = analysis.elastic_analysis_3d(analysis=3, lat_action=lat_action, grav_loads=None)
+    # # print(results["x_seismic"]["Columns"])
+    #
+    ma = OpenSeesRun3D(data, cs, hinge=hinge, direction=direction, fstiff=fstiff)
+    ma.create_model()
+    ma.define_masses()
+    model_periods, modalShape, gamma, mstar = ma.ma_analysis(3)
+    ma.wipe()
+    # print(modalShape)
+
+    spo = OpenSeesRun3D(data, cs, fstiff, hinge=hinge, direction=direction)
+    spo.create_model()
+    # spo.define_masses()
+    topDisp, baseShear = spo.spo_analysis(load_pattern=2, mode_shape=list(modalShape[:, direction]))
+    spo.wipe()
+
+    spo_results = {"d": topDisp, "v": baseShear}
+    with open(f"temp_spo.pickle", 'wb') as handle:
+        pickle.dump(spo_results, handle)

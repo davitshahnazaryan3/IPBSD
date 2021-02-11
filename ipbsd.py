@@ -483,46 +483,77 @@ class IPBSD:
 
             # Initiate design of the entire building / frame
             if self.flag3d:
+                # Initial design solutions of all structural elements based on elastic analysis
                 init_design = iterations.generate_initial_solutions(opt_sol, opt_modes, self.overstrength, sa,
                                                                     period_range, table_sls)
-                # TODO, here comes the run_iterations_for_3d
+
+                outputs = iterations.run_iterations_for_3d(init_design, period_limits, opt_sol, opt_modes, sa,
+                                                           period_range, table_sls, iterate=self.iterate,
+                                                           maxiter=self.maxiter, omega=self.overstrength)
+                frames = ["x", "y"]
+                ipbsd_outputs = outputs["ipbsd_outputs"]
+                spoResults = outputs["spoResults"]
+                opt_sol = outputs["opt_sol"]
+                demands = outputs["demands"]
+                details = outputs["details"]
+                hinge_models = outputs["hinge_models"]
+                action = outputs["action"]
+                modelOutputs = outputs["modelOutputs"]
 
             else:
                 # Run the validations and iterations if need be
                 ipbsd_outputs, spoResults, opt_sol, demands, details, hinge_models, action, modelOutputs = \
                     iterations.validations(opt_sol, opt_modes, sa, period_range, table_sls, period_limits,
                                            self.iterate, self.maxiter, omega=self.overstrength)
-
-            # TODO stop analysis here
-            print("[EXIT] Force quit!")
-            import sys
-            sys.exit()
-
-            # Update results file for new opt_sol
-            results[i]["opt_sol"] = opt_sol
+                frames = ["x"]
+                outputs = None
 
             """Iterations are completed and IPBSD is finalized"""
             # Export main outputs and cache
             if self.export_cache:
-                """Storing the outputs"""
-                # Exporting the IPBSD outputs
+                for i in frames:
+                    if self.flag3d:
+                        spoResults_to_store = spoResults[i]
+                        opt_sol_to_store = opt_sol[i]
+                        action_to_store = action[i]
+                        demands_to_store = demands[i]
+                        ipbsd_outputs_to_store = ipbsd_outputs[i]
+                        details_to_store = details[i]
+                        hinge_models_to_store = hinge_models[i]
+                        modelOutputs_to_store = modelOutputs[i]
+                    else:
+                        spoResults_to_store = spoResults
+                        opt_sol_to_store = opt_sol
+                        action_to_store = action
+                        demands_to_store = demands
+                        ipbsd_outputs_to_store = ipbsd_outputs
+                        details_to_store = details
+                        hinge_models_to_store = hinge_models
+                        modelOutputs_to_store = modelOutputs
 
-                self.create_folder(self.outputPath / f"Cache/frame{i+1}")
-                self.export_results(self.outputPath / f"Cache/frame{i+1}/spoShape",
-                                    pd.DataFrame(iterations.spo_shape, index=[0]), "csv")
-                self.export_results(self.outputPath / f"Cache/frame{i+1}/lossCurve", lossCurve, "pickle")
-                self.export_results(self.outputPath / f"Cache/frame{i+1}/spoAnalysisCurveShape", spoResults,
-                                    "pickle")
-                self.export_results(self.outputPath / f"Cache/frame{i+1}/optimal_solution", opt_sol, "csv")
-                self.export_results(self.outputPath / f"Cache/frame{i+1}/action", action, "csv")
-                self.export_results(self.outputPath / f"Cache/frame{i+1}/demands", demands, "pkl")
-                self.export_results(self.outputPath / f"Cache/frame{i+1}/ipbsd", ipbsd_outputs, "pkl")
-                self.export_results(self.outputPath / f"Cache/frame{i+1}/details", details, "pkl")
-                self.export_results(self.outputPath / f"Cache/frame{i+1}/hinge_models", hinge_models, "csv")
-                self.export_results(self.outputPath / f"Cache/frame{i+1}/modelOutputs", modelOutputs, "pickle")
+                    """Storing the outputs"""
+                    # Exporting the IPBSD outputs
 
-                """Creating DataFrames to store for RCMRF input"""
-                self.cacheRCMRF(ipbsd, details, opt_sol, demands)
+                    self.create_folder(self.outputPath / f"Cache/frame{i}")
+                    self.export_results(self.outputPath / f"Cache/frame{i}/spoShape",
+                                        pd.DataFrame(iterations.spo_shape, index=[0]), "csv")
+                    self.export_results(self.outputPath / f"Cache/frame{i}/lossCurve", lossCurve, "pickle")
+                    self.export_results(self.outputPath / f"Cache/frame{i}/spoAnalysisCurveShape", spoResults_to_store,
+                                        "pickle")
+                    self.export_results(self.outputPath / f"Cache/frame{i}/optimal_solution", opt_sol_to_store,
+                                        "pickle")
+                    self.export_results(self.outputPath / f"Cache/frame{i}/action", action_to_store, "csv")
+                    self.export_results(self.outputPath / f"Cache/frame{i}/demands", demands_to_store, "pickle")
+                    self.export_results(self.outputPath / f"Cache/frame{i}/ipbsd", ipbsd_outputs_to_store, "pickle")
+                    self.export_results(self.outputPath / f"Cache/frame{i}/details", details_to_store, "pickle")
+                    self.export_results(self.outputPath / f"Cache/frame{i}/hinge_models", hinge_models_to_store,
+                                        "pickle")
+                    self.export_results(self.outputPath / f"Cache/frame{i}/modelOutputs", modelOutputs_to_store,
+                                        "pickle")
+
+                    """Creating DataFrames to store for RCMRF input"""
+                    # TODO, create for RCMRF
+                    # self.cacheRCMRF(ipbsd, details, opt_sol, demands)
 
             print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
             # Note: stiffness based off first yield point, at nominal point the stiffness is actually lower, and
@@ -569,7 +600,7 @@ if __name__ == "__main__":
     mafc_target = 2.e-4
     damping = .05
     system = "Perimeter"
-    maxiter = 10
+    maxiter = 2
     fstiff = 0.5
     overstrength = 1.0
     geometry = "2d"
@@ -594,3 +625,7 @@ if __name__ == "__main__":
     start_time = method.get_init_time()
     method.run_ipbsd()
     method.get_time(start_time)
+
+    # import sys
+    # sys.exit()
+

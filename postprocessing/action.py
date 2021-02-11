@@ -45,7 +45,7 @@ class Action:
         mstar = self.solution["Mstar"]
         gamma = self.solution["Part Factor"]
         vb = self.cy * mstar * self.n_seismic * gamma * 9.81
-        vb_i = vb/self.n_seismic
+        vb_i = vb / self.n_seismic
         return vb_i
 
     def forces(self):
