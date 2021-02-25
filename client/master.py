@@ -379,7 +379,6 @@ class Master:
         :param direction: bool                      0 for x direction, 1, for y direction
         :return: dict                               Demands on the structural elements
         """
-        response = None
         if analysis == 1:       # redundant, unnecessary, but will be left here as a placeholder for future changes
             if direction == 0:
                 nbays = self.data.n_bays

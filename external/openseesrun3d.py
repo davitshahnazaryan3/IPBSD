@@ -666,6 +666,7 @@ class OpenSeesRun3D:
 
                     # Column element tag
                     et = int(f"1{xbay}{ybay}{st}")
+                    
                     # End nodes of column
                     inode = int(f"{xbay}{ybay}{previous_st}")
                     jnode = int(f"{xbay}{ybay}{st}")
@@ -1255,16 +1256,17 @@ if __name__ == "__main__":
     import pandas as pd
     import pickle
 
-    directory = Path.cwd().parents[1] / ".applications/LOSS Validation Manuscript/sample"
+    directory = Path.cwd().parents[1] / ".applications/LOSS Validation Manuscript/case21"
 
-    actionx = directory / "actionx.csv"
-    actiony = directory / "actiony.csv"
-    csx = directory / "solution_cache_x.csv"
-    csy = directory / "solution_cache_y.csv"
+    # actionx = directory / "actionx.csv"
+    # actiony = directory / "actiony.csv"
+    csx = directory / "Cache/solution_cache_x.csv"
+    csy = directory / "Cache/solution_cache_y.csv"
     csg = directory / "gravity_cs.csv"
-    input_file = directory.parents[0] / "case2/ipbsd_input.csv"
-    hinge_models = directory / "hinge_models.pickle"
-    direction = 1
+    input_file = directory.parents[0] / "case21/ipbsd_input.csv"
+    hinge_models = directory.parents[0] / "sample/hinge0.pickle"
+    direction = 0
+    modalShape = [0.38, 0.65, 0.88, 1.]
 
     # Read the cross-section files
     idx_x = 38
@@ -1276,10 +1278,10 @@ if __name__ == "__main__":
 
     cs = {"x_seismic": csx, "y_seismic": csy, "gravity": csg}
 
-    actionx = pd.read_csv(actionx)
-    actiony = pd.read_csv(actiony)
+    # actionx = pd.read_csv(actionx)
+    # actiony = pd.read_csv(actiony)
 
-    lat_action = list(actiony["Fi"])
+    # lat_action = list(actiony["Fi"])
 
     # Hinge models
     with open(hinge_models, 'rb') as file:
@@ -1296,17 +1298,17 @@ if __name__ == "__main__":
     # results = analysis.elastic_analysis_3d(analysis=3, lat_action=lat_action, grav_loads=None)
     # # print(results["x_seismic"]["Columns"])
     #
-    ma = OpenSeesRun3D(data, cs, hinge=hinge, direction=direction, fstiff=fstiff)
-    ma.create_model()
-    ma.define_masses()
-    model_periods, modalShape, gamma, mstar = ma.ma_analysis(3)
-    ma.wipe()
-    # print(modalShape)
+    # ma = OpenSeesRun3D(data, cs, hinge=hinge, direction=direction, fstiff=fstiff)
+    # ma.create_model()
+    # ma.define_masses()
+    # model_periods, modalShape, gamma, mstar = ma.ma_analysis(3)
+    # ma.wipe()
+    # # print(modalShape)
 
     spo = OpenSeesRun3D(data, cs, fstiff, hinge=hinge, direction=direction)
     spo.create_model()
     # spo.define_masses()
-    topDisp, baseShear = spo.spo_analysis(load_pattern=2, mode_shape=list(modalShape[:, direction]))
+    topDisp, baseShear = spo.spo_analysis(load_pattern=2, mode_shape=modalShape)
     spo.wipe()
 
     spo_results = {"d": topDisp, "v": baseShear}

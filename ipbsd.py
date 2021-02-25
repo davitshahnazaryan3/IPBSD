@@ -119,7 +119,8 @@ class IPBSD:
         print('Running time: ', self.truncate(elapsed, 1), ' seconds')
         print('Running time: ', self.truncate(elapsed / float(60), 2), ' minutes')
 
-    def create_folder(self, directory):
+    @staticmethod
+    def create_folder(directory):
         """
         creates directory
         :param directory: str                   Directory to be created
@@ -150,13 +151,14 @@ class IPBSD:
         elif filetype == "csv":
             data.to_csv(f"{filepath}.csv", index=False)
 
-    def cacheRCMRF(self, ipbsd, details, sol, demands):
+    def cacheRCMRF(self, ipbsd, details, sol, demands, path):
         """
         Creates cache to be used by RCMRF
         :param ipbsd: object                            Master class
         :param details: dict                            Details of design
         :param sol: dict                                Optimal solution
         :param demands: dict                            Demands on structural components
+        :param path: str                                Path to directory to export the files
         :return: None
         """
         # Loads
@@ -171,6 +173,9 @@ class IPBSD:
         spansX = np.array([ipbsd.data.i_d["spans_X"][x] for x in ipbsd.data.i_d["spans_X"]])
         spansY = np.array([ipbsd.data.i_d["spans_Y"][x] for x in ipbsd.data.i_d["spans_Y"]])
         heights = np.array([ipbsd.data.i_d["h_storeys"][x] for x in ipbsd.data.i_d["h_storeys"]])
+
+        q_floor = int(ipbsd.data.i_d["bldg_ch"][0])
+        q_roof = int(ipbsd.data.i_d["bldg_ch"][1])
 
         if self.system == "Perimeter":
             distLength = spansY[0] / 2
@@ -229,12 +234,18 @@ class IPBSD:
                                   "Pattern": "mass",
                                   "Load": masses[st - 1] / ipbsd.data.n_seismic}, ignore_index=True)
 
+            # Area loads
+            q = q_roof if st == nst else q_floor
+            loads = loads.append({"Storey": st,
+                                  "Pattern": "q",
+                                  "Load": q}, ignore_index=True)
+
         # Exporting action for use by a Modeler module
         """
         For a two-way slab assumption, load distribution will not be uniform.
         For now and for simplicity, total load over each directions is computed and then divided by global length to 
         assume a uniform distribution. """
-        self.export_results(self.outputPath / "action", loads, "csv")
+        self.export_results(path / "action", loads, "csv")
 
         # Materials
         fc = ipbsd.data.i_d["fc"][0]
@@ -250,107 +261,107 @@ class IPBSD:
                                   "Ec": Ec}, index=[0])
 
         # Exporting the materials file for use by a Modeler module
-        self.export_results(self.outputPath / "materials", materials, "csv")
+        self.export_results(path / "materials", materials, "csv")
 
         """Section properties (for the Haselton model)"""
-        def get_sections(i, sections, details, sol, demands, ele, iterator, st, bay, nbays, bayName):
-            eleType = "Beam" if ele == "Beams" else "Column"
-            pos = "External" if bay == 1 else "Internal"
-            p0 = pos[0].lower() if eleType == "Column" else ""
+        # def get_sections(i, sections, details, sol, demands, ele, iterator, st, bay, nbays, bayName):
+        #     eleType = "Beam" if ele == "Beams" else "Column"
+        #     pos = "External" if bay == 1 else "Internal"
+        #     p0 = pos[0].lower() if eleType == "Column" else ""
+        #
+        #     # C-S dimensions
+        #     if eleType == "Beam":
+        #         b = sol.loc[f"b{st}"]
+        #         h = sol.loc[f"h{st}"]
+        #         Ptotal = 0.0
+        #         length = spansX[bay - 1]
+        #         MyPos = details[ele]["Pos"][i][3]["yield"]["moment"]
+        #         MyNeg = details[ele]["Neg"][i][3]["yield"]["moment"]
+        #         coverPos = details[ele]["Pos"][i][0]["cover"]
+        #         coverNeg = details[ele]["Neg"][i][0]["cover"]
+        #         roPos = details[ele]["Pos"][i][0]["reinforcement"] / (b * (h - coverPos))
+        #         roNeg = details[ele]["Neg"][i][0]["reinforcement"] / (b * (h - coverNeg))
+        #
+        #     else:
+        #         b = h = sol.loc[f"h{p0}{st}"]
+        #         Ptotal = max(demands[ele]["N"][st - 1][bay - 1], demands[ele]["N"][st - 1][nbays - bay + 1], key=abs)
+        #         length = heights[st - 1]
+        #         MyPos = MyNeg = details[ele][i][3]["yield"]["moment"]
+        #         coverPos = coverNeg = details[ele][i][0]["cover"]
+        #         roPos = roNeg = details[ele][i][0]["reinforcement"] / (b * (h - coverPos))
+        #
+        #     # Residual strength of component
+        #     res = iterator[i][3]["fracturing"]["moment"] / iterator[i][3]["yield"]["moment"]
+        #
+        #     # Appending into the DataFrame
+        #     sections = sections.append({"Element": eleType,
+        #                                 "Bay": bayName,
+        #                                 "Storey": st,
+        #                                 "Position": pos,
+        #                                 "b": float(b),
+        #                                 "h": float(h),
+        #                                 "coverPos": float(coverPos),
+        #                                 "coverNeg": float(coverNeg),
+        #                                 "Ptotal": Ptotal,
+        #                                 "MyPos": float(MyPos),
+        #                                 "MyNeg": float(MyNeg),
+        #                                 "asl": asl,
+        #                                 "Ash": float(iterator[i][0]["A_sh"]),
+        #                                 "spacing": float(iterator[i][0]["spacing"]),
+        #                                 "db": db,
+        #                                 "c": c,
+        #                                 "D": D,
+        #                                 "Res": float(res),
+        #                                 "Length": length,
+        #                                 "ro_long_pos": float(roPos),
+        #                                 "ro_long_neg": float(roNeg)}, ignore_index=True)
+        #     return sections
 
-            # C-S dimensions
-            if eleType == "Beam":
-                b = sol.loc[f"b{st}"]
-                h = sol.loc[f"h{st}"]
-                Ptotal = 0.0
-                length = spansX[bay - 1]
-                MyPos = details[ele]["Pos"][i][3]["yield"]["moment"]
-                MyNeg = details[ele]["Neg"][i][3]["yield"]["moment"]
-                coverPos = details[ele]["Pos"][i][0]["cover"]
-                coverNeg = details[ele]["Neg"][i][0]["cover"]
-                roPos = details[ele]["Pos"][i][0]["reinforcement"] / (b * (h - coverPos))
-                roNeg = details[ele]["Neg"][i][0]["reinforcement"] / (b * (h - coverNeg))
-
-            else:
-                b = h = sol.loc[f"h{p0}{st}"]
-                Ptotal = max(demands[ele]["N"][st - 1][bay - 1], demands[ele]["N"][st - 1][nbays - bay + 1], key=abs)
-                length = heights[st - 1]
-                MyPos = MyNeg = details[ele][i][3]["yield"]["moment"]
-                coverPos = coverNeg = details[ele][i][0]["cover"]
-                roPos = roNeg = details[ele][i][0]["reinforcement"] / (b * (h - coverPos))
-
-            # Residual strength of component
-            res = iterator[i][3]["fracturing"]["moment"] / iterator[i][3]["yield"]["moment"]
-
-            # Appending into the DataFrame
-            sections = sections.append({"Element": eleType,
-                                        "Bay": bayName,
-                                        "Storey": st,
-                                        "Position": pos,
-                                        "b": float(b),
-                                        "h": float(h),
-                                        "coverPos": float(coverPos),
-                                        "coverNeg": float(coverNeg),
-                                        "Ptotal": Ptotal,
-                                        "MyPos": float(MyPos),
-                                        "MyNeg": float(MyNeg),
-                                        "asl": asl,
-                                        "Ash": float(iterator[i][0]["A_sh"]),
-                                        "spacing": float(iterator[i][0]["spacing"]),
-                                        "db": db,
-                                        "c": c,
-                                        "D": D,
-                                        "Res": float(res),
-                                        "Length": length,
-                                        "ro_long_pos": float(roPos),
-                                        "ro_long_neg": float(roNeg)}, ignore_index=True)
-            return sections
-
-        # Constants - assumptions - to be made more flexible
-        asl = 0
-        c = 1
-        D = 1
-        db = 20
-        nbays = len(spansX)
-
-        # Initialize sections
-        sections = pd.DataFrame(columns=["Element", "Bay", "Storey", "Position", "b", "h", "coverPos", "coverNeg",
-                                         "Ptotal", "MyPos", "MyNeg", "asl", "Ash", "spacing", "db", "c", "D", "Res",
-                                         "Length", "ro_long_pos", "ro_long_neg"])
-
-        for ele in details:
-            if ele == "Beams":
-                iterator = details[ele]["Pos"]
-            else:
-                iterator = details[ele]
-
-            for i in iterator:
-                st = int(i[1])
-                bay = int(i[3])
-                sections = get_sections(i, sections, details, sol, demands, ele, iterator, st, bay, nbays, bayName=bay)
-
-        # Add symmetric columns
-        if bay < nbays:
-            bayName = bay
-            for bb in range(nbays - bay + 1, 0, -1):
-                bayName += 1
-                for st in range(1, nst + 1):
-                    ele = "Columns"
-                    i = f"S{st}B{bb}"
-                    iterator = details[ele]
-                    sections = get_sections(i, sections, details, sol, demands, ele, iterator, st, bb, nbays, bayName)
-
-            bayName = bay
-            for bb in range(nbays - bay, 0, -1):
-                bayName += 1
-                for st in range(1, nst + 1):
-                    ele = "Beams"
-                    i = f"S{st}B{bb}"
-                    iterator = details[ele]["Pos"]
-                    sections = get_sections(i, sections, details, sol, demands, ele, iterator, st, bb, nbays, bayName)
-
-        # Exporting the sections file for use by Modeler module as Haselton springs
-        self.export_results(self.outputPath / "haselton_springs", sections, "csv")
+        # # Constants - assumptions - to be made more flexible
+        # asl = 0
+        # c = 1
+        # D = 1
+        # db = 20
+        # nbays = len(spansX)
+        #
+        # # Initialize sections
+        # sections = pd.DataFrame(columns=["Element", "Bay", "Storey", "Position", "b", "h", "coverPos", "coverNeg",
+        #                                  "Ptotal", "MyPos", "MyNeg", "asl", "Ash", "spacing", "db", "c", "D", "Res",
+        #                                  "Length", "ro_long_pos", "ro_long_neg"])
+        #
+        # for ele in details:
+        #     if ele == "Beams":
+        #         iterator = details[ele]["Pos"]
+        #     else:
+        #         iterator = details[ele]
+        #
+        #     for i in iterator:
+        #         st = int(i[1])
+        #         bay = int(i[3])
+        #         sections = get_sections(i, sections, details, sol, demands, ele, iterator, st, bay, nbays, bayName=bay)
+        #
+        # # Add symmetric columns
+        # if bay < nbays:
+        #     bayName = bay
+        #     for bb in range(nbays - bay + 1, 0, -1):
+        #         bayName += 1
+        #         for st in range(1, nst + 1):
+        #             ele = "Columns"
+        #             i = f"S{st}B{bb}"
+        #             iterator = details[ele]
+        #             sections = get_sections(i, sections, details, sol, demands, ele, iterator, st, bb, nbays, bayName)
+        #
+        #     bayName = bay
+        #     for bb in range(nbays - bay, 0, -1):
+        #         bayName += 1
+        #         for st in range(1, nst + 1):
+        #             ele = "Beams"
+        #             i = f"S{st}B{bb}"
+        #             iterator = details[ele]["Pos"]
+        #             sections = get_sections(i, sections, details, sol, demands, ele, iterator, st, bb, nbays, bayName)
+        #
+        # # Exporting the sections file for use by Modeler module as Haselton springs
+        # self.export_results(path / "haselton_springs", sections, "csv")
 
     def run_ipbsd(self):
 
@@ -519,8 +530,13 @@ class IPBSD:
                         demands_to_store = demands[i]
                         ipbsd_outputs_to_store = ipbsd_outputs[i]
                         details_to_store = details[i]
-                        hinge_models_to_store = hinge_models[i]
+                        hinge_models_to_store = hinge_models[i][f"{i}_seismic"]
                         modelOutputs_to_store = modelOutputs[i]
+                        """Creating DataFrames to store for RCMRF input"""
+                        self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store[f"{i}_seismic"], demands_to_store,
+                                        path=self.outputPath)
+                        self.export_results(self.outputPath / f"Cache/gravity_hinges", hinge_models["x"]["gravity"],
+                                            "csv")
                     else:
                         spoResults_to_store = spoResults
                         opt_sol_to_store = opt_sol
@@ -530,7 +546,8 @@ class IPBSD:
                         details_to_store = details
                         hinge_models_to_store = hinge_models
                         modelOutputs_to_store = modelOutputs
-
+                        self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store, demands_to_store,
+                                        path=self.outputPath)
                     """Storing the outputs"""
                     # Exporting the IPBSD outputs
 
@@ -546,14 +563,9 @@ class IPBSD:
                     self.export_results(self.outputPath / f"Cache/frame{i}/demands", demands_to_store, "pickle")
                     self.export_results(self.outputPath / f"Cache/frame{i}/ipbsd", ipbsd_outputs_to_store, "pickle")
                     self.export_results(self.outputPath / f"Cache/frame{i}/details", details_to_store, "pickle")
-                    self.export_results(self.outputPath / f"Cache/frame{i}/hinge_models", hinge_models_to_store,
-                                        "pickle")
+                    self.export_results(self.outputPath / f"Cache/frame{i}/hinge_models", hinge_models_to_store, "csv")
                     self.export_results(self.outputPath / f"Cache/frame{i}/modelOutputs", modelOutputs_to_store,
                                         "pickle")
-
-                    """Creating DataFrames to store for RCMRF input"""
-                    # TODO, create for RCMRF
-                    # self.cacheRCMRF(ipbsd, details, opt_sol, demands)
 
             print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
             # Note: stiffness based off first yield point, at nominal point the stiffness is actually lower, and
@@ -587,23 +599,22 @@ if __name__ == "__main__":
     # Paths
     from pathlib import Path
     path = Path.cwd()
-    outputPath = path.parents[0] / ".applications/LOSS Validation Manuscript/Case2"
+    outputPath = path.parents[0] / ".applications/LOSS Validation Manuscript/Case21"
 
     # Add input arguments
     analysis_type = 3
-    input_file = path.parents[0] / ".applications/LOSS Validation Manuscript/Case2/ipbsd_input.csv"
-    hazard_file = path.parents[0] / ".applications/LOSS Validation Manuscript/Case2/Hazard-LAquila-Soil-C.pkl"
+    input_file = path.parents[0] / ".applications/LOSS Validation Manuscript/Case21/ipbsd_input.csv"
+    hazard_file = path.parents[0] / ".applications/LOSS Validation Manuscript/Case21/Hazard-LAquila-Soil-C.pkl"
     slfDir = outputPath / "slfoutput"
-    spo_file = path.parents[0] / ".applications/LOSS Validation Manuscript/Case2/spo.csv"
+    spo_file = path.parents[0] / ".applications/LOSS Validation Manuscript/Case21/spo.csv"
     gravity_cs = None
     limit_eal = 1.0
     mafc_target = 2.e-4
     damping = .05
     system = "Perimeter"
-    maxiter = 2
+    maxiter = 5
     fstiff = 0.5
     overstrength = 1.0
-    geometry = "2d"
     export_cache = True
     holdFlag = False
     iterate = True
@@ -628,4 +639,3 @@ if __name__ == "__main__":
 
     # import sys
     # sys.exit()
-

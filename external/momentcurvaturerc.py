@@ -21,7 +21,7 @@ warnings.filterwarnings('ignore')
 
 
 class MomentCurvatureRC:
-    def __init__(self, b, h, m_target, length=0, nlayers=0, p=0., d=.03, fc_prime=25, fy=415, young_mod_s=200e3,
+    def __init__(self, b, h, m_target, length=0., nlayers=0, p=0., d=.03, fc_prime=25, fy=415, young_mod_s=200e3,
                  soft_method="Collins", k_hard=1.0, fstiff=0.5, AsTotal=None, distAs=None):
         """
         init Moment curvature tool
@@ -401,7 +401,18 @@ class MomentCurvatureRC:
 
                 # Stop analysis if RunTimeWarning is caught (i.e. no convergence)
                 if math.isnan(self.mi):
-                    break
+                    # Check if c initial should be modified, as the analysis stopped prematurely
+                    if m[-2] / m[-1] < 0.9:
+                        c = 0.02
+                        c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100,
+                                                      xtol=1e-4)))
+                    else:
+                        if m[-2] / m[-1] < 0.9:
+                            c = 0.1
+                            c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100,
+                                                          xtol=1e-4)))
+                        else:
+                            break
 
                 # Sometimes even though the M-Phi is obtained, the solution is still converging, so we need to stop it
                 # to avoid inverse slopes of Curvature
@@ -519,33 +530,15 @@ if __name__ == '__main__':
     young_modulus_s         reinforcement elastic modulus [MPa]
     """
     # Section properties
-    b = 0.3
-    h = 0.3
-    Mtarget = 98.12
+    b = 0.5
+    h = 0.5
+    Mtarget = 112.237
     N = 100.
     cover = 0.03
 
-    mphi = MomentCurvatureRC(b, h, Mtarget, p=N, d=cover, nlayers=0, soft_method="Haselton",
-                             AsTotal=0.0005, distAs=[0.5, 0.5])
+    mphi = MomentCurvatureRC(b, h, Mtarget, length=1.8, p=155.7, nlayers=1, d=0.03, young_mod_s=200000.,
+                             k_hard=1, soft_method="Collins")
 
-    # data = mphi.get_mphi()
-    m = mphi.get_mphi(check_reinforcement=True, reinf_test=0.0016)
+    m = mphi.get_mphi()
     
-    # ro = data[0]['reinforcement'] / b / (h - cover) * 100
-    # print(f"Reinforcement ratio {ro:.2f}%")
-    # print(data[0]['reinforcement'])
-
     print(m)
-    
-    # plt.plot(data[0]["curvature"], data[0]["moment"])
-    # plt.xlim([0, 0.2])
-    # plt.ylim([0, 250])
-    # plt.scatter(data[0]["first_yield_curvature"], data[0]["first_yield_moment"])
-    # plt.scatter(data[0]["first_yield_curvature"] * data[0]["curvature_ductility"],
-    #             data[0]["first_yield_moment"] * data[0]["peak/yield ratio"])
-
-#    fig, ax = plt.subplots(figsize=(4, 3))
-#    plt.plot(c["Strain"], c["Stress"])
-#
-#    fig, ax = plt.subplots(figsize=(4, 3))
-#    plt.plot(r["Strain"], r["Stress"])

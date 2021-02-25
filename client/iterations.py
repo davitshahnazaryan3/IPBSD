@@ -99,36 +99,68 @@ class Iterations:
         d2 = x[stfIdx]
         m2 = y[stfIdx]
 
-        # Find point of plasticity initiation
-        stf0 = (y[1] - y[0]) / (x[1] - x[0])
-        for i in range(1, len(x)):
-            stf1 = (y[i + 1] - y[i]) / (x[i + 1] - x[i])
-            if stf1 <= 0.5 * stf0:
-                break
-            else:
-                stf0 = stf1
+        # Fitting the plasticity portion based on the area under the curve
+        y_pl = y[stfIdx: getIndex(Vmax, y)]
+        nbins = len(y_pl) - 1
+        dx = (dmax - d2) / nbins
+        area_pl = np.trapz(y_pl, dx=dx)
 
-        if i == getIndex(Vmax, y):
-            i = i - 5
+        a = stiff_elastic
+        b = Vmax - stiff_elastic * dmax
+        c = 2 * area_pl - Vmax * dmax
+        d = b ** 2 - 4 * a * c
+        sol1 = (-b - np.sqrt(d)) / (2 * a)
+        sol2 = (-b + np.sqrt(d)) / (2 * a)
+        if sol1 > 0 and sol2 > 0:
+            xint = min(sol1, sol2)
+        elif sol1 > 0 and sol2 <= 0:
+            xint = sol1
+        else:
+            xint = sol2
 
-        dPl = x[i]
-        mPl = y[i]
+        yint = xint * stiff_elastic
 
-        a0, b0 = getEquation((d1, m1), (d2, m2))
-        a1, b1 = getEquation((dPl, mPl), (dmax, Vmax))
-
-        # Find intersection point, i.e. the nominal yield point
-        xint = (b1 - b0) / (a0 - a1)
-        yint = a0 * xint + b0
+        # # Find point of plasticity initiation
+        # stf0 = (y[1] - y[0]) / (x[1] - x[0])
+        # for i in range(1, len(x)):
+        #     stf1 = (y[i + 1] - y[i]) / (x[i + 1] - x[i])
+        #     if stf1 <= 0.5 * stf0:
+        #         break
+        #     else:
+        #         stf0 = stf1
+        #
+        # if i == getIndex(Vmax, y):
+        #     i = i - 5
+        #
+        # dPl = x[i]
+        # mPl = y[i]
+        #
+        # a0, b0 = getEquation((d1, m1), (d2, m2))
+        # a1, b1 = getEquation((dPl, mPl), (dmax, Vmax))
+        #
+        # # Find intersection point, i.e. the nominal yield point
+        # xint = (b1 - b0) / (a0 - a1)
+        # yint = a0 * xint + b0
 
         # Now, identify the residual strength point (here defined at V=0)
         yres = max(y[-1], yint * residual)
         idx = getIndex(1.01*yres, y[::-1])
         xres = x[::-1][idx]
+        # Getting the actual residual strength and corresponding displacement
+        ymin = y[-1]
+        # xmin = (Vmax - ymin) * (xres - dmax) / (Vmax - yres) + dmax
+
+        # Select the softening slope until residual displacement
+        # Fitting based on the area under the softening slope
+        y_soft = y[getIndex(Vmax, y): getIndex(xres, x)]
+        nbins = len(y_soft) - 1
+        dx = (xres - dmax) / nbins
+        area_soft = np.trapz(y_soft, dx=dx)
+        xmin = 2 * area_soft / (Vmax + ymin) + dmax
 
         # Get the curve
-        d = np.array([0., xint, dmax, xres])
-        v = np.array([0., yint, Vmax, yres])
+        d = np.array([0., xint, dmax, xmin])
+        v = np.array([0., yint, Vmax, ymin])
 
         return d, v
 
@@ -271,11 +303,12 @@ class Iterations:
                 if opt[f"b{st}"] > opt[f"h{st}"] - 0.1:
                     opt[f"h{st}"] = opt[f"b{st}"] + 0.1
                 if opt[f"b{st}"] < opt[f"h{st}"] - 0.3:
-                    opt[f"b{st}"] = opt[f"b{st}"] - 0.3
+                    opt[f"b{st}"] = opt[f"h{st}"] - 0.3
 
         # Finding a matching solution from the already generated DataFrame
-        solution = self.sols[self.sols == opt].dropna(thresh=len(self.sols.columns) - 4)
-        solution = self.sols.loc[solution.index]
+        solution = self.sols[direction][self.sols[direction] == opt].dropna(thresh=
+                                                                            len(self.sols[direction].columns) - 4)
+        solution = self.sols[direction].loc[solution.index]
 
         # Solutions to look for
         if self.flag3d:
@@ -284,6 +317,7 @@ class Iterations:
                 solution_y = opt_sol["y_seismic"]
             else:
                 solution_x = opt_sol["x_seismic"]
+                print(solution)
                 solution_y = solution.iloc[0]
         else:
             solution_x = solution.iloc[0]
@@ -328,6 +362,9 @@ class Iterations:
         if read:
             # Reads the input assumption if necessary
             self.spo_shape = self.ipbsd.data.initial_spo_data(period, self.spo_file)
+
+        # Modify period of spo shape to period
+        self.spo_shape["T"] = period
 
         # Run SPO2IDA
         spo2ida_data = self.ipbsd.perform_spo2ida(self.spo_shape)
@@ -484,7 +521,7 @@ class Iterations:
         yield details, hinge_models, mu_c, mu_f
         yield warnMax, warnMin, warnings
 
-    def run_ma(self, opt_sol, hinge, forces, t_upper, tol=0.05, direction="x"):
+    def run_ma(self, opt_sol, hinge, forces, t_upper, tol=0.05, direction="x", spo_period=None):
         """
         Creates a nonlinear model and runs Modal Analysis with the aim of correcting opt_sol and fundamental period
         :param opt_sol: DataFrame                   Optimal solution
@@ -493,6 +530,7 @@ class Iterations:
         :param t_upper: float                       Upper period limit from IPBSD
         :param tol: float                           Tolerance of upper period limit satisfaction
         :param direction: str                       Direction of action (x for 2D, x or y for 3D)
+        :param spo_period: float                    SPO based period
         :return model_periods: ndarray              Model periods from MA
         :return modalShape: list                    Modal shapes from MA
         :return gamma: float                        First mode participation factor from MA
@@ -508,31 +546,40 @@ class Iterations:
                     idx = 0
                 else:
                     idx = 1
-                seismic_solution = opt_sol["x_seismic"]
             else:
                 if opt_sol["x_seismic"]["T"] >= opt_sol["y_seismic"]["T"]:
                     idx = 1
                 else:
                     idx = 0
-                seismic_solution = opt_sol["y_seismic"]
+            seismic_solution = opt_sol[f"{direction}_seismic"]
             model_periods = model_periods[idx]
             modalShape = modalShape[:, idx]
             gamma = gamma[idx]
             mstar = mstar[idx]
+            all_solutions = self.sols[direction]
         else:
             # Interested only in first mode for the 2D approach
             model_periods = model_periods[0]
             seismic_solution = opt_sol
+            all_solutions = self.sols
+
+        # We use the secant period to yield for the validation
+        if spo_period is not None:
+            model_periods = spo_period
 
         # There is a high likelihood that Fundamental period and SPO curve shape will not match the assumptions
         # Therefore the first iteration should correct both assumptions (further corrections are likely not to be large)
         if model_periods > t_upper + model_periods * tol:
-            # Period error
+            # # Get index of the seismic solution
+            # idx_seismic = seismic_solution.name
+            # # Get the initial period assumption corresponding to the index from the solutions database
+            # period_initial = all_solutions.loc[idx_seismic]["T"]
+            # Period error (compared to the period from the all solutions variable)
             period_error = model_periods - seismic_solution["T"]
             # Look for a new period for the design solution (probably not the best way to guess)
             tnew = t_upper - period_error
             # Select all solutions in the vicinity of the new period
-            sols = self.sols[(self.sols["T"] >= tnew - tnew * tol) & (self.sols["T"] <= tnew + tnew * tol)]
+            sols = all_solutions[(all_solutions["T"] >= tnew - tnew * tol) & (all_solutions["T"] <= tnew + tnew * tol)]
             # Select the solution with the least weight
             seismic_solution = sols[sols["Weight"] == sols["Weight"].min()].iloc[0]
             # Actual period of the structure is guessed to be (opt_sol period + error)
@@ -552,6 +599,20 @@ class Iterations:
             # If the model period was within the confidence
             self.period_to_use = model_periods
             self.warnT = False
+
+        # # Update period of opt_sol if it is not matching the actual one
+        # if self.flag3d:
+        #     if model_periods != opt_sol[direction + "_seismic"]["T"]:
+        #         opt_sol[direction + "_seismic"]["T"] = model_periods
+        #         # Update the remaining modal properties
+        #         opt_sol[direction + "_seismic"]["Part Factor"] = gamma
+        #         opt_sol[direction + "_seismic"]["Mstar"] = mstar
+        # else:
+        #     if model_periods != opt_sol["T"]:
+        #         opt_sol["T"] = model_periods
+        #         # Update the remaining modal properties
+        #         opt_sol["Part Factor"] = gamma
+        #         opt_sol["Mstar"] = mstar
 
         return model_periods, modalShape, gamma, mstar, opt_sol
 
@@ -641,6 +702,7 @@ class Iterations:
 
         for i in frames:
 
+            print(f"[PHASE] Getting initial solutions in {i} direction.")
             solution = opt_sol[f"{i}_seismic"]
             modes = opt_modes[i]
             table = table_sls[i]
@@ -678,6 +740,34 @@ class Iterations:
             design_outputs[i]["phase3"] = {"cy": cy, "dy": dy, "spo2ida_data": spo2ida_data, "gamma": gamma,
                                            "mstar": mstar}
 
+        # Modify hinge elements of external seismic columns to the strongest (larger My) from designs of both directions
+        hinge_models_x = design_outputs["x"]["hinge_models"]
+        hinge_models_y = design_outputs["y"]["hinge_models"]
+        external_hinges_x = hinge_models_x[(hinge_models_x["Position"] == "external") &
+                                           (hinge_models_x["Element"] == "Column")].reset_index()
+        external_hinges_y = hinge_models_y[(hinge_models_y["Position"] == "external") &
+                                           (hinge_models_y["Element"] == "Column")].reset_index()
+
+        for index, row in external_hinges_x.iterrows():
+            my_x = external_hinges_x["m1"].iloc[index]
+            my_y = external_hinges_y["m1"].iloc[index]
+            idx_x = external_hinges_x["index"].iloc[index]
+            idx_y = external_hinges_y["index"].iloc[index]
+            bay_n_x = external_hinges_x["Bay"].iloc[index]
+            bay_n_y = external_hinges_y["Bay"].iloc[index]
+
+            if my_x >= my_y:
+                hinge_models_y.iloc[idx_y] = external_hinges_x.drop(columns=["index"]).iloc[index]
+                # Modify corresponding Bay number
+                hinge_models_y.at[idx_y, "Bay"] = bay_n_y
+
+            else:
+                hinge_models_x.iloc[idx_x] = external_hinges_y.drop(columns=["index"]).iloc[index]
+                hinge_models_x.at[idx_x, "Bay"] = bay_n_x
+
+        design_outputs["x"]["hinge_models"] = hinge_models_x
+        design_outputs["y"]["hinge_models"] = hinge_models_y
+
         # Detail the gravity frames in either direction (envelope)
         hinge_gravity = self.ipbsd.design_elements(demands_gravity, opt_sol["gravity"], None, None,
                                                    cover=self.rebar_cover, direction=0, gravity=True)
@@ -704,7 +794,6 @@ class Iterations:
         outputs = {"ipbsd_outputs": {}, "spoResults": {}, "opt_sol": {}, "demands": {}, "details": {},
                    "hinge_models": {}, "action": {}, "modelOutputs": {}}
         for i in ["x", "y"]:
-            # TODO, redesign external seismic columns only if the new demands are larger than the old ones
             print(f"[INITIATE 3D] Running framework in {i} direction!")
             table = table_sls[i]
             periods = period_limits[i]
@@ -839,9 +928,12 @@ class Iterations:
             # Start with the correction of SPO curve shape. Also, recalculate the mode shape of new design solution
             # Star the counter
             cnt = 0
+            spo_period = None
 
             # Correction for period
-            """Create an OpenSees model and run modal analysis"""
+            """Create an OpenSees model and run modal analysis.
+            Acts as an initial estimation of modal properties."""
+
             model_periods, modalShape, gamma, mstar, opt_sol = self.run_ma(opt_sol, hinge_models, forces, t_upper,
                                                                            direction=direction)
 
@@ -863,6 +955,7 @@ class Iterations:
                 tag = direction + "_seismic"
                 # Period to cache
                 periodCache = opt_sol[tag]["T"]
+
             else:
                 idx = 0
                 modes["Periods"] = np.array(model_periods)
@@ -876,8 +969,16 @@ class Iterations:
             while (self.warnT or warnMax or not self.spo_validate or self.omegaWarn) and cnt + 1 <= maxiter:
 
                 # Iterations related to SPO corrections (skip first iteration, before running SPO)
-                if (not self.spo_validate or self.omegaWarn) and cnt > 0:
-                    # Not being run at first iteration
+                if (not self.spo_validate or self.omegaWarn or self.warnT) and cnt > 0:
+                    # Not being run at first iteration, however almost always needs to be run at second iteration, since
+                    # guessing SPO shape is nearly impossible
+                    # Rerun Modal analysis if warnT was raised
+                    if self.warnT:
+                        # Now, we want to ensure that the new optimal solution will result in a better period estimate
+                        model_periods, modalShape, gamma, mstar, opt_sol = self.run_ma(opt_sol, hinge_models, forces,
+                                                                                       t_upper, direction=direction,
+                                                                                       spo_period=spo_period)
+
                     # Reruns
                     print("[RERUN] Rerun for SPO shape correction...")
                     # Calculates the new cy for the corrected SPO shape, period, Overstrength and c-s
@@ -891,15 +992,19 @@ class Iterations:
                     demands, temp = next(phase_4)
                     details, new_hinge_model, hard_ductility, fract_ductility = next(phase_4)
                     warnMax, warnMin, warnings = next(phase_4)
+
                     if self.flag3d:
                         # Update the hinge models related to the direction of interest
                         hinge_models[tag] = new_hinge_model
                     else:
                         hinge_models = new_hinge_model
 
-                    # Run modal analysis to check the T1
-                    model_periods, modalShape, gamma, mstar, opt_sol = self.run_ma(opt_sol, hinge_models, forces,
-                                                                                   t_upper, direction=direction)
+                    # Run modal analysis to check the T1 if there was no period warning when running SPO
+                    if not self.warnT:
+                        model_periods, modalShape, gamma, mstar, opt_sol = self.run_ma(opt_sol, hinge_models, forces,
+                                                                                       t_upper, direction=direction, 
+                                                                                       spo_period=spo_period)
+
                     # Update modes
                     if self.flag3d:
                         modes[direction]["Periods"] = np.array([model_periods])
@@ -911,62 +1016,6 @@ class Iterations:
                         spoPattern = np.abs(modalShape)
 
                     print("[RERUN COMPLETE] Rerun for SPO shape correction.")
-
-                # Iterations related to Period corrections, only if run MA indicated T1 not being within period range
-                cntTrerun = 0
-                while self.warnT:
-                    # Generally not being run at first iteration
-                    if cntTrerun > 0:
-                        rerun = True
-                    else:
-                        rerun = False
-
-                    # Reruns
-                    print("[RERUN] Rerun for fundamental period correction...")
-                    gamma, mstar, cy, dy, spo2ida_data = self.iterate_phase_3(solution, omega, read=read)
-                    modes_to_use = modes[direction] if self.flag3d else modes
-                    phase_4 = self.iterate_phase_4(cy, dy, sa, period_range, opt_sol, modes_to_use, table_sls,
-                                                   rerun=rerun, direction=idx)
-                    forces = next(phase_4)
-                    demands, temp = next(phase_4)
-                    # TODO, increasing cover results in issues, fix (maybe fixed with recent changes, verify)
-                    details, new_hinge_model, hard_ductility, fract_ductility = next(phase_4)
-                    warnMax, warnMin, warnings = next(phase_4)
-                    if self.flag3d:
-                        # Update the hinge models related to the direction of interest
-                        hinge_models[tag] = new_hinge_model
-                    else:
-                        hinge_models = new_hinge_model
-
-                    # Run modal analysis
-                    model_periods, modalShape, gamma, mstar, opt_sol = self.run_ma(opt_sol, hinge_models, forces,
-                                                                                   t_upper, direction=direction)
-                    # Update modes and period to cache
-                    if self.flag3d:
-                        modes[direction]["Periods"] = np.array([model_periods])
-                        modes[direction]["Modes"][idx, :] = np.array(modalShape)
-                        spoPattern = np.abs(modes[direction]["Modes"][idx, :])
-                        periodCache = opt_sol[tag]["T"]
-                    else:
-                        modes["Periods"] = np.array(model_periods)
-                        modes["Modes"][0, :] = np.array(modalShape)
-                        spoPattern = np.abs(modalShape)
-                        periodCache = opt_sol["T"]
-
-                    cntTrerun += 1
-                    if not self.warnT:
-                        # Update optimal solution (the update difference should be minimal as significant changes
-                        # not expected)
-                        if self.flag3d:
-                            opt_sol[tag]["Mstar"] = mstar
-                            opt_sol[tag]["Part Factor"] = gamma
-                            opt_sol[tag]["T"] = model_periods[0]
-                        else:
-                            opt_sol["Mstar"] = mstar
-                            opt_sol["Part Factor"] = gamma
-                            opt_sol["T"] = model_periods[0]
-                        # TODO, rerun for new cy, detailing and MA. Or significant changes not expected?
-                        print("[RERUN COMPLETE] Rerun for fundamental period correction")
 
                 # Exiting warnT correction
                 # Correction if unsatisfactory detailing, modifying only towards increasing c-s, based on phase 4
@@ -985,16 +1034,32 @@ class Iterations:
                         opt_sol = solution
                         modes = m_temp
 
-                """Create an OpenSees model and run static pushoveriterate analysis"""
+                """Create an OpenSees model and run static pushoveriterate analysis.
+                Acts as the first estimation of secant to yield period. Second step after initial modal analysis.
+                Here, the secant to yield period might vary from initial modal period. 
+                Therefore, we need to use the former one."""
                 # For a single frame assumed yield base shear
                 vy_assumed = cy * gamma * mstar * 9.81
                 omegaCache = omega
                 spoShapeCache = self.spo_shape
+                spoPattern = np.round(spoPattern, 2)
+
                 spoResults, spo_idealized, omega = self.run_spo(opt_sol, hinge_models, forces, vy_assumed, spoPattern,
                                                                 omega, direction=direction)
 
+                # Recalculate period as secant to yield period
+                spo_period = 2 * np.pi * np.sqrt(mstar * 2 / (spo_idealized[1][1] / spo_idealized[0][1]))
+                self.period_to_use = spo_period
+
+                if not spo_period <= t_upper * 1.05:
+                    # If SPO based secant to yield period is not within the tolerance of upper period limit
+                    self.warnT = True
+                else:
+                    # Even though SPO period might not match modal period, the condition is still satisfying
+                    self.warnT = False
+
                 # Record OpenSees outputs
-                self.model_outputs = {"MA": {"T": model_periods, "modes": modalShape, "gamma": gamma, "mstar": mstar},
+                self.model_outputs = {"MA": {"T": spo_period, "modes": modalShape, "gamma": gamma, "mstar": mstar},
                                       "SPO": spoResults, "SPO_idealized": spo_idealized}
 
                 # Reading SPO parameters from file (Set to False, as the actual shape is already identified)
@@ -1009,7 +1074,7 @@ class Iterations:
                       f"Yield strength overstrength: {omega / omegaCache * 100:.0f}%, \n"
                       f"Hardening ductility: {self.spo_shape['mc'] / spoShapeCache['mc'] * 100:.0f}%, \n"
                       f"Fracturing ductility: {self.spo_shape['mf'] / spoShapeCache['mf'] * 100:.0f}%, \n"
-                      f"Fundamental period: {new_period / periodCache:.0f}%.")
+                      f"Fundamental period: {spo_period / periodCache:.0f}%.")
                 print("--------------------------")
 
                 # Increase count of iterations
@@ -1019,6 +1084,7 @@ class Iterations:
                 print("[WARNING] Maximum number of iterations reached!")
 
         ipbsd_outputs = {"part_factor": gamma, "Mstar": mstar, "Period range": period_limits,
-                         "overstrength": omega, "yield": [cy, dy], "muc": float(self.spo_shape["mc"])}
+                         "overstrength": omega, "yield": [cy, dy], "muc": float(self.spo_shape["mc"]),
+                         "spo2ida": self.spo_shape}
 
         return ipbsd_outputs, spo2ida_data, opt_sol, demands, details, hinge_models, forces, self.model_outputs

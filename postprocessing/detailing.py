@@ -593,7 +593,6 @@ class Detailing:
 
                 temp = {"Pos": mphi.get_mphi()}
                 if nc_design_neg < 0.0:
-
                     mphiNeg = MomentCurvatureRC(b, h, m_target, length=z, p=-nc_design_neg, nlayers=nlayers,
                                                 d=self.rebar_cover, young_mod_s=self.young_mod_s, k_hard=self.k_hard,
                                                 soft_method="Collins")
