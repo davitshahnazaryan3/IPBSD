@@ -56,6 +56,7 @@ class IPBSD:
         :param replCost: float              Replacement cost of the entire building
         :param gravity_cs: str              Path to gravity solution (for 3D modelling)
         """
+        # TODO, remove whre possible range, and use enumerate
         self.dir = Path.cwd()
         self.input_file = input_file
         self.hazard_file = hazard_file

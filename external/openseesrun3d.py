@@ -274,7 +274,7 @@ class OpenSeesRun3D:
                                spans_y[ybay - 1]
 
                     # Applying the load
-                    op.eleLoad('-ele', beam, '-type', '-beamUniform', load, self.NEGLIGIBLE)
+                    op.eleLoad('-ele', beam, '-type', '-beamUniform', -load, self.NEGLIGIBLE)
 
                     # Additional load for interior beams
                     if 1 < xbay < len(spans_x) + 1:
@@ -287,7 +287,7 @@ class OpenSeesRun3D:
                                    spans_y[ybay - 1]
 
                         # Applying the load
-                        op.eleLoad('-ele', beam, '-type', '-beamUniform', load, self.NEGLIGIBLE)
+                        op.eleLoad('-ele', beam, '-type', '-beamUniform', -load, self.NEGLIGIBLE)
 
     def rigid_diaphragm(self, spans_x, spans_y, nbays_x, nbays_y):
         # Define Rigid floor diaphragm
@@ -371,12 +371,9 @@ class OpenSeesRun3D:
         :return: None
         """
         # Geometric transformations
-        if self.direction == 0:
-            op.geomTransf("PDelta", self.COL_TRANSF_TAG, 0, 1, 0)
-        else:
-            op.geomTransf("PDelta", self.COL_TRANSF_TAG, 1, 0, 0)
-        op.geomTransf("Linear", self.BEAM_X_TRANSF_TAG, 0, 1, 0)
-        op.geomTransf("Linear", self.BEAM_Y_TRANSF_TAG, 1, 0, 0)
+        op.geomTransf("PDelta", self.COL_TRANSF_TAG, 0, 1, 0)
+        op.geomTransf("PDelta", self.BEAM_X_TRANSF_TAG, 0, 1, 0)
+        op.geomTransf("PDelta", self.BEAM_Y_TRANSF_TAG, -1, 0, 0)
 
     def lumped_hinge_element(self, et, gt, inode, jnode, my, lp, fc, b, h, ap=1.25, app=0.05, r=0.1, mu_phi=10,
                              pinch_x=0.8, pinch_y=0.5, damage1=0.0, damage2=0.0, beta=0.0, hingeModel=None):
@@ -410,6 +407,11 @@ class OpenSeesRun3D:
         iy = h * b ** 3 / 12
         nu = 0.2
         Gc = elastic_modulus / 2.0 / (1 + nu)
+        # Torsional moment of inertia
+        if h >= b:
+            J = b * h ** 3 * (16 / 3 - 3.36 * h / b * (1 - 1 / 12 * (h / b) ** 4))
+        else:
+            J = h * b ** 3 * (16 / 3 - 3.36 * b / h * (1 - 1 / 12 * (b / h) ** 4))
 
         # Material model creation
         hingeMTag1 = int(f"101{et}")
@@ -433,30 +435,7 @@ class OpenSeesRun3D:
             # Plastic hinge length
             lp = hingeModel["lp"].iloc[0]
 
-            # Create the uniaxial hysteretic material
-            op.uniaxialMaterial("Hysteretic", hingeMTag1, myPos, phiyPos, mpPos, phipPos, muPos, phiuPos,
-                                -myNeg, -phiyNeg, -mpNeg, -phipNeg, -muNeg, -phiuNeg,
-                                pinch_x, pinch_y, damage1, damage2, beta)
-            op.uniaxialMaterial("Hysteretic", hingeMTag2, myPos, phiyPos, mpPos, phipPos, muPos, phiuPos,
-                                -myNeg, -phiyNeg, -mpNeg, -phipNeg, -muNeg, -phiuNeg,
-                                pinch_x, pinch_y, damage1, damage2, beta)
-
-            # Element creation
-            int_tag = int(f"105{et}")
-            ph_tag1 = int(f"106{et}")
-            ph_tag2 = int(f"107{et}")
-            integration_tag = int(f"108{et}")
-            op.section("Elastic", int_tag, elastic_modulus, area, iy, iz, Gc, self.UBIG)
-            op.section("Uniaxial", ph_tag1, hingeMTag1, 'Mz')
-            op.section("Uniaxial", ph_tag2, hingeMTag2, 'Mz')
-
-            op.beamIntegration("HingeRadau", integration_tag, ph_tag1, lp, ph_tag2, lp, int_tag)
-            op.element("forceBeamColumn", et, inode, jnode, gt, integration_tag)
-
         else:
-            # op.element("elasticBeamColumn", et, inode, jnode, area, elastic_modulus, Gc,
-            #            self.UBIG, iy, iz, gt)
-
             eiz = elastic_modulus * iz
 
             # Curvatures at yield
@@ -469,25 +448,55 @@ class OpenSeesRun3D:
             phipNeg = phipPos = phiyNeg * mu_phi
             phiuNeg = phiuPos = phipNeg + (mpNeg - muNeg) / (app * my / phiyNeg)
 
-            # Create the uniaxial hysteretic material
-            op.uniaxialMaterial("Hysteretic", hingeMTag1, myPos, phiyPos, mpPos, phipPos, muPos, phiuPos,
+        # Create the uniaxial hysteretic material
+        op.uniaxialMaterial("Hysteretic", hingeMTag1, myPos, phiyPos, mpPos, phipPos, muPos, phiuPos,
+                            -myNeg, -phiyNeg, -mpNeg, -phipNeg, -muNeg, -phiuNeg,
+                            pinch_x, pinch_y, damage1, damage2, beta)
+        op.uniaxialMaterial("Hysteretic", hingeMTag2, myPos, phiyPos, mpPos, phipPos, muPos, phiuPos,
+                            -myNeg, -phiyNeg, -mpNeg, -phipNeg, -muNeg, -phiuNeg,
+                            pinch_x, pinch_y, damage1, damage2, beta)
+
+        # Element creation
+        int_tag = int(f"105{et}")
+        ph_tag1 = int(f"106{et}")
+        ph_tag2 = int(f"107{et}")
+        integration_tag = int(f"108{et}")
+
+        # Elastic section
+        op.section("Elastic", int_tag, elastic_modulus, area, iy, iz, Gc, J)
+        # Create the plastic hinge flexural section about ZZ
+        op.section("Uniaxial", ph_tag1, hingeMTag1, 'Mz')
+        op.section("Uniaxial", ph_tag2, hingeMTag2, 'Mz')
+
+        if gt == 1:
+            # For columns only
+            hingeMTag3 = int(f'111{et}')
+            hingeMTag4 = int(f'112{et}')
+            axialTag = int(f'113{et}')
+            aggTag1 = int(f"114{et}")
+            aggTag2 = int(f"115{et}")
+
+            # Beam integration
+            op.beamIntegration("HingeRadau", integration_tag, aggTag1, lp, aggTag2, lp, int_tag)
+            # Create he plastic hinge axial material
+            op.uniaxialMaterial("Elastic", axialTag, elastic_modulus * area)
+
+            # Hinge materials
+            op.uniaxialMaterial("Hysteretic", hingeMTag3, myPos, phiyPos, mpPos, phipPos, muPos, phiuPos,
                                 -myNeg, -phiyNeg, -mpNeg, -phipNeg, -muNeg, -phiuNeg,
                                 pinch_x, pinch_y, damage1, damage2, beta)
-            op.uniaxialMaterial("Hysteretic", hingeMTag2, myPos, phiyPos, mpPos, phipPos, muPos, phiuPos,
+            op.uniaxialMaterial("Hysteretic", hingeMTag4, myPos, phiyPos, mpPos, phipPos, muPos, phiuPos,
                                 -myNeg, -phiyNeg, -mpNeg, -phipNeg, -muNeg, -phiuNeg,
                                 pinch_x, pinch_y, damage1, damage2, beta)
 
-            # Element creation
-            int_tag = int(f"105{et}")
-            ph_tag1 = int(f"106{et}")
-            ph_tag2 = int(f"107{et}")
-            integration_tag = int(f"108{et}")
-            op.section("Elastic", int_tag, elastic_modulus, area, iy, iz, Gc, self.UBIG)
-            op.section("Uniaxial", ph_tag1, hingeMTag1, 'Mz')
-            op.section("Uniaxial", ph_tag2, hingeMTag2, 'Mz')
+            # Aggregate P and Myy behaviour to Mzz behaviour
+            op.section("Aggregator", aggTag1, axialTag, "P", hingeMTag3, "My", "-section", ph_tag1)
+            op.section("Aggregator", aggTag2, axialTag, "P", hingeMTag4, "My", "-section", ph_tag2)
+        else:
+            # Beam integration
+            op.beamIntegration('HingeRadau', integration_tag, ph_tag1, lp, ph_tag2, lp, int_tag)
 
-            op.beamIntegration("HingeRadau", integration_tag, ph_tag1, lp, ph_tag2, lp, int_tag)
-            op.element("forceBeamColumn", et, inode, jnode, gt, integration_tag)
+        op.element("forceBeamColumn", et, inode, jnode, gt, integration_tag)
 
     def elastic_analysis_3d(self, analysis, lat_action, grav_loads):
         """
@@ -524,7 +533,6 @@ class OpenSeesRun3D:
         if lat_action is not None:
             op.timeSeries("Linear", 1)
             op.pattern("Plain", 1, 1)
-            total_load = 0
             for st in range(1, int(self.i_d.nst + 1)):
                 if self.direction == 0:
                     # Along x direction
@@ -552,14 +560,14 @@ class OpenSeesRun3D:
                     op.eleLoad('-ele', ele, '-type', '-beamUniform', -abs(grav_loads["x"][st]), self.NEGLIGIBLE)
                 for ele in beams["y"]:
                     st = int(str(ele)[-1]) - 1
-                    op.eleLoad('-ele', ele, '-type', '-beamUniform', abs(grav_loads["y"][st]), self.NEGLIGIBLE)
+                    op.eleLoad('-ele', ele, '-type', '-beamUniform', -abs(grav_loads["y"][st]), self.NEGLIGIBLE)
                 # Gravity frames
                 for ele in beams["gravity_x"]:
                     st = int(str(ele)[-1]) - 1
                     op.eleLoad('-ele', ele, '-type', '-beamUniform', -2 * abs(grav_loads["x"][st]), self.NEGLIGIBLE)
                 for ele in beams["gravity_y"]:
                     st = int(str(ele)[-1]) - 1
-                    op.eleLoad('-ele', ele, '-type', '-beamUniform', 2 * abs(grav_loads["y"][st]), self.NEGLIGIBLE)
+                    op.eleLoad('-ele', ele, '-type', '-beamUniform', -2 * abs(grav_loads["y"][st]), self.NEGLIGIBLE)
             else:
                 q_roof = self.i_d.i_d['bldg_ch'][1]
                 q_floor = self.i_d.i_d['bldg_ch'][0]
@@ -1227,10 +1235,10 @@ class OpenSeesRun3D:
                     nodepush = int(f"{xbay}{ybay}{st}")
                     fpush = loads[st-1]
                     if self.direction == 0:
-                        op.load(nodepush, fpush / n_nodes, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE,
+                        op.load(nodepush, fpush, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE,
                                 self.NEGLIGIBLE, self.NEGLIGIBLE)
                     else:
-                        op.load(nodepush, self.NEGLIGIBLE, fpush / n_nodes, self.NEGLIGIBLE, self.NEGLIGIBLE,
+                        op.load(nodepush, self.NEGLIGIBLE, fpush, self.NEGLIGIBLE, self.NEGLIGIBLE,
                                 self.NEGLIGIBLE, self.NEGLIGIBLE)
 
         '''Set initial analysis parameters'''
@@ -1258,18 +1266,18 @@ if __name__ == "__main__":
 
     directory = Path.cwd().parents[1] / ".applications/LOSS Validation Manuscript/case21"
 
-    # actionx = directory / "actionx.csv"
-    # actiony = directory / "actiony.csv"
+    actionx = directory.parents[0] / "sample" / "actionx.csv"
+    actiony = directory.parents[0] / "sample" / "actiony.csv"
     csx = directory / "Cache/solution_cache_x.csv"
     csy = directory / "Cache/solution_cache_y.csv"
     csg = directory / "gravity_cs.csv"
     input_file = directory.parents[0] / "case21/ipbsd_input.csv"
-    hinge_models = directory.parents[0] / "sample/hinge0.pickle"
+    hinge_models = Path.cwd().parents[0] / "tempHinge.pickle"
     direction = 0
-    modalShape = [0.38, 0.65, 0.88, 1.]
+    modalShape = [0.37, 0.64, 0.87, 1.]
 
     # Read the cross-section files
-    idx_x = 38
+    idx_x = 41
     idx_y = 20
 
     csx = pd.read_csv(csx, index_col=0).iloc[idx_x]
@@ -1278,10 +1286,10 @@ if __name__ == "__main__":
 
     cs = {"x_seismic": csx, "y_seismic": csy, "gravity": csg}
 
-    # actionx = pd.read_csv(actionx)
-    # actiony = pd.read_csv(actiony)
+    actionx = pd.read_csv(actionx)
+    actiony = pd.read_csv(actiony)
 
-    # lat_action = list(actiony["Fi"])
+    lat_action = list(actiony["Fi"])
 
     # Hinge models
     with open(hinge_models, 'rb') as file:
@@ -1296,14 +1304,12 @@ if __name__ == "__main__":
 
     # analysis = OpenSeesRun3D(data, cs, hinge=hinge_elastic, direction=direction, fstiff=fstiff)
     # results = analysis.elastic_analysis_3d(analysis=3, lat_action=lat_action, grav_loads=None)
-    # # print(results["x_seismic"]["Columns"])
-    #
+
     # ma = OpenSeesRun3D(data, cs, hinge=hinge, direction=direction, fstiff=fstiff)
     # ma.create_model()
     # ma.define_masses()
     # model_periods, modalShape, gamma, mstar = ma.ma_analysis(3)
     # ma.wipe()
-    # # print(modalShape)
 
     spo = OpenSeesRun3D(data, cs, fstiff, hinge=hinge, direction=direction)
     spo.create_model()
@@ -1311,6 +1317,6 @@ if __name__ == "__main__":
     topDisp, baseShear = spo.spo_analysis(load_pattern=2, mode_shape=modalShape)
     spo.wipe()
 
-    spo_results = {"d": topDisp, "v": baseShear}
-    with open(f"temp_spo.pickle", 'wb') as handle:
-        pickle.dump(spo_results, handle)
+    # spo_results = {"d": topDisp, "v": baseShear}
+    # with open(f"temp_spo.pickle", 'wb') as handle:
+    #     pickle.dump(spo_results, handle)

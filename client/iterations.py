@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from numpy import ones, vstack
 from numpy.linalg import lstsq
+from scipy import optimize
 
 
 class Iterations:
@@ -98,6 +99,7 @@ class Iterations:
         stfIdx = np.where(temp < 0.9 * stiff_elastic)[0][0]
         d2 = x[stfIdx]
         m2 = y[stfIdx]
+        slope = m2 / d2
 
         # Fitting the plasticity portion based on the area under the curve
         y_pl = y[stfIdx: getIndex(Vmax, y)]
@@ -105,8 +107,8 @@ class Iterations:
         dx = (dmax - d2) / nbins
         area_pl = np.trapz(y_pl, dx=dx)
 
-        a = stiff_elastic
-        b = Vmax - stiff_elastic * dmax
+        a = slope
+        b = Vmax - slope * dmax
         c = 2 * area_pl - Vmax * dmax
         d = b ** 2 - 4 * a * c
         sol1 = (-b - np.sqrt(d)) / (2 * a)
@@ -118,7 +120,20 @@ class Iterations:
         else:
             xint = sol2
 
-        yint = xint * stiff_elastic
+        yint = xint * slope
+
+        if d < 0:
+            # Determinant is negative, look for an alternative fitting approach
+            print("[WARNING SPO FITTING] Using an approximate method of fitting, as a solution is not feasible!")
+            f = lambda x: (0.5 * (Vmax + x[0]) * (dmax - x[0] / x[1]) - area_pl)
+            x0 = [m2, slope]
+            sol = optimize.least_squares(f, x0)
+            yint = min(sol.x[0], 0.99*Vmax)
+            xint = yint / sol.x[1]
+        else:
+            # Force Vy not be larger than maximum V
+            print("[WARNING SPO FITTING] Using an approximate method of fitting, as a solution is not feasible!")
+            yint = min(yint, 0.99 * Vmax)
 
         # # Find point of plasticity initiation
         # stf0 = (y[1] - y[0]) / (x[1] - x[0])
@@ -632,6 +647,7 @@ class Iterations:
         """
         print("[SPO] Starting SPO analysis")
         d = 0 if direction == "x" else 1
+
         spoResults = self.ipbsd.spo_opensees(opt_sol, hinge_models, forces, self.fstiff, modalShape, direction=d)
 
         # Get the idealized version of the SPO curve and create a warningSPO = True if the assumed shape was incorrect
