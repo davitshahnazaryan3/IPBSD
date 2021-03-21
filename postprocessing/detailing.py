@@ -462,7 +462,7 @@ class Detailing:
         # Design of beams
         for st in range(self.nst):
             if self.nbays > 2:
-                for bay in range(int(round(self.nbays / 2, 0))):  # todo, check whether it should be round up or down
+                for bay in range(int(round(self.nbays / 2, 0))):
                     # Design bending moment
                     # Note: Negative = bottom, positive = top
                     m_target_pos = mbiPos[st][bay]
@@ -568,7 +568,7 @@ class Detailing:
 
         # Design of columns
         for st in range(self.nst):
-            for bay in range(int(round((self.nbays + 1) / 2, 0))):
+            for bay in range(int(np.ceil((self.nbays + 1) / 2))):
                 if bay == 0:
                     b = h = self.sections[f"he{st + 1}"]
                 else:

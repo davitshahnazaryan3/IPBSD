@@ -347,15 +347,17 @@ class GetT1:
 if __name__ == "__main__":
 
     nst = 3
-    nbays = 2
+    nbays = 3
 
-    b_col = [.55, .55, .55]
+    b_col = [.35, .35, .35]
     h_col = b_col
-    b_beam = np.array([[.55, .5, .45], [.55, .5, .45]])
-    h_beam = np.array([[.7, .65, .6], [.7, .65, .6]])
-    spans_X = [6., 6.5]
+    b_col_int = [.35, .35, .35]
+    h_col_int = b_col_int
+    b_beam = np.array([.35, .35, .35])
+    h_beam = np.array([.55, .55, .55])
+    spans_X = [6., 6., 6.]
     h = [3.5, 3., 3.]
-    mi = np.array([128.*2, 121.*2, 121.*2])
+    mi = np.array([123.9, 123.9, 94.13])
     n_seismic = 2
     fc = 25.
     fstiff = 0.5
@@ -363,16 +365,17 @@ if __name__ == "__main__":
 
     A_cols = []
     I_cols = []
-    A_beams = b_beam * h_beam
-    I_beams = b_beam * h_beam ** 3 / 12
+    A_beams = np.tile(b_beam * h_beam, (nbays, 1))
+    I_beams = np.tile(b_beam * h_beam**3/12, (nbays, 1))
+
     A_c_ints = []
     I_c_ints = []
     for i in range(nst):
         A_cols.append(b_col[i] * h_col[i])
         I_cols.append(b_col[i] * h_col[i] ** 3 / 12)
-        A_c_ints.append(0.7 * 0.7)
-        I_c_ints.append(0.7 * 0.7 ** 3 / 12)
+        A_c_ints.append(b_col_int[i] * h_col_int[i])
+        I_c_ints.append(b_col_int[i] * h_col_int[i] ** 3 / 12)
     gt = GetT1(A_cols, A_c_ints, I_cols, I_c_ints, A_beams, I_beams, nst, spans_X, h, mi, n_seismic, fc, fstiff,
-               just_period=True, w_seismic=w_seismic)
+               just_period=True, single_mode=True)
     T1, phi_norm = gt.run_ma()
     print('Fundamental period is: {}'.format(T1))

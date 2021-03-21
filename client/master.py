@@ -153,8 +153,8 @@ class Master:
         gets all section combinations satisfying period bound range
         :param period_limits: list                  Lower period limit and Upper period limit
         :param fstiff: float                        Stiffness reduction factor
-        :param solution_x: Series                   Solution to run analysis instead (for iterations, dir1
-        :param solution_y: Series                   Solution to run analysis instead (for iterations, dir2
+        :param solution_x: Series or int            Solution to run analysis instead (for iterations, dir1
+        :param solution_y: Series or int            Solution to run analysis instead (for iterations, dir2
         :param data: object                         IPBSD initial input arguments (object Input)
         :param cache_dir: str                       Directory to export the cache csv solutions of
         :return cs.solutions: DataFrame             Solution combos
@@ -487,7 +487,7 @@ class Master:
         :param dy: float                            System yield displacement in m
         :param ductility_class: str                 Ductility class (DCM or DCH, following Eurocode 8 recommendations)
         :param cover: float                         Reinforcement cover in m
-        :param est_ductilities: bool                Estimate global ductilities?
+        :param est_ductilities: bool                Whether to estimate hardening and fracturing ductilities
         :param direction: bool                      0 for x direction, 1 for y direction
         :param gravity: bool                        Design gravity frames condition
         :return: dict                               Designed element properties from the moment-curvature relationship

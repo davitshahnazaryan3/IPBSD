@@ -629,7 +629,7 @@ class OpenSeesRun:
         # Number of steps
         nsteps = 1000
         tol = 1.e-8
-        iterInit = 50
+        iterInit = 10
         testType = "NormDispIncr"
         algorithmType = "KrylovNewton"
 
@@ -664,7 +664,7 @@ class OpenSeesRun:
         op.system("BandGeneral")
         op.test(testType, tol, iterInit, 0)
         op.algorithm(algorithmType)
-        op.integrator("DisplacementControl", self.spo_nodes[-1], 1, 1.5/nsteps)
+        op.integrator("DisplacementControl", self.spo_nodes[-1], 1, 0.1 * sum(self.i_d.heights) / nsteps)
         op.analysis("Static")
 
         '''Seek for a solution using different test conditions or algorithms'''

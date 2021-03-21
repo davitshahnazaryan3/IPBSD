@@ -39,7 +39,7 @@ class Iterations:
         :param tol: float
         :return: bool
         """
-        if y - tol * y <= x <= y + tol * y:
+        if max(x, y) - tol * max(x, y) <= min(x, y) <= max(x, y) + tol * max(x, y):
             return True
         else:
             return False
@@ -128,7 +128,7 @@ class Iterations:
             f = lambda x: (0.5 * (Vmax + x[0]) * (dmax - x[0] / x[1]) - area_pl)
             x0 = [m2, slope]
             sol = optimize.least_squares(f, x0)
-            yint = min(sol.x[0], 0.99*Vmax)
+            yint = min(sol.x[0], 0.85*Vmax)
             xint = yint / sol.x[1]
         else:
             # Force Vy not be larger than maximum V
@@ -435,7 +435,6 @@ class Iterations:
             seismic_solution = solution["x_seismic"] if direction == 0 else solution["y_seismic"]
         else:
             seismic_solution = solution
-
         forces = self.ipbsd.get_action(seismic_solution, cy, pd.DataFrame.from_dict(table_sls), self.gravity_loads,
                                        self.analysis_type, self.num_modes, modes, modal_sa=se_rmsa)
 
@@ -499,7 +498,10 @@ class Iterations:
 
         """Design the structural elements"""
         # Details the frame of seismic direction only
-        seismic_demands = demands["x_seismic"] if direction == 0 else demands["y_seismic"]
+        if self.flag3d:
+            seismic_demands = demands["x_seismic"] if direction == 0 else demands["y_seismic"]
+        else:
+            seismic_demands = demands
         details, hinge_models, mu_c, mu_f, warnMax, warnMin, warnings = \
             self.ipbsd.design_elements(seismic_demands, seismic_solution, modes, dy, cover=self.rebar_cover,
                                        direction=direction)
@@ -536,7 +538,7 @@ class Iterations:
         yield details, hinge_models, mu_c, mu_f
         yield warnMax, warnMin, warnings
 
-    def run_ma(self, opt_sol, hinge, forces, t_upper, tol=0.05, direction="x", spo_period=None):
+    def run_ma(self, opt_sol, hinge, forces, t_upper, tol=0.02, direction="x", spo_period=None, do_corrections=True):
         """
         Creates a nonlinear model and runs Modal Analysis with the aim of correcting opt_sol and fundamental period
         :param opt_sol: DataFrame                   Optimal solution
@@ -546,6 +548,7 @@ class Iterations:
         :param tol: float                           Tolerance of upper period limit satisfaction
         :param direction: str                       Direction of action (x for 2D, x or y for 3D)
         :param spo_period: float                    SPO based period
+        :param do_corrections: bool                 Make corrections if period condition is not met (typically at True)
         :return model_periods: ndarray              Model periods from MA
         :return modalShape: list                    Modal shapes from MA
         :return gamma: float                        First mode participation factor from MA
@@ -584,7 +587,7 @@ class Iterations:
 
         # There is a high likelihood that Fundamental period and SPO curve shape will not match the assumptions
         # Therefore the first iteration should correct both assumptions (further corrections are likely not to be large)
-        if model_periods > t_upper + model_periods * tol:
+        if model_periods > t_upper + model_periods * tol and do_corrections:
             # # Get index of the seismic solution
             # idx_seismic = seismic_solution.name
             # # Get the initial period assumption corresponding to the index from the solutions database
@@ -651,7 +654,7 @@ class Iterations:
         spoResults = self.ipbsd.spo_opensees(opt_sol, hinge_models, forces, self.fstiff, modalShape, direction=d)
 
         # Get the idealized version of the SPO curve and create a warningSPO = True if the assumed shape was incorrect
-        d, v = self.derive_spo_shape(spoResults, residual=0.1)
+        d, v = self.derive_spo_shape(spoResults, residual=0.3)
 
         # Actual overstrength
         if self.flag3d:
@@ -684,7 +687,7 @@ class Iterations:
         # self.spo_validate = all(list(map(self.compare_value, self.spo_data.values(), spo_data_updated.values())))
 
         # Alternatively compare the area under the normalized SPO curves (possible update: compare actual SPO curves)
-        self.spo_validate = self.compare_areas(self.spo_shape, spo_data_updated, tol=0.1)
+        self.spo_validate = self.compare_areas(self.spo_shape, spo_data_updated, tol=0.2)
 
         # Update the SPO parameters
         if not self.spo_validate:
@@ -1064,7 +1067,12 @@ class Iterations:
                                                                 omega, direction=direction)
 
                 # Recalculate period as secant to yield period
-                spo_period = 2 * np.pi * np.sqrt(mstar * 2 / (spo_idealized[1][1] / spo_idealized[0][1]))
+                if self.flag3d:
+                    # For perimeter seismic frames
+                    seismic_frames = 2
+                else:
+                    seismic_frames = 1
+                spo_period = 2 * np.pi * np.sqrt(mstar * seismic_frames / (spo_idealized[1][1] / spo_idealized[0][1]))
                 self.period_to_use = spo_period
 
                 if not spo_period <= t_upper * 1.05:

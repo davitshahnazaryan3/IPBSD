@@ -36,13 +36,14 @@ class DesignLimits:
 
         # Calculate the design limits of PSD and PFA beyond which EAL condition will not be met
         edp_limits = {}
-
+        y_total = 0
         # Performance group
         for i in slfs["y"]:
             if i == "PFA_NS" or i == "PFA":
                 group = "PFA"
             else:
-                group = "PSD"
+                group = i
+
             edp_limits[group] = {}
 
             # Direction
@@ -53,10 +54,19 @@ class DesignLimits:
                 for st in slfs["y"][i][k]:
                     # ELRs
                     y = slfs["y"][i][k][st]
+                    y_total += y
                     # SLF interpolation functions
                     s = slfs["interpolation"][i][k][st]
-
                     edp_limits[group][k] = np.append(edp_limits[group][k], float(s(y)))
+
+        # Get the minimum value from structural and non-structural components
+        edp_limits["PSD"] = {}
+        for k in edp_limits["PSD_S"]:
+            edp_limits["PSD"][k] = np.array([])
+            for st in slfs["y"]["PSD_S"][k]:
+                edp_limits["PSD"][k] = np.append(edp_limits["PSD"][k],
+                                                 min(edp_limits["PSD_S"][k][int(st)-1],
+                                                     edp_limits["PSD_NS"][k][int(st)-1]))
 
         # Design limits as min of the found values along the height
         if self.flag3d:

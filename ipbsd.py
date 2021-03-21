@@ -9,6 +9,7 @@ import numpy as np
 import pickle
 from client.master import Master
 from client.iterations import Iterations
+from pathlib import Path
 
 
 class IPBSD:
@@ -56,7 +57,7 @@ class IPBSD:
         :param replCost: float              Replacement cost of the entire building
         :param gravity_cs: str              Path to gravity solution (for 3D modelling)
         """
-        # TODO, remove whre possible range, and use enumerate
+        # TODO, remove where possible range, and use enumerate
         self.dir = Path.cwd()
         self.input_file = input_file
         self.hazard_file = hazard_file
@@ -175,8 +176,8 @@ class IPBSD:
         spansY = np.array([ipbsd.data.i_d["spans_Y"][x] for x in ipbsd.data.i_d["spans_Y"]])
         heights = np.array([ipbsd.data.i_d["h_storeys"][x] for x in ipbsd.data.i_d["h_storeys"]])
 
-        q_floor = int(ipbsd.data.i_d["bldg_ch"][0])
-        q_roof = int(ipbsd.data.i_d["bldg_ch"][1])
+        q_floor = float(ipbsd.data.i_d["bldg_ch"][0])
+        q_roof = float(ipbsd.data.i_d["bldg_ch"][1])
 
         if self.system == "Perimeter":
             distLength = spansY[0] / 2
@@ -427,21 +428,27 @@ class IPBSD:
         optimal solution. No solutions cache will be derived.
         """
         # Check whether solutions file was provided
-        if self.solutionFileX is not None:
-            try:
-                solution_x = pd.read_csv(self.solutionFileX)
-            except:
+        if not isinstance(self.solutionFileX, int):
+            if self.solutionFileX is not None:
+                try:
+                    solution_x = pd.read_csv(self.solutionFileX)
+                except:
+                    solution_x = None
+            else:
                 solution_x = None
         else:
-            solution_x = None
+            solution_x = self.solutionFileX
 
-        if self.solutionFileY is not None:
-            try:
-                solution_y = pd.read_csv(self.solutionFileY)
-            except:
+        if not isinstance(self.solutionFileY, int):
+            if self.solutionFileY is not None:
+                try:
+                    solution_y = pd.read_csv(self.solutionFileY)
+                except:
+                    solution_y = None
+            else:
                 solution_y = None
         else:
-            solution_y = None
+            solution_y = self.solutionFileY
 
         results = ipbsd.get_all_section_combinations(period_limits, fstiff=self.fstiff,
                                                      cache_dir=self.outputPath/"Cache",
@@ -480,7 +487,7 @@ class IPBSD:
                 sols = results["sols"]
                 opt_modes = results["opt_modes"]
                 period_limits = period_limits["1"]
-                table_sls = tables
+                table_sls = tables[0]
 
             if self.flag3d:
                 # To be calculated automatically (assuming a uniform distribution) - trapezoidal is more appropriate
@@ -549,9 +556,9 @@ class IPBSD:
                         modelOutputs_to_store = modelOutputs
                         self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store, demands_to_store,
                                         path=self.outputPath)
+
                     """Storing the outputs"""
                     # Exporting the IPBSD outputs
-
                     self.create_folder(self.outputPath / f"Cache/frame{i}")
                     self.export_results(self.outputPath / f"Cache/frame{i}/spoShape",
                                         pd.DataFrame(iterations.spo_shape, index=[0]), "csv")
@@ -598,7 +605,6 @@ if __name__ == "__main__":
     :param fstiff: float                        Section stiffness reduction factor
     """
     # Paths
-    from pathlib import Path
     path = Path.cwd()
     outputPath = path.parents[0] / ".applications/LOSS Validation Manuscript/Case21"
 
@@ -613,7 +619,7 @@ if __name__ == "__main__":
     mafc_target = 2.e-4
     damping = .05
     system = "Perimeter"
-    maxiter = 5
+    maxiter = 10
     fstiff = 0.5
     overstrength = 1.0
     export_cache = True

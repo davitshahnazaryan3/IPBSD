@@ -264,11 +264,19 @@ class CrossSection:
                                                                 solution
         """
         if solution is None:
-            optimal = self.solutions[self.solutions["Weight"] == self.solutions["Weight"].min()].iloc[0]
+            # optimal = self.solutions[self.solutions["Weight"] == self.solutions["Weight"].min()].iloc[0]
+            # A new approach to take the case with lowest period, from the loop of cases with lowest weight
+            # It tries to ensure that the actual period will be at a more tolerable range
+            solutions = self.solutions.nsmallest(20, "Weight")
+            optimal = solutions[solutions["T"] == solutions["T"].min()].iloc[0]
         else:
-            optimal = solution
-            if isinstance(optimal, pd.DataFrame):
-                optimal = optimal.iloc[solution.first_valid_index()]
+            if isinstance(solution, int):
+                # ID of solution has been provided, select from existing dataframe by index
+                optimal = self.solutions.loc[solution]
+            else:
+                optimal = solution
+                if isinstance(optimal, pd.DataFrame):
+                    optimal = optimal.iloc[solution.first_valid_index()]
 
         # Cross-section properties of the selected solution
         hce, hci, b, h = self.get_section(optimal)
