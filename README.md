@@ -163,7 +163,7 @@ Note: *Iterations 1a and 1b are manual, while iterations 3a and 4a may be manual
 
 * [ ] Design of structural elements based on critical combination of M+N, M-N etc.
 
-* [ ] **Add class of reinforcement and concrete as input arguments**
+* [ ] Add class of reinforcement and concrete as input arguments
 
 * [x] Add softening slope by Vecchio and Collins 1986
 
@@ -173,11 +173,9 @@ Note: *Iterations 1a and 1b are manual, while iterations 3a and 4a may be manual
 
 * [x] Reinforced concrete moment-resisting frame
 
-* [ ] 3 Performance objective limit states -> flexible for inclusion
-
 * [x] Variable storey-loss-functions along the height
 
-* [ ] Symmetric structures only -> add considerations for 3D models, partially done
+* [x] Symmetric structures only -> add considerations for 3D models
 
 * [x] Conversion factor regression for peak floor accelerations
 
