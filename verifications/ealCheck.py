@@ -14,9 +14,6 @@ class EALCheck:
         self.eal_limit = eal_limit
 
     def verify_eal(self):
-        # todo, develop into a function that if condition is not met, updates the performance objectives
-        #   additionally, this should be function that a user should be asked whether he wants to update the objectives,
-        #   or the software, default to software
         """
         Verifies if EAL calculated meets the limiting eal
         :return: bool                                       Whether the limit condition is met or not

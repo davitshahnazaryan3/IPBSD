@@ -6,7 +6,6 @@ from verifications.ealCheck import EALCheck
 
 
 class LossCurve:
-    # todo, add function which will optimize SLS parameters until EAL condition is met
     def __init__(self, y, lam, eal_limit):
         """
         initializes loss curve definition

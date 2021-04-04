@@ -12,6 +12,7 @@ from calculations.designLimits import DesignLimits
 from calculations.transformations import Transformations
 from calculations.periodRange import PeriodRange
 from external.crossSection import CrossSection
+from external.crossSectionSpace import CrossSectionSpace
 from verifications.mafcCheck import MAFCCheck
 from postprocessing.action import Action
 from external.openseesrun import OpenSeesRun
@@ -100,16 +101,20 @@ class Master:
         s = Spectra(lam, self.coefs, self.hazard_data['T'])
         return s.sa, s.sd, s.T_RANGE
 
-    def get_design_values(self, slfDirectory, replCost=None):
+    def get_design_values(self, slfDirectory, replCost=None, eal_corrections=True):
         """
         gets the design values of IDR and PFA from the Storey-Loss-Functions
         :param slfDirectory: str                    Directory of SLFs derived via SLF Generator
         :param replCost: float                      Replacement cost of the entire building
+        :param eal_corrections: bool                Perform EAL corrections
         :return: float, float                       Peak storey drift, (PSD) [-] and Peak floor acceleration, (PFA) [g]
         """
         y_sls = self.data.y[1]
-        dl = DesignLimits(slfDirectory, y_sls, self.data.nst, self.flag3d, replCost)
+        dl = DesignLimits(slfDirectory, y_sls, self.data.nst, self.flag3d, replCost, eal_corrections)
         slfsCache = dl.SLFsCache
+        if eal_corrections:
+            self.data.y[1] = dl.y
+
         return dl.theta_max, dl.a_max, slfsCache
 
     def perform_transformations(self, th, a):
@@ -127,7 +132,8 @@ class Master:
             table, phi, deltas = t.table_generator()
             g, m = t.get_modal_parameters(phi)
             delta[i], alpha[i] = t.get_design_values(deltas)
-            tables[i] = table
+            tag = "x" if i == 0 else "y"
+            tables[tag] = table
 
         return tables, delta, alpha
 
@@ -161,62 +167,123 @@ class Master:
         :return opt_sol: DataFrame                  Optimal solution
         :return opt_modes: dict                     Periods and normalized modal shapes of the optimal solution
         """
-        if solution_x is None:
-            t_lower, t_upper = period_limits["1"]
-            cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
-                              self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
-                              cache_dir=cache_dir/"solution_cache_x.csv")
-            opt_sol, opt_modes = cs.find_optimal_solution()
-            results_x = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
+        def get_system(data, direction):
+            if data.configuration == "perimeter":
+                n_seismic = 2
+                masses = data.masses
+            else:
+                q_floor = data.i_d['bldg_ch'][0]
+                q_roof = data.i_d['bldg_ch'][1]
+                n_seismic = 1
+                # Considering the critical frame only (with max tributary length)
+                if direction == "x":
+                    # Spans in the primary direction
+                    spans = data.spans_x
+                    # Spans in the orthogonal direction
+                    spans_ort = np.array(data.spans_y)
+                else:
+                    spans = data.spans_y
+                    spans_ort = np.array(data.spans_x)
 
-        elif solution_x is not None and data is None:
-            t_lower, t_upper = period_limits["1"]
-            cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
-                              self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
-                              cache_dir=cache_dir/"solution_cache_x.csv")
-            opt_sol, opt_modes = cs.find_optimal_solution(solution_x)
-            results_x = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
+                # Get the tributary lengths for the mass
+                dist = np.convolve(spans_ort, np.ones(2), "valid") / 2
+                tributary = max(dist)
+                # Get the mass per storey
+                masses = np.zeros((data.nst, ))
+                for st in range(data.nst):
+                    if st == data.nst - 1:
+                        masses[st] = q_roof * sum(spans) * tributary / 9.81
+                    else:
+                        masses[st] = q_floor * sum(spans) * tributary / 9.81
 
-        else:
-            t_lower, t_upper = period_limits["1"]
-            self.data = data
-            cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
-                              self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
-                              iteration=True)
-            opt_sol, opt_modes = cs.find_optimal_solution(solution_x)
-            results_x = {"opt_sol": opt_sol, "opt_modes": opt_modes}
+            return n_seismic, masses
 
-        if self.flag3d:
-            # Optimal solution in prmiary direction (dir1 or x)
-            opt_sol_x = results_x["opt_sol"]
-            if solution_y is None:
-                t_lower, t_upper = period_limits["2"]
-                cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc, self.data.spans_y,
-                                  self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
-                                  cache_dir=cache_dir/"solution_cache_y.csv", solution_perp=opt_sol_x)
+        if self.data.configuration == "perimeter":
+            # Get number of seismic frames and lumped masses along the height
+            n_seismic, masses = get_system(self.data, "x")
+            if solution_x is None:
+                t_lower, t_upper = period_limits["1"]
+                cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
+                                  self.data.heights, n_seismic, masses, fstiff, t_lower, t_upper,
+                                  cache_dir=cache_dir/"solution_cache_x.csv")
                 opt_sol, opt_modes = cs.find_optimal_solution()
-                results_y = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
+                results_x = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
 
-            elif solution_y is not None and data is None:
-                t_lower, t_upper = period_limits["2"]
-                cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc, self.data.spans_y,
-                                  self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
-                                  cache_dir=cache_dir/"solution_cache_y.csv", solution_perp=opt_sol_x)
-                opt_sol, opt_modes = cs.find_optimal_solution(solution_y)
-                results_y = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
+            elif solution_x is not None and data is None:
+                t_lower, t_upper = period_limits["1"]
+                cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
+                                  self.data.heights, n_seismic, masses, fstiff, t_lower, t_upper,
+                                  cache_dir=cache_dir/"solution_cache_x.csv")
+                opt_sol, opt_modes = cs.find_optimal_solution(solution_x)
+                results_x = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
 
             else:
-                t_lower, t_upper = period_limits["2"]
+                t_lower, t_upper = period_limits["1"]
                 self.data = data
-                cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc, self.data.spans_y,
-                                  self.data.heights, self.data.n_seismic, self.data.masses, fstiff, t_lower, t_upper,
-                                  iteration=True, solution_perp=opt_sol_x)
-                opt_sol, opt_modes = cs.find_optimal_solution(solution_y)
-                results_y = {"opt_sol": opt_sol, "opt_modes": opt_modes}
+                n_seismic, masses = get_system(self.data, "x")
+                cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
+                                  self.data.heights, n_seismic, masses, fstiff, t_lower, t_upper,
+                                  iteration=True)
+                opt_sol, opt_modes = cs.find_optimal_solution(solution_x)
+                results_x = {"opt_sol": opt_sol, "opt_modes": opt_modes}
 
-            return results_x, results_y
+            n_seismic, masses = get_system(self.data, "y")
+            if self.flag3d:
+                # Optimal solution in primary direction (dir1 or x)
+                # Essentially the solution in Y direction will be selected by fixing the external columns
+                opt_sol_x = results_x["opt_sol"]
+                if solution_y is None:
+                    t_lower, t_upper = period_limits["2"]
+                    cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc,
+                                      self.data.spans_y, self.data.heights, n_seismic, masses, fstiff, t_lower, t_upper,
+                                      cache_dir=cache_dir/"solution_cache_y.csv", solution_perp=opt_sol_x)
+                    opt_sol, opt_modes = cs.find_optimal_solution()
+                    results_y = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
+
+                elif solution_y is not None and data is None:
+                    t_lower, t_upper = period_limits["2"]
+                    cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc,
+                                      self.data.spans_y, self.data.heights, n_seismic, masses, fstiff, t_lower, t_upper,
+                                      cache_dir=cache_dir/"solution_cache_y.csv", solution_perp=opt_sol_x)
+                    opt_sol, opt_modes = cs.find_optimal_solution(solution_y)
+                    results_y = {"sols": cs.solutions, "opt_sol": opt_sol, "opt_modes": opt_modes}
+
+                else:
+                    t_lower, t_upper = period_limits["2"]
+                    self.data = data
+                    n_seismic, masses = get_system(self.data, "y")
+                    cs = CrossSection(self.data.nst, len(self.data.spans_y), self.data.fy, self.data.fc,
+                                      self.data.spans_y, self.data.heights, n_seismic, masses, fstiff, t_lower, t_upper,
+                                      iteration=True, solution_perp=opt_sol_x)
+                    opt_sol, opt_modes = cs.find_optimal_solution(solution_y)
+                    results_y = {"opt_sol": opt_sol, "opt_modes": opt_modes}
+
+                return results_x, results_y
+            else:
+                return results_x
         else:
-            return results_x
+            # Space systems (3D only)
+            if solution_x is None and data is not None:
+                cs = CrossSectionSpace(data, period_limits, fstiff)
+                cs.read_solutions(cache_dir=cache_dir / "solution_cache_space.csv")
+                opt_sol_raw, opt_modes = cs.find_optimal_solution()
+                # Convert optimal solution for usability. Gravity refers to central structural elements.
+                # (e.g. transform it into a dictionary with keys: x_seismic, y_seismic, gravity)
+                opt_sol = cs.get_section(opt_sol_raw)
+                results = {"opt_sol_raw": opt_sol_raw, "opt_modes": opt_modes, "opt_sol": opt_sol, "sols": cs.solutions}
+            elif solution_x is not None and data is None:
+                cs = CrossSectionSpace(data, period_limits, fstiff)
+                cs.read_solutions(cache_dir=cache_dir / "solution_cache_space.csv")
+                opt_sol_raw, opt_modes = cs.find_optimal_solution(solution_x)
+                opt_sol = cs.get_section(opt_sol_raw)
+                results = {"opt_sol_raw": opt_sol_raw, "opt_modes": opt_modes, "opt_sol": opt_sol, "sols": cs.solutions}
+            else:
+                cs = CrossSectionSpace(data, period_limits, fstiff, iteration=True)
+                cs.read_solutions()
+                opt_sol_raw, opt_modes = cs.find_optimal_solution(solution_x)
+                opt_sol = cs.get_section(opt_sol_raw)
+                results = {"opt_sol_raw": opt_sol_raw, "opt_modes": opt_modes, "opt_sol": opt_sol, "sols": cs.solutions}
+            return results
 
     def perform_spo2ida(self, spo_pars):
         """
@@ -299,6 +366,10 @@ class Master:
         :param demands: dict                        Demands on structural elements
         :return: ndarray                            Critical response demand on structural elements
         """
+        tempNeg = None
+        tempPos = None
+        temp = None
+
         num_modes = len(corr)
         response = {}
         b = np.zeros((self.data.nst, self.data.n_bays))
@@ -350,7 +421,6 @@ class Master:
         :param modal_sa: list                       Spectral acceleration to be used for RMSA
         :return: DataFrame                          Acting forces
         """
-        # todo, consider phi shape for forces from CrossSection for opt_sol, 1st mode-proportional
         a = Action(solution, self.data.n_seismic, self.data.nst, self.data.masses, cy, df, analysis,
                    gravity_loads, num_modes, opt_modes, modal_sa, self.data.pdelta_loads)
         d = a.forces()
@@ -365,9 +435,9 @@ class Master:
         return elf.response
 
     def run_analysis(self, analysis, solution, lat_action=None, grav_loads=None, sls=None, yield_sa=None, fstiff=0.5,
-                     hinge=None, direction=0):
+                     hinge=None, direction=0, system="perimeter"):
         """
-        runs elfm to identify demands on the structural elements
+        Runs structural analysis to identify demands on the structural elements
         :param analysis: int                        Analysis type
         :param solution: DataFrame                  Optimal solution
         :param lat_action: list                     Acting lateral loads in kN
@@ -377,6 +447,7 @@ class Master:
         :param fstiff: float                        Stiffness reduction factor
         :param hinge: DataFrame                     Hinge models
         :param direction: bool                      0 for x direction, 1, for y direction
+        :param system: str                          System type (perimeter or space), for 3D only
         :return: dict                               Demands on the structural elements
         """
         if analysis == 1:       # redundant, unnecessary, but will be left here as a placeholder for future changes
@@ -390,7 +461,7 @@ class Master:
                                      'Mci': np.zeros(self.data.nst),
                                      'Mce': np.zeros(self.data.nst)})
 
-            base_shear = yield_sa*solution["Mstar"]*solution["Part Factor"]*self.g
+            base_shear = yield_sa * solution["Mstar"] * solution["Part Factor"] * self.g
             masses = self.data.masses / self.data.n_seismic
             modes = [sls[str(st+1)]['phi'] for st in range(self.data.nst)]
             # lateral forces
@@ -420,7 +491,7 @@ class Master:
                 response['Mce'][st] = 0.6 * self.data.h[st] * shear_external
         else:
             if self.flag3d:
-                op = OpenSeesRun3D(self.data, solution, fstiff=fstiff, hinge=hinge, direction=direction)
+                op = OpenSeesRun3D(self.data, solution, fstiff=fstiff, hinge=hinge, direction=direction, system=system)
                 response = op.elastic_analysis_3d(analysis, lat_action, grav_loads)
 
             else:
@@ -440,7 +511,8 @@ class Master:
         :return: list                               Modal periods
         """
         if self.flag3d:
-            ma = OpenSeesRun3D(self.data, solution, fstiff, hinge=hinge, direction=direction)
+            ma = OpenSeesRun3D(self.data, solution, fstiff, hinge=hinge, direction=direction,
+                               system=self.data.configuration)
         else:
             ma = OpenSeesRun(self.data, solution, fstiff, hinge=hinge)
         ma.create_model()
@@ -466,7 +538,8 @@ class Master:
         :return: dict                               SPO response in terms of top displacement vs base shear
         """
         if self.flag3d:
-            spo = OpenSeesRun3D(self.data, solution, fstiff, hinge=hinge, direction=direction)
+            system = self.data.configuration
+            spo = OpenSeesRun3D(self.data, solution, fstiff, hinge=hinge, direction=direction, system=system)
         else:
             spo = OpenSeesRun(self.data, solution, fstiff, hinge=hinge)
         spo.create_model()
@@ -512,28 +585,3 @@ class Master:
             warnMin = d.WARNING_MIN
 
         return data, hinge_models, mu_c, mu_f, warnMax, warnMin, warnings
-
-    # def run_ma(self, solution, tlower, tupper, sections):
-    #     """
-    #     runs modal analysis for a single solution
-    #     :param solution: pandas Series              Cross-section dimensions
-    #     :param tlower: float                        Lower period limit
-    #     :param tupper: float                        Upper period limit
-    #     :param sections: DataFrame                  Designed section properties, M-phi relationships etc.
-    #     :return: float, list                        Fundamental period and first mode shape
-    #     """
-    #     fstiff_beam = [sections["Beams"][i][0]["cracked EI"] for i in sections["Beams"]]
-    #     fstiff_col = [sections["Columns"][i][0]["cracked EI"] for i in sections["Columns"]]
-    #     cs = CrossSection(self.data.nst, self.data.n_bays, self.data.fy, self.data.fc, self.data.spans_x,
-    #                       self.data.heights, self.data.n_seismic, self.data.masses, fstiff=1.0, tlower=tlower,
-    #                       tupper=tupper)
-    #     hce, hci, b, h = cs.get_section(solution)
-    #
-    #     props = cs.create_props(hce, hci, b, h)
-    #     for i in range(self.data.nst):
-    #         props[2][i] = fstiff_col[i]*props[2][i]
-    #         props[3][i] = fstiff_col[i + self.data.nst] * props[3][i]
-    #         props[5][i] = fstiff_beam[i]*props[5][i]
-    #
-    #     period, phi = cs.run_ma(props)
-    #     return period, phi

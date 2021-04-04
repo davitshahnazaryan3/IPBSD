@@ -35,7 +35,7 @@ class ErrorCheck:
                     raise ValueError('TR of higher LS cannot be smaller than at lower LS')
 
         # bldg_ch feature
-        if len(df['bldg_ch']) != 3:
+        if len(df['bldg_ch']) != 2:
             raise ValueError('Building characteristics are not supplied properly')
 
         # mode_red feature
@@ -45,11 +45,3 @@ class ErrorCheck:
         # fy feature
         if len(df['fy']) != 1:
             raise ValueError('Yield strain of reinforcement is not supplied properly')
-
-        # n_seismic_frames feature
-        if len(df['n_seismic_frames']) != 1:
-            raise ValueError('Number of seismic frames is not supplied properly')
-
-        # n_gravity_frames feature
-        if len(df['n_gravity_frames']) != 1:
-            raise ValueError('Number of gravity frames is not supplied properly')

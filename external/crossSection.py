@@ -75,7 +75,7 @@ class CrossSection:
                 weight = self.get_weight(properties)
                 M = np.zeros((self.nst, self.nst))
                 for st in range(self.nst):
-                    M[st][st] = self.mi[st]/self.n_seismic
+                    M[st][st] = self.mi[st] / self.n_seismic
                 identity = np.ones((1, self.nst))
                 gamma = (phi.transpose().dot(M)).dot(identity.transpose()) / (phi.transpose().dot(M)).dot(phi)
                 mstar = (phi.transpose().dot(M)).dot(identity.transpose())
@@ -92,7 +92,7 @@ class CrossSection:
     def get_section(self, ele):
         """
         gets all sections
-        :param ele: pandas series                               Elements for each solution
+        :param ele: pandas series                               Structural elements of the solution
         :return: arrays                                         Element cross-section dimensions for a given solution
         """
         hce = []
@@ -113,7 +113,7 @@ class CrossSection:
 
     def create_props(self, hce, hci, b, h):
         """
-        Creates A, I of section
+        Creates cross-section area, A, and moment of inertia, I, of section
         :param hce: array                                       Height of external columns
         :param hci: array                                       Height of internal columns
         :param b: array                                         Beam width
@@ -171,7 +171,6 @@ class CrossSection:
             if x + 0.1 - 10**-5 <= y <= x + 0.3 + 10**-5:
                 return True
 
-        # TODO, if section in first 3 storeys did not change, then 4th storey may be different (ignore grouping)
         # Initialize element types
         ele_types = []
         # Initialize the problem
@@ -233,7 +232,7 @@ class CrossSection:
 
     def check_target_t(self, period, tol=0.01):
         """
-        checks if the target meets tolerance limits
+        checks if the target meets tolerance limits towards period bounds
         :param period: float                                    1st mode period
         :param tol: float                                       Tolerance for accuracy
         :return: bool                                           Verifies if 1st mode period is within the period range

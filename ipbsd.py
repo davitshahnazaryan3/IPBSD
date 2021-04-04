@@ -1,6 +1,7 @@
 """
 Runs the master file for Integrated Performance-Based Seismic Design (IPBSD)
 """
+import sys
 import timeit
 import os
 import json
@@ -14,9 +15,9 @@ from pathlib import Path
 
 class IPBSD:
     def __init__(self, input_file, hazard_file, slfDir, spo_file, limit_eal, target_mafc, outputPath, analysis_type=1,
-                 damping=.05, num_modes=3, iterate=False, system="Perimeter", maxiter=20, fstiff=0.5, rebar_cover=0.03,
+                 damping=.05, num_modes=3, iterate=False, maxiter=20, fstiff=0.5, rebar_cover=0.03,
                  flag3d=False, solutionFileX=None, solutionFileY=None, export_cache=False, holdFlag=False,
-                 overstrength=None, replCost=None, gravity_cs=None):
+                 overstrength=None, replCost=None, gravity_cs=None, eal_correction=True):
         """
         Initializes IPBSD
         :param input_file: str              Input filename as '*.csv'
@@ -38,7 +39,6 @@ class IPBSD:
         :param damping: float               Ratio of critical damping
         :param num_modes: int               Number of modes to consider for SRSS (for analysis type 4 and 5)
         :param iterate: bool                Perform iterations or not (refers to iterations 4a and 3a)
-        :param system: str                  Structural system of the building (Perimeter or Space)
         :param maxiter: int                 Maximum number of iterations for seeking a solution
         :param fstiff: float                Stiffness reduction factor
         :param rebar_cover: float           Reinforcement cover in m
@@ -56,21 +56,20 @@ class IPBSD:
                                             a value
         :param replCost: float              Replacement cost of the entire building
         :param gravity_cs: str              Path to gravity solution (for 3D modelling)
+        :param eal_correction: bool         Perform EAL correction
         """
-        # TODO, remove where possible range, and use enumerate
         self.dir = Path.cwd()
         self.input_file = input_file
         self.hazard_file = hazard_file
         self.slfDir = slfDir
         self.spo_file = spo_file
         self.limit_EAL = limit_eal
-        self.target_MAFC = target_mafc
+        self.target_mafc = target_mafc
         self.outputPath = outputPath
         self.analysis_type = analysis_type
         self.num_modes = num_modes
         self.damping = damping
         self.iterate = iterate
-        self.system = system                # TODO, currently it does nothing, IPBSD is only working with Perimeter frames, Space (loads etc. to be updated) frames to be added
         self.maxiter = maxiter
         self.fstiff = fstiff
         self.rebar_cover = rebar_cover
@@ -81,6 +80,7 @@ class IPBSD:
         self.gravity_cs = gravity_cs
         self.solutionFileX = solutionFileX
         self.solutionFileY = solutionFileY
+        self.eal_correction = eal_correction
 
         # 2d (False) means, that even if the SLFs are provided for the entire building, only 1 direction
         # (defaulting to dir1) will be considered. This also entails the use of non-dimensional components,
@@ -154,6 +154,7 @@ class IPBSD:
             data.to_csv(f"{filepath}.csv", index=False)
 
     def cacheRCMRF(self, ipbsd, details, sol, demands, path):
+        # TODO, modify to fit the needs of 3D and space systems
         """
         Creates cache to be used by RCMRF
         :param ipbsd: object                            Master class
@@ -179,10 +180,7 @@ class IPBSD:
         q_floor = float(ipbsd.data.i_d["bldg_ch"][0])
         q_roof = float(ipbsd.data.i_d["bldg_ch"][1])
 
-        if self.system == "Perimeter":
-            distLength = spansY[0] / 2
-        else:
-            distLength = spansY[0]
+        distLength = spansY[0] / 2
 
         # Distributed loads
         distLoads = [floorLoad * distLength, roofLoad * distLength]
@@ -372,29 +370,38 @@ class IPBSD:
 
         """Generating and storing the input arguments"""
         ipbsd.read_input(self.input_file, self.hazard_file, self.outputPath)
+
+        if not self.flag3d and ipbsd.data.i_d["configuration"][0] == "space":
+            print("[WARNING] It is recommended to run space systems with 3D modelling!")
+
         # Initiate {project name}
         print(f"[INITIATE] Starting IPBSD for {ipbsd.data.case_id}")
 
         print("[PHASE] Commencing phase 1...")
         self.create_folder(self.outputPath)
-        ipbsd.data.i_d["MAFC"] = self.target_MAFC
+        ipbsd.data.i_d["MAFC"] = self.target_mafc
         ipbsd.data.i_d["EAL"] = self.limit_EAL
         # Store IPBSD inputs as a json
         if self.export_cache:
             self.export_results(self.outputPath / "Cache/input_cache", ipbsd.data.i_d, "json")
         print("[SUCCESS] Input arguments have been read and successfully stored")
 
-        # """Get EAL"""
-        lam_ls = ipbsd.get_hazard_pga(self.target_MAFC)
+        """Get EAL"""
+        lam_ls = ipbsd.get_hazard_pga(self.target_mafc)
         eal, y_fit, lam_fit = ipbsd.get_loss_curve(lam_ls, self.limit_EAL)
         lossCurve = {"y": ipbsd.data.y, "lam": lam_ls, "y_fit": y_fit, "lam_fit": lam_fit, "eal": eal,
                      "PLS": ipbsd.data.PLS}
 
         """Get design limits"""
-        theta_max, a_max, slfsCache = ipbsd.get_design_values(self.slfDir, self.replCost)
+        theta_max, a_max, slfsCache = ipbsd.get_design_values(self.slfDir, self.replCost, self.eal_correction)
         if self.export_cache:
             self.export_results(self.outputPath / "Cache/SLFs", slfsCache, "pickle")
         print("[SUCCESS] SLF successfully read, and design limits are calculated")
+
+        if self.eal_correction:
+            # Performing EAL corrections to avoid overestimation of costs
+            eal, y_fit, lam_fit = ipbsd.get_loss_curve(lam_ls, self.limit_EAL)
+            print(f"[SUCCESS] EAL corrections have been made, where the new EAL limit estimated to {eal:.2f}%")
 
         """Transform design values into spectral coordinates"""
         tables, delta_spectral, alpha_spectral = ipbsd.perform_transformations(theta_max, a_max)
@@ -419,13 +426,14 @@ class IPBSD:
             period_limits[f"{i+1}"] = ipbsd.get_period_range(delta_spectral[i], alpha_spectral[i], sd, sa)
         print("[SUCCESS] Feasible period range identified")
 
-        """Get all section combinations satisfying period bound range
-        Notes: If solutions cache exists in outputs directory, the file will be read and an optimal solution based on
+        """Get all section combinations satisfying period bounds range
+        Notes: 
+        * If solutions cache exists in outputs directory, the file will be read and an optimal solution based on
         least weight will be derived.
-        If solutions cache does not exist, then a solutions file will be created (may take some time) and then the
+        * If solutions cache does not exist, then a solutions file will be created (may take some time) and then the
         optimal solution is derived.
-        If an optimal solution is provided, then eigenvalue analysis is performed for the
-        optimal solution. No solutions cache will be derived.
+        * If an optimal solution is provided, then eigenvalue analysis is performed for the optimal solution. 
+        No solutions cache will be derived.
         """
         # Check whether solutions file was provided
         if not isinstance(self.solutionFileX, int):
@@ -450,7 +458,8 @@ class IPBSD:
         else:
             solution_y = self.solutionFileY
 
-        results = ipbsd.get_all_section_combinations(period_limits, fstiff=self.fstiff,
+        # Generates all possible section combinations assuming a stiffness reduction factor
+        results = ipbsd.get_all_section_combinations(period_limits, fstiff=self.fstiff, data=ipbsd.data,
                                                      cache_dir=self.outputPath/"Cache",
                                                      solution_x=solution_x, solution_y=solution_y)
         print("[SUCCESS] All section combinations were identified")
@@ -458,7 +467,10 @@ class IPBSD:
         # The main portion of IPBSD is completed. Now corrections should be made for the assumptions
         if not self.holdFlag:
 
-            if self.flag3d:
+            if self.flag3d and ipbsd.data.configuration == "perimeter":
+                # To be calculated automatically (assuming a uniform distribution) - trapezoidal is more appropriate
+                gravity_loads = None
+                # Gravity solution not necessary for space systems
                 if self.gravity_cs is None:
                     # In case gravity solution was not provided, create a generic one; for 3D modelling only
                     csg = {}
@@ -473,42 +485,49 @@ class IPBSD:
                 else:
                     csg = pd.read_csv(self.gravity_cs, index_col=0).iloc[0]
 
-                # Using the second direction for modelling the entire building
+                # Prepare the input variables to be passed to Iterations for 3D modelling
                 opt_sol = {"x_seismic": results[0]["opt_sol"], "y_seismic": results[1]["opt_sol"], "gravity": csg}
                 sols = {"x": results[0]["sols"], "y": results[1]["sols"]}
                 opt_modes = {"x": results[0]["opt_modes"], "y": results[1]["opt_modes"]}
                 period_limits = {"x": period_limits["1"], "y": period_limits["2"]}
-                table_sls = {"x": tables[0], "y": tables[1]}
+                table_sls = tables
 
             else:
+                if self.flag3d:
+                    # Space systems
+                    # It is best to automatically calculate the gravity loads based on global dimensions
+                    gravity_loads = None
+                    period_limits = {"x": period_limits["1"], "y": period_limits["2"]}
+                    table_sls = tables
+                else:
+                    # 2D frames
+                    period_limits = period_limits["1"]
+                    gravity_loads = ipbsd.data.w_seismic
+                    table_sls = tables["x"]
+
                 # Just the direction of interest (modelling a 2D frame, without the perpendicular frame or
                 # gravity frames
+                # For 3D space systems opt_sol includes information on all structural elements
                 opt_sol = results["opt_sol"]
-                sols = results["sols"]
                 opt_modes = results["opt_modes"]
-                period_limits = period_limits["1"]
-                table_sls = tables[0]
-
-            if self.flag3d:
-                # To be calculated automatically (assuming a uniform distribution) - trapezoidal is more appropriate
-                gravity_loads = None
-            else:
-                gravity_loads = ipbsd.data.w_seismic
+                sols = results["sols"]
 
             # Call the iterations function (iterations have not yet started though)
-            iterations = Iterations(ipbsd, sols, self.spo_file, self.target_MAFC, self.analysis_type, self.damping,
+            iterations = Iterations(ipbsd, sols, self.spo_file, self.target_mafc, self.analysis_type, self.damping,
                                     self.num_modes, self.fstiff, self.rebar_cover, self.outputPath,
                                     gravity_loads=gravity_loads, flag3d=self.flag3d)
 
             # Initiate design of the entire building / frame
             if self.flag3d:
                 # Initial design solutions of all structural elements based on elastic analysis
-                init_design = iterations.generate_initial_solutions(opt_sol, opt_modes, self.overstrength, sa,
-                                                                    period_range, table_sls)
+                init_design, demands_gravity = iterations.generate_initial_solutions(opt_sol, opt_modes,
+                                                                                     self.overstrength, sa,
+                                                                                     period_range, table_sls)
 
-                outputs = iterations.run_iterations_for_3d(init_design, period_limits, opt_sol, opt_modes, sa,
-                                                           period_range, table_sls, iterate=self.iterate,
-                                                           maxiter=self.maxiter, omega=self.overstrength)
+                outputs = iterations.run_iterations_for_3d(init_design, demands_gravity, period_limits, opt_sol,
+                                                           opt_modes, sa, period_range, table_sls,
+                                                           iterate=self.iterate, maxiter=self.maxiter,
+                                                           omega=self.overstrength)
                 frames = ["x", "y"]
                 ipbsd_outputs = outputs["ipbsd_outputs"]
                 spoResults = outputs["spoResults"]
@@ -541,8 +560,8 @@ class IPBSD:
                         hinge_models_to_store = hinge_models[i][f"{i}_seismic"]
                         modelOutputs_to_store = modelOutputs[i]
                         """Creating DataFrames to store for RCMRF input"""
-                        self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store[f"{i}_seismic"], demands_to_store,
-                                        path=self.outputPath)
+                        # self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store[f"{i}_seismic"], demands_to_store,
+                        #                 path=self.outputPath)
                         self.export_results(self.outputPath / f"Cache/gravity_hinges", hinge_models["x"]["gravity"],
                                             "csv")
                     else:
@@ -554,8 +573,8 @@ class IPBSD:
                         details_to_store = details
                         hinge_models_to_store = hinge_models
                         modelOutputs_to_store = modelOutputs
-                        self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store, demands_to_store,
-                                        path=self.outputPath)
+                        # self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store, demands_to_store,
+                        #                 path=self.outputPath)
 
                     """Storing the outputs"""
                     # Exporting the IPBSD outputs
@@ -618,7 +637,6 @@ if __name__ == "__main__":
     limit_eal = 1.0
     mafc_target = 2.e-4
     damping = .05
-    system = "Perimeter"
     maxiter = 10
     fstiff = 0.5
     overstrength = 1.0
@@ -635,7 +653,7 @@ if __name__ == "__main__":
     solutionFile = None
 
     method = IPBSD(input_file, hazard_file, slfDir, spo_file, limit_eal, mafc_target, outputPath, analysis_type,
-                   damping=damping, num_modes=2, iterate=iterate, system=system, maxiter=maxiter, fstiff=fstiff,
+                   damping=damping, num_modes=2, iterate=iterate, maxiter=maxiter, fstiff=fstiff,
                    flag3d=flag3d, solutionFileX=solutionFileX, solutionFileY=solutionFileY, export_cache=export_cache,
                    holdFlag=holdFlag, overstrength=overstrength, rebar_cover=0.03, replCost=replCost,
                    gravity_cs=gravity_cs)

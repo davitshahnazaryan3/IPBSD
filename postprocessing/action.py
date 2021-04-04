@@ -39,7 +39,7 @@ class Action:
 
     def get_vb(self):
         """
-        Gets design base shear
+        Gets design base shear (for Space systems Vb is for the entire system)
         :return: float                      Design base shear
         """
         mstar = self.solution["Mstar"]
@@ -54,6 +54,7 @@ class Action:
         :return: DataFrame                  Lateral forces for ELFM
         """
         if self.analysis == 1 or self.analysis == 2 or self.analysis == 3:
+            # TODO, use phi shape from actual modal analysis of the nonlinear system if available
             d = pd.DataFrame({'phi': np.array(self.df.loc['phi']),
                               'm': [mi / self.n_seismic for mi in self.masses],
                               'Fi': [0] * self.nst,
@@ -97,7 +98,6 @@ class Action:
 
             # Modal parameters
             modes = self.opt_modes["Modes"]
-            periods = self.opt_modes["Periods"]
             part_factor = np.zeros(self.num_modes)
             modes_transposed = modes.transpose()
             for mode in range(self.num_modes):

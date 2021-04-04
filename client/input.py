@@ -16,8 +16,6 @@ class Input:
         """
         initializes the input functions
         """
-        # TODO, separate definition of structure type into a different method
-        # TODO, add dead structural weights to input loads as well (optional)?
         # input arguments
         self.i_d = None                             # Dictionary containing the original input arguments    dict
         self.case_id = None                         # Case ID for storing the data                          str
@@ -41,6 +39,7 @@ class Input:
         self.w_seismic = None                       # Seismic weights in kN/m2                              dict
         self.pdelta_loads = None                    # Gravity loads over P Delta columns                    dict
         self.elastic_modulus_steel = 200000.        # Steel elastic modulus in MPa                          float
+        self.configuration = None                   # Space or Perimeter seismic frames                     str
 
     def read_inputs(self, filename):
         """
@@ -54,28 +53,41 @@ class Input:
         self.i_d = {col: data[col].dropna().to_dict() for col in data}
         ErrorCheck(self.i_d)
         print("[SUCCESS] Integrity of input arguments are verified")
+        # Case ID
         self.case_id = self.i_d['design_scenario'][0]
+        # Performance limit states
         self.PLS = [self.i_d['PLS'][0], self.i_d['PLS'][1], self.i_d['PLS'][2]]
+        # Expected loss ratios
         self.y = [self.i_d['ELR'][0], self.i_d['ELR'][1], self.i_d['ELR'][2]]
+        # Return periods
         self.TR = [self.i_d['TR'][0], self.i_d['TR'][1], self.i_d['TR'][2]]
+        # Aleatory uncertainties
         self.beta_al = [self.i_d['aleatory'][0], self.i_d['aleatory'][1], self.i_d['aleatory'][2]]
+        # General floor and roof loads in kPa
         q_floor = self.i_d['bldg_ch'][0]
         q_roof = self.i_d['bldg_ch'][1]
-        A_floor = self.i_d['bldg_ch'][2]
+        # Heights of the building
         self.heights = np.zeros(len(self.i_d['h_storeys']))
         for storey in range(len(self.i_d['h_storeys'])):
             self.heights[storey] = self.i_d['h_storeys'][storey]
+        # Number of storeys
         self.nst = len(self.heights)
+        # Span widths along X and Y
         self.spans_x = []
         self.spans_y = []
         for bay in self.i_d['spans_X']:
             self.spans_x.append(self.i_d['spans_X'][bay])
         for bay in self.i_d['spans_Y']:
             self.spans_y.append(self.i_d['spans_Y'][bay])
+        # Floor area in m2
+        A_floor = sum(self.spans_x) * sum(self.spans_y)
+        # Perpendicular bay width (important for 2D modelling)
         self.bay_perp = self.spans_y[0]
+        # Number of bays along X
         self.n_bays = len(self.spans_x)
         # Loads and masses for the entire building (will be divided by n_seismic at later stages)
         self.masses = np.zeros(self.nst)
+        # P-Delta loads for perimeter systems and 2D modelling
         self.pdelta_loads = np.zeros(self.nst)
         for storey in range(self.nst):
             if storey == self.nst - 1:
@@ -84,13 +96,27 @@ class Input:
             else:
                 self.masses[storey] = q_floor * A_floor / 9.81
                 self.pdelta_loads[storey] = q_floor*(sum(self.spans_y)-self.bay_perp)*sum(self.spans_x)
+        # Mode reduction factor
         self.o_th = self.i_d['mode_red'][0]
+        # Reinforcement yield strength in MPa
         self.fy = self.i_d['fy'][0]
+        # Reinforcement Elastic modulus in MPa
         self.elastic_modulus_steel = self.i_d['Es'][0]
+        # Reinforcement strain at yield
         self.eps_y = self.fy / self.elastic_modulus_steel
+        # Concrete compressive strength in MPa
         self.fc = self.i_d['fc'][0]
-        self.n_seismic = self.i_d['n_seismic_frames'][0]
-        self.n_gravity = self.i_d['n_gravity_frames'][0]
+        # Configuration type for 3D modelling: space or perimeter
+        self.configuration = self.i_d["configuration"][0]
+        # Important only for 2D modelling
+        if self.configuration == "perimeter":
+            # Masses will be subdivided between two seismic frames
+            self.n_seismic = 2
+            self.n_gravity = int(len(self.spans_y) - 1)
+        else:
+            # Masses will be considered for the entirety of the building considering all seismic frames
+            self.n_gravity = 0
+            self.n_seismic = 1
         # Note: bay perpendicular used only for perimeter frames, which also assumes symmetry of the building
         # Consideration of space not included yet
         q_beam_floor = self.bay_perp / 2 * q_floor

@@ -7,7 +7,7 @@ from numpy.linalg import solve
 
 
 class GetT1:
-    def __init__(self, a_cols, a_c_ints, i_cols, i_c_ints, a_beams, i_beams, nst, spans_x, h, mi, n_seismic, fc,
+    def __init__(self, a_cols, a_c_ints, i_cols, i_c_ints, a_beams, i_beams, nst, spans, h, mi, n_seismic, fc,
                  fstiff=.5, just_period=False, w_seismic=None, mcy=None, mby=None, single_mode=True):
         """
         Initializes the package for the fundamental period of a frame
@@ -18,7 +18,7 @@ class GetT1:
         :param a_beams: array                       Cross-section areas of beams
         :param i_beams: array                       Moment of inertias of beams
         :param nst: int                             Number of stories
-        :param spans_x: array                       Bay widths
+        :param spans: array                         Bay widths
         :param h: array                             Storey heights
         :param mi: array                            Lumped storey masses
         :param n_seismic: int                       Number of seismic frames
@@ -39,7 +39,7 @@ class GetT1:
         self.a_beams = a_beams
         self.i_beams = i_beams
         self.nst = nst
-        self.spans_x = spans_x
+        self.spans = spans
         self.h = h
         self.mi = mi
         self.n_seismic = n_seismic
@@ -125,9 +125,9 @@ class GetT1:
         Runs modal analysis
         :return: float, list                        Return period and normalized 1st modal shape
         """
-        nbays = len(self.spans_x)
+        nbays = len(self.spans)
         E = (3320 * np.sqrt(self.fc) + 6900) * 1000 * self.fstiff
-        n_aligns_x = len(self.spans_x) + 1
+        n_aligns_x = len(self.spans) + 1
         n_aligns_y = self.nst + 1
         n_nodes = n_aligns_x * n_aligns_y
         n_dofs = 3 * n_nodes
@@ -180,7 +180,7 @@ class GetT1:
             # Indices for beam parameters
             idx_beam_bay = count_bay
             idx_beam_st = count_st
-            l_beam = self.spans_x[idx_beam_bay]
+            l_beam = self.spans[idx_beam_bay]
             a_beam = self.a_beams[idx_beam_bay][idx_beam_st]
             i_beam = self.i_beams[idx_beam_bay][idx_beam_st]
             dofs_i = np.array([1, 2, 3]) + ((node_i - 1) * 3) - 1
@@ -263,7 +263,7 @@ class GetT1:
             By knowing the pushover load factor at which 1st yielding occurs, we
             can know the yield displacement of the frame.
             """
-            # todo, add this portion, clean
+            # THIS PORTIONS IS NOT SUPPORTED YET
             # Calculate pushover load pattern for a 1kN base shear
             zi_node = np.cumsum(h)
             zi_diag = np.repeat(zi_node, n_aligns_x * 3)

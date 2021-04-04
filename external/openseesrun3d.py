@@ -9,7 +9,7 @@ import numpy as np
 
 
 class OpenSeesRun3D:
-    def __init__(self, i_d, cs, fstiff=0.5, hinge=None, pflag=False, direction=0):
+    def __init__(self, i_d, cs, fstiff=0.5, hinge=None, pflag=False, direction=0, system="perimeter"):
         """
         initializes model creation for analysing
         :param i_d: dict                        Provided input arguments for the framework
@@ -18,6 +18,7 @@ class OpenSeesRun3D:
         :param hinge: dict                      DataFrames of Idealized plastic hinge model parameters
         :param pflag: bool                      Print info
         :param direction: bool                  0 for x direction, 1 for y direction
+        :param system: str                      System type (perimeter or space)
         """
         self.i_d = i_d
         self.cs = cs
@@ -27,6 +28,7 @@ class OpenSeesRun3D:
         self.pflag = pflag
         self.hinge = hinge
         self.direction = direction
+        self.system = system
         # Base nodes for SPO recorder
         self.base_nodes = []
         # Base columns (base node reaction recorders seem to be not working)
@@ -38,7 +40,7 @@ class OpenSeesRun3D:
         self.BEAM_X_TRANSF_TAG = 2
         self.BEAM_Y_TRANSF_TAG = 3
         # Yield moment constant, placeholder
-        self.MY_CONSTANT = 10.
+        self.MY_CONSTANT = 4000.
 
     @staticmethod
     def wipe():
@@ -331,15 +333,19 @@ class OpenSeesRun3D:
                 zloc = 0.
                 nodetag = int(f"{1+xbay}{1+ybay}0")
                 op.node(nodetag, xloc, yloc, zloc)
-                # Fix or pin the base nodes
-                if (xloc == 0. or xloc == sum(spans_x)) and (yloc == 0. or yloc == sum(spans_y)):
-                    op.fix(nodetag, 1, 1, 1, 1, 1, 1)
-                elif 0. < xloc < sum(spans_x) and (yloc == 0. or yloc == sum(spans_y)):
-                    op.fix(nodetag, 1, 1, 1, 0, 1, 0)
-                elif 0. < yloc < sum(spans_y) and (xloc == 0. or xloc == sum(spans_x)):
-                    op.fix(nodetag, 1, 1, 1, 1, 0, 0)
+                if self.system == "perimeter":
+                    # Fix or pin the base nodes depending on location
+                    if (xloc == 0. or xloc == sum(spans_x)) and (yloc == 0. or yloc == sum(spans_y)):
+                        op.fix(nodetag, 1, 1, 1, 1, 1, 1)
+                    elif 0. < xloc < sum(spans_x) and (yloc == 0. or yloc == sum(spans_y)):
+                        op.fix(nodetag, 1, 1, 1, 0, 1, 0)
+                    elif 0. < yloc < sum(spans_y) and (xloc == 0. or xloc == sum(spans_x)):
+                        op.fix(nodetag, 1, 1, 1, 1, 0, 0)
+                    else:
+                        op.fix(nodetag, 1, 1, 1, 0, 0, 0)
                 else:
-                    op.fix(nodetag, 1, 1, 1, 0, 0, 0)
+                    # Fix all base nodes
+                    op.fix(nodetag, 1, 1, 1, 1, 1, 1)
 
                 # Generate the remaining nodes
                 for st in range(1, self.i_d.nst + 1):
@@ -531,23 +537,36 @@ class OpenSeesRun3D:
         # Apply lateral loads for static analysis
         # lat_action represents loads for each seismic frame
         if lat_action is not None:
+            if self.system == "perimeter":
+                n_nodes_x = nbays_x + 1
+                n_nodes_y = nbays_y + 1
+            else:
+                n_nodes_x = n_nodes_y = (nbays_y + 1) * (nbays_x + 1)
             op.timeSeries("Linear", 1)
             op.pattern("Plain", 1, 1)
             for st in range(1, int(self.i_d.nst + 1)):
                 if self.direction == 0:
                     # Along x direction
                     for bay in range(1, int(nbays_x + 2)):
-                        op.load(int(f"{bay}1{st}"), lat_action[st - 1] / (nbays_x + 1), self.NEGLIGIBLE,
+                        op.load(int(f"{bay}1{st}"), lat_action[st - 1] / n_nodes_x, self.NEGLIGIBLE,
                                 self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE)
-                        op.load(int(f"{bay}{nbays_y+1}{st}"), lat_action[st - 1] / (nbays_x + 1), self.NEGLIGIBLE,
+                        op.load(int(f"{bay}{nbays_y+1}{st}"), lat_action[st - 1] / n_nodes_x, self.NEGLIGIBLE,
                                 self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE)
+                        if self.system == "space":
+                            for ybay in range(2, int(nbays_y + 1)):
+                                op.load(int(f"{bay}{ybay}{st}"), lat_action[st - 1] / n_nodes_x, self.NEGLIGIBLE,
+                                        self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE)
                 else:
                     # Along y direction
                     for bay in range(1, int(nbays_y + 2)):
-                        op.load(int(f"1{bay}{st}"), self.NEGLIGIBLE, lat_action[st - 1] / (nbays_y + 1),
+                        op.load(int(f"1{bay}{st}"), self.NEGLIGIBLE, lat_action[st - 1] / n_nodes_y,
                                 self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE)
-                        op.load(int(f"{nbays_x+1}{bay}{st}"), self.NEGLIGIBLE, lat_action[st - 1] / (nbays_y + 1),
+                        op.load(int(f"{nbays_x+1}{bay}{st}"), self.NEGLIGIBLE, lat_action[st - 1] / n_nodes_y,
                                 self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE)
+                        if self.system == "space":
+                            for xbay in range(2, int(nbays_x + 1)):
+                                op.load(int(f"{xbay}{bay}{st}"), self.NEGLIGIBLE, lat_action[st - 1] / n_nodes_y,
+                                        self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE)
 
         # Application of gravity loads for static analysis
         if analysis == 3 or analysis == 5:
@@ -588,9 +607,10 @@ class OpenSeesRun3D:
 
         return results
 
-    def create_model(self):
+    def create_model(self, elastic=False):
         """
         creates the model
+        :param elastic: bool                    Run elastic analysis or not
         :return: array                          Beam and column element tags
         """
         # Number of bays in x and y directions, spans
@@ -605,7 +625,7 @@ class OpenSeesRun3D:
         self.define_nodes()
         self.rigid_diaphragm(spans_x, spans_y, nbays_x, nbays_y)
         self.define_transformations()
-        beams, columns = self.create_elements(nbays_x, nbays_y, elastic=False)
+        beams, columns = self.create_elements(nbays_x, nbays_y, elastic=elastic)
         return beams, columns
 
     def create_elements(self, nbays_x, nbays_y, elastic=True):
@@ -698,8 +718,15 @@ class OpenSeesRun3D:
                         Gc = el_mod / 2.0 / (1 + nu)
 
                         # Create the elastic element
-                        op.element("elasticBeamColumn", et, inode, jnode, area, el_mod, Gc,
-                                   self.UBIG, inertiay, inertia, self.COL_TRANSF_TAG)
+                        # op.element("elasticBeamColumn", et, inode, jnode, area, el_mod, Gc,
+                        #            self.UBIG, inertiay, inertia, self.COL_TRANSF_TAG)
+
+                        # Auxiliary parameters not important for linear static analysis
+                        gt = self.COL_TRANSF_TAG
+                        my = self.MY_CONSTANT
+                        lp = h_col * 1.0
+                        self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_col, h_col,
+                                                  hingeModel=eleHinge)
 
                     else:
                         # Placeholder
@@ -747,8 +774,8 @@ class OpenSeesRun3D:
                             eleHinge = None
                     else:
                         if hinge_gr is not None:
-                            eleHinge = hinge_gr[(hinge_gr["Element"] == "Beam") & (
-                                    hinge_gr["Storey"] == st)].reset_index(drop=True)
+                            eleHinge = hinge_gr[(hinge_gr["Element"] == "Beam") & (hinge_gr["Storey"] == st)
+                                                & (hinge_gr["Direction"] == 0)].reset_index(drop=True)
                         else:
                             eleHinge = None
 
@@ -771,8 +798,15 @@ class OpenSeesRun3D:
                         Gc = el_mod / 2.0 / (1 + nu)
 
                         # Create the element
-                        op.element("elasticBeamColumn", et, inode, jnode, area, el_mod, Gc,
-                                   self.UBIG, inertiay, inertia, self.BEAM_X_TRANSF_TAG)
+                        # op.element("elasticBeamColumn", et, inode, jnode, area, el_mod, Gc,
+                        #            self.UBIG, inertiay, inertia, self.BEAM_X_TRANSF_TAG)
+
+                        # Auxiliary parameters not important for linear static analysis
+                        gt = self.BEAM_X_TRANSF_TAG
+                        my = self.MY_CONSTANT
+                        lp = h_beam * 1.0
+                        self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_beam, h_beam,
+                                                  hingeModel=eleHinge)
                     else:
                         lp = 1.0 * h_beam  # not important for linear static analysis
                         my = self.MY_CONSTANT
@@ -807,8 +841,8 @@ class OpenSeesRun3D:
                             eleHinge = None
                     else:
                         if hinge_gr is not None:
-                            eleHinge = hinge_gr[(hinge_gr["Element"] == "Beam") & (hinge_gr["Storey"] ==
-                                                                                   st)].reset_index(drop=True)
+                            eleHinge = hinge_gr[(hinge_gr["Element"] == "Beam") & (hinge_gr["Storey"] == st)
+                                                & (hinge_gr["Direction"] == 1)].reset_index(drop=True)
                         else:
                             eleHinge = None
 
@@ -832,8 +866,14 @@ class OpenSeesRun3D:
                         Gc = el_mod / 2.0 / (1 + nu)
 
                         # Create the element
-                        op.element("elasticBeamColumn", et, inode, jnode, area, el_mod, Gc,
-                                   self.UBIG, inertiay, inertia, self.BEAM_Y_TRANSF_TAG)
+                        # op.element("elasticBeamColumn", et, inode, jnode, area, el_mod, Gc,
+                        #            self.UBIG, inertiay, inertia, self.BEAM_Y_TRANSF_TAG)
+                        # Auxiliary parameters not important for linear static analysis
+                        gt = self.BEAM_Y_TRANSF_TAG
+                        my = self.MY_CONSTANT
+                        lp = h_beam * 1.0
+                        self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_beam, h_beam,
+                                                  hingeModel=eleHinge)
                     else:
                         lp = 1.0 * h_beam  # not important for linear static analysis
                         my = self.MY_CONSTANT
@@ -924,6 +964,28 @@ class OpenSeesRun3D:
             # Y direction for recording the modal shapes
             nbays = len(self.i_d.spans_y)
 
+        # Get all node rags
+        nodes = op.getNodeTags()
+
+        # Check problem size (2D or 3D)
+        ndm = len(op.nodeCoord(nodes[0]))
+
+        # Initialize computation of total masses
+        if ndm == 3:
+            # 3D building
+            ndf_max = 6
+            total_mass = np.array([0] * 6)
+        else:
+            # 2D frame
+            ndf_max = 3
+            total_mass = np.array([0] * 3)
+
+        # Get the total masses
+        for node in nodes:
+            indf = len(op.nodeDisp(node))
+            for i in range(indf):
+                total_mass[i] += op.nodeMass(node, i + 1)
+
         # Compute the eigenvectors (solver)
         lam = None
         try:
@@ -945,6 +1007,12 @@ class OpenSeesRun3D:
 
         # Record stuff
         op.record()
+
+        # Results for each mode
+        mode_data = np.zeros((num_modes, 4))
+        mode_MPM = np.zeros((num_modes, ndf_max))
+        mode_L = np.zeros((num_modes, ndf_max))
+
         # Extract eigenvalues to appropriate arrays
         omega = []
         freq = []
@@ -953,6 +1021,39 @@ class OpenSeesRun3D:
             omega.append(np.sqrt(lam[m]))
             freq.append(np.sqrt(lam[m])/2/np.pi)
             period.append(2*np.pi/np.sqrt(lam[m]))
+            mode_data[m, :] = np.array([lam[m], omega[m], freq[m], period[m]])
+
+            # Compute L and gm
+            L = np.zeros((ndf_max, ))
+            gm = 0
+            for node in nodes:
+                V = op.nodeEigenvector(node, m + 1)
+                indf = len(op.nodeDisp(node))
+                for i in range(indf):
+                    Mi = op.nodeMass(node, i + 1)
+                    Vi = V[i]
+                    Li = Mi * Vi
+                    gm += Vi**2 * Mi
+                    L[i] += Li
+            mode_L[m, :] = L
+
+            # Compute MPM
+            MPM = np.zeros((ndf_max, ))
+            for i in range(ndf_max):
+                Li = L[i]
+                TMi = total_mass[i]
+                MPMi = Li**2
+                if gm > 0.0:
+                    MPMi = MPMi / gm
+                if TMi > 0.0:
+                    MPMi = MPMi / TMi * 100.0
+                MPM[i] = MPMi
+            mode_MPM[m, :] = MPM
+
+        # Get modal positions based on mass participation
+        positions = np.argmax(mode_MPM, axis=1)
+        # Take the first two, as for symmetric structures higher modes are not so important
+        positions = positions[:2]
 
         # Calculate the first modal shape
         modalShape = np.zeros((self.i_d.nst, 2))
@@ -962,11 +1063,11 @@ class OpenSeesRun3D:
             else:
                 nodetag = int(f"1{nbays+1}{st+1}")
             # First mode shape
-            modalShape[st, 0] = op.nodeEigenvector(nodetag, 1, 1)
+            modalShape[st, 0] = op.nodeEigenvector(nodetag, 1, int(positions[0] + 1))
             # Second mode shape
-            modalShape[st, 1] = op.nodeEigenvector(nodetag, 2, 2)
+            modalShape[st, 1] = op.nodeEigenvector(nodetag, 2, int(positions[1] + 1))
 
-        # Normalize the modal shapes (first two modes, most likely assocaited with X and Y directions unless there are
+        # Normalize the modal shapes (first two modes, most likely associated with X and Y directions unless there are
         # large torsional effects)
         modalShape = np.abs(modalShape) / np.max(np.abs(modalShape), axis=0)
 
@@ -988,6 +1089,12 @@ class OpenSeesRun3D:
             # Modal mass
             mstar[i] = (modalShape[:, i].transpose().dot(M)).dot(identity.transpose())
 
+        # Modify indices of modal properties as follows:
+        # index 0 = direction x
+        # index 1 = direction y
+        period = [period[i] for i in range(len(positions))]
+        gamma = [gamma[i] for i in range(len(positions))]
+        mstar = [mstar[i] for i in range(len(positions))]
         return period, modalShape, gamma, mstar
 
     def singlePush(self, ctrlNode, ctrlDOF, nSteps):
@@ -1263,26 +1370,27 @@ if __name__ == "__main__":
     from client.input import Input
     import pandas as pd
     import pickle
+    import sys
 
-    directory = Path.cwd().parents[1] / ".applications/LOSS Validation Manuscript/case21"
+    directory = Path.cwd().parents[1] / ".applications/LOSS Validation Manuscript/space"
 
     actionx = directory.parents[0] / "sample" / "actionx.csv"
     actiony = directory.parents[0] / "sample" / "actiony.csv"
-    csx = directory / "Cache/solution_cache_x.csv"
-    csy = directory / "Cache/solution_cache_y.csv"
-    csg = directory / "gravity_cs.csv"
-    input_file = directory.parents[0] / "case21/ipbsd_input.csv"
-    hinge_models = Path.cwd().parents[0] / "tempHinge.pickle"
-    direction = 0
+    csx = directory / "Cache/solution_cache_space_x.csv"
+    csy = directory / "Cache/solution_cache_space_y.csv"
+    csg = directory / "Cache/solution_cache_space_gr.csv"
+    input_file = directory.parents[0] / "space/ipbsd_input.csv"
+    # hinge_models = Path.cwd().parents[0] / "tempHinge.pickle"
+    direction = 1
     modalShape = [0.37, 0.64, 0.87, 1.]
 
     # Read the cross-section files
-    idx_x = 41
+    idx_x = 20
     idx_y = 20
 
     csx = pd.read_csv(csx, index_col=0).iloc[idx_x]
     csy = pd.read_csv(csy, index_col=0).iloc[idx_y]
-    csg = pd.read_csv(csg, index_col=0).iloc[0]
+    csg = pd.read_csv(csg, index_col=0).iloc[20]
 
     cs = {"x_seismic": csx, "y_seismic": csy, "gravity": csg}
 
@@ -1292,30 +1400,32 @@ if __name__ == "__main__":
     lat_action = list(actiony["Fi"])
 
     # Hinge models
-    with open(hinge_models, 'rb') as file:
-        hinge = pickle.load(file)
+    # with open(hinge_models, 'rb') as file:
+    #     hinge = pickle.load(file)
 
     hinge_elastic = {"x_seismic": None, "y_seismic": None, "gravity": None}
-    fstiff = 0.5
+    fstiff = 1.0
 
     # Read input data
     data = Input()
     data.read_inputs(input_file)
 
-    # analysis = OpenSeesRun3D(data, cs, hinge=hinge_elastic, direction=direction, fstiff=fstiff)
-    # results = analysis.elastic_analysis_3d(analysis=3, lat_action=lat_action, grav_loads=None)
+    analysis = OpenSeesRun3D(data, cs, hinge=hinge_elastic, direction=direction, fstiff=fstiff)
+    results = analysis.elastic_analysis_3d(analysis=3, lat_action=lat_action, grav_loads=None)
 
-    # ma = OpenSeesRun3D(data, cs, hinge=hinge, direction=direction, fstiff=fstiff)
-    # ma.create_model()
+    # ma = OpenSeesRun3D(data, cs, hinge=hinge_elastic, direction=direction, fstiff=fstiff, system="space")
+    # ma.create_model(True)
     # ma.define_masses()
-    # model_periods, modalShape, gamma, mstar = ma.ma_analysis(3)
+    # model_periods, modalShape, gamma, mstar = ma.ma_analysis(2)
     # ma.wipe()
 
-    spo = OpenSeesRun3D(data, cs, fstiff, hinge=hinge, direction=direction)
-    spo.create_model()
-    # spo.define_masses()
-    topDisp, baseShear = spo.spo_analysis(load_pattern=2, mode_shape=modalShape)
-    spo.wipe()
+    print(results["x_seismic"]["Columns"])
+
+    # spo = OpenSeesRun3D(data, cs, fstiff, hinge=hinge, direction=direction)
+    # spo.create_model()
+    # # spo.define_masses()
+    # topDisp, baseShear = spo.spo_analysis(load_pattern=2, mode_shape=modalShape)
+    # spo.wipe()
 
     # spo_results = {"d": topDisp, "v": baseShear}
     # with open(f"temp_spo.pickle", 'wb') as handle:

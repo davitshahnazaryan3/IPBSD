@@ -343,7 +343,6 @@ class MomentCurvatureRC:
             self.m_target = float(m_target)
         if cover is not None:
             self.d = cover
-
         # Concrete properties
         # Assumption - parabolic stress-strain relationship for the concrete
         # concrete elasticity modulus MPa
@@ -398,7 +397,6 @@ class MomentCurvatureRC:
                 # compressed section height optimization - make a good guess, otherwise convergence won't be achieved
                 c = 0.05
                 c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100, xtol=1e-4)))
-
                 # Stop analysis if RunTimeWarning is caught (i.e. no convergence)
                 if math.isnan(self.mi):
                     # Check if c initial should be modified, as the analysis stopped prematurely

@@ -6,8 +6,8 @@ performs design to spectral and vice-versa transformations
 class Transformations:
     def __init__(self, data, theta_max, a_max):
         """
-        initialize
-        :param data: class                          Processed input data
+        Initialize
+        :param data: object                         Processed input data
         :param theta_max: float                     PSD, [-]
         :param a_max: float                         PFA, [g]
         """
@@ -35,8 +35,7 @@ class Transformations:
             for s in range(storey + 1):
                 # Storey height with respect to ground 0
                 table[st_tag]['H'] = h[s] + table[st_tag]['H']
-                # Masses lumped at each storey level for each seismic frame
-                table[st_tag]['m'] = self.data.masses[storey] / self.data.n_seismic
+
             # Lateral displacements
             table[st_tag]['delta'] = o_th * self.theta_max * table[st_tag]['H'] * (4 * Hn - table[st_tag]['H']) / (
                         4 * Hn - h[0])
@@ -58,7 +57,6 @@ class Transformations:
         return table, phi, deltas
 
     def get_modal_parameters(self, phi):
-        # TODO, does not seem like this method has a use
         """
         gets modal parameters
         :param phi: array                   1st mode shape
@@ -72,7 +70,7 @@ class Transformations:
 
     def get_design_values(self, deltas):
         """
-        gets the design spectral values corresponding to IDR and PFA
+        gets the design spectral values corresponding to PSD and PFA
         :param deltas: array                Storey displacements
         :return: float, float               Design spectral displacement and acceleration
         """

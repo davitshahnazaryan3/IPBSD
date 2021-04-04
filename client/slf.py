@@ -36,7 +36,10 @@ class SLF:
         self.DIRECTION = 1
 
     def slfs(self):
-        # Check whether a .csv or .pickle is provided
+        """
+        Check whether a .csv or .pickle is provided
+        :return: None
+        """
         for file in os.listdir(self.slfDirectory):
             if not os.path.isdir(self.slfDirectory / file) and (file.endswith(".csv") or file.endswith(".xlsx")):
                 func = self.slfs_csv()
@@ -92,7 +95,7 @@ class SLF:
                     loss = loss / maxCost
 
                 # Assumption: typical storey SLFs are the same
-                func = {"y": {}, "interpolation": {}}
+                func = {"y": {}, "interpolation": {}, "edp_interpolation": {}}
 
                 for i in range(ngroups):
                     # Select group name
@@ -101,6 +104,7 @@ class SLF:
                     # Initialize
                     func["y"][group] = {}
                     func["interpolation"][group] = {}
+                    func["edp_interpolation"][group] = {}
                     for st in range(self.nst):
                         if st != 0 and st != self.nst - 1:
                             st_id = 1
@@ -112,6 +116,7 @@ class SLF:
                         edp = edps_array[:, i + ngroups * st_id]
                         func["y"][group][st] = max(l) * self.y_sls
                         func["interpolation"][group][st] = interp1d(l, edp)
+                        func["edp_interpolation"][group][st] = interp1d(edp, l)
 
                 return func
 
@@ -193,6 +198,7 @@ class SLF:
                                                                             "edp": df[key]["edp"]}
                             pfa = df[key]["edp"]
                             maxCost += max(loss)
+
                 # PSD-sensitive components
                 else:
                     story = str_list[-2][-1]
@@ -293,7 +299,7 @@ class SLF:
                             slf_functions[j][k][st] += loss / factor
 
         # SLF interpolation functions and ELRs
-        func = {"y": {}, "interpolation": {}}
+        func = {"y": {}, "interpolation": {}, "edp_interpolation": {}}
         for i in slf_functions:
             if i == "PFA_NS" or i == "PFA":
                 edp = pfa
@@ -305,12 +311,16 @@ class SLF:
             func["y"][i] = {}
             # Interpolation function for edp vs elr
             func["interpolation"][i] = {}
+            # Interpolation function for elr vs edp
+            func["edp_interpolation"][i] = {}
 
             for k in slf_functions[i]:
                 func["y"][i][k] = {}
                 func["interpolation"][i][k] = {}
+                func["edp_interpolation"][i][k] = {}
                 for st in slf_functions[i][k]:
                     func["y"][i][k][st] = max(slf_functions[i][k][st]) * self.y_sls
                     func["interpolation"][i][k][st] = interp1d(slf_functions[i][k][st], edp)
+                    func["edp_interpolation"][i][k][st] = interp1d(edp, slf_functions[i][k][st])
 
         return func, SLFs

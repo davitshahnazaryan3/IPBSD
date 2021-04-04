@@ -33,8 +33,8 @@ class Hazard:
         k0 = self.coef[0]
         k1 = self.coef[1]
         k2 = self.coef[2]
-        H = 1/np.array(self.return_period)
-        p = 1/(1+2*k2*(np.power(self.beta_al, 2)))
+        H = 1 / np.array(self.return_period)
+        p = 1 / (1 + 2*k2*(np.power(self.beta_al, 2)))
         lambdaLS = np.sqrt(p) * k0 ** (1 - p) * H ** p * np.exp(0.5 * p * np.power(k1, 2) * (np.power(self.beta_al, 2)))
         PGA = np.exp((-k1 + np.sqrt(k1 ** 2 - 4 * k2 * np.log(lambdaLS / k0))) / 2 / k2)
 

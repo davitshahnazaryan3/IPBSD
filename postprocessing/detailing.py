@@ -312,11 +312,12 @@ class Detailing:
         designs gravity elements using demands from ELFM and optimal solution, uses moment_curvature_rc
         :return: dict                           Designed element details from the moment-curvature relationship
         """
-        # TODO, assumption, all beams independent of direction within a storey are of the same section
-        # Get only the peak values for moments and moment/axial forces for beams and columns
+        # Demands on all structural elements
         demands = self.demands
-        b = np.zeros((self.nst, 4))
-        c = np.zeros((self.nst, 2))
+        # Get only the peak values for moments and moments for beams
+        # Assumption: all beams independent of direction within a storey are of the same section
+        b_pos = np.zeros((self.nst, 2))
+        b_neg = np.zeros((self.nst, 2))
         for st in range(self.nst):
             cnt = 0
             for eletype in demands["x"]:
@@ -325,8 +326,17 @@ class Detailing:
                     for s in demands["x"][eletype]["M"]:
                         tempx = np.max(np.abs(demands["x"][eletype]["M"][s][st, :, :]))
                         tempy = np.max(np.abs(demands["y"][eletype]["M"][s][st, :, :]))
-                        b[st][cnt] = max(tempx, tempy)
-                        cnt += 1
+                        if s == "Pos":
+                            b_pos[st][cnt] = max(tempx, tempy)
+                        else:
+                            b_neg[st][cnt] = max(tempx, tempy)
+
+                    cnt += 1
+
+        # Demands on central/gravity columns. Get only the peak demands
+        # Assumption: Columns within a storey are the same within the storey
+        c = np.zeros((self.nst, 2))
+        for st in range(self.nst):
             # Columns
             col_x = np.max(np.abs(demands["x"]["Columns"]["M"][st, :, :]))
             col_y = np.max(np.abs(demands["y"]["Columns"]["M"][st, :, :]))
@@ -340,96 +350,129 @@ class Detailing:
                 c[st][1] = np.abs(demands["y"]["Columns"]["N"][st, idxs[0], idxs[1]])
 
         # Maximum moment demands for beams at each storey level
-        beam_demands = np.max(b, axis=0)
+        # Different beams along each of the directions
+        beam_demands_pos = b_pos
+        beam_demands_neg = b_neg
+
         # Column demand at each storey level. Moment; Axial load
         column_demands = c
 
         # Initialize hinge models
-        model = {"Beams": {}, "Columns": {}}
-        hinge_models = {"Beams": {}, "Columns": {}}
+        model = {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}
+        hinge_models = {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}
 
+        # Design of beams
         for st in range(self.nst):
-            m_target = beam_demands[st]
+            # Initialize for each storey
+            model["Beams"]["Pos"][f"S{st + 1}"] = {"x": {}, "y": {}}
+            model["Beams"]["Neg"][f"S{st + 1}"] = {"x": {}, "y": {}}
+            hinge_models["Beams"]["Pos"][f"S{st + 1}"] = {"x": {}, "y": {}}
+            hinge_models["Beams"]["Neg"][f"S{st + 1}"] = {"x": {}, "y": {}}
+
+            # Along x direction for space systems
+            m_target_pos = beam_demands_pos[st][0]
+            m_target_neg = beam_demands_neg[st][0]
             b = self.sections[f"bx{st + 1}"]
             h = self.sections[f"hx{st + 1}"]
+            model_pos, hinge_pos, model_neg, hinge_neg = self.get_details(b, h, m_target_pos, m_target_neg)
+            model["Beams"]["Pos"][f"S{st + 1}"]["x"] = model_pos
+            model["Beams"]["Neg"][f"S{st + 1}"]["x"] = model_neg
+            hinge_models["Beams"]["Pos"][f"S{st + 1}"]["x"] = hinge_pos
+            hinge_models["Beams"]["Neg"][f"S{st + 1}"]["x"] = hinge_neg
 
-            AsTotal, distributions = self.get_rebar_distribution(b, h, self.rebar_cover, m_target, m_target)
-
-            mphiPos = MomentCurvatureRC(b, h, m_target, d=self.rebar_cover, young_mod_s=self.young_mod_s,
-                                        k_hard=self.k_hard, AsTotal=AsTotal, distAs=distributions)
-            model["Beams"][f"S{st + 1}"] = mphiPos.get_mphi()
-            hinge_models["Beams"][f"S{st + 1}"] = model["Beams"][f"S{st + 1}"][4]
-
-            model_temp = self.ensure_local_ductility(b, h, model["Beams"][f"S{st + 1}"][0]["reinforcement"], mphiPos,
-                                                     None, None, eletype="Beam",
-                                                     oppReinf=model["Beams"][f"S{st + 1}"][0]["reinforcement"],
-                                                     pflag=False)
-
-            if model_temp is not None:
-                model["Beams"][f"S{st + 1}"] = model_temp
-                hinge_models["Beams"][f"S{st + 1}"] = model_temp[4]
+            # Detail elements along Y direction for space systems
+            m_target_pos = beam_demands_pos[st][1]
+            m_target_neg = beam_demands_neg[st][1]
+            b = self.sections[f"by{st + 1}"]
+            h = self.sections[f"hy{st + 1}"]
+            model_pos, hinge_pos, model_neg, hinge_neg = self.get_details(b, h, m_target_pos, m_target_neg)
+            model["Beams"]["Pos"][f"S{st + 1}"]["y"] = model_pos
+            model["Beams"]["Neg"][f"S{st + 1}"]["y"] = model_neg
+            hinge_models["Beams"]["Pos"][f"S{st + 1}"]["y"] = hinge_pos
+            hinge_models["Beams"]["Neg"][f"S{st + 1}"]["y"] = hinge_neg
 
         # Design of columns
         for st in range(self.nst):
-                b = h = self.sections[f"hi{st + 1}"]
-                # Design bending moment
-                m_target = column_demands[st][0]
-                # Design compressive internal axial force
-                nc_design = column_demands[st][1]
+            b = h = self.sections[f"hi{st + 1}"]
+            # Design bending moment
+            m_target_pos = column_demands[st][0]
+            # Design compressive internal axial force
+            nc_design = column_demands[st][1]
 
-                # Number of reinforcement layers based on section height (may be adjusted manually)
-                nlayers = 0 if h <= 0.3 else 1 if (0.3 < h <= 0.55) else 2
-                # Assuming contraflexure at 0.6 of height
-                z = 0.6 * self.heights[st]
+            # Number of reinforcement layers based on section height (may be adjusted manually)
+            nlayers = 0 if h <= 0.3 else 1 if (0.3 < h <= 0.55) else 2
+            # Assuming contraflexure at 0.6 of height
+            z = 0.6 * self.heights[st]
 
-                mphi = MomentCurvatureRC(b, h, m_target, length=z, p=-nc_design, nlayers=nlayers,
-                                         d=self.rebar_cover,
-                                         young_mod_s=self.young_mod_s, k_hard=self.k_hard,
-                                         soft_method="Collins")
+            mphi = MomentCurvatureRC(b, h, m_target_pos, length=z, p=-nc_design, nlayers=nlayers, d=self.rebar_cover,
+                                     young_mod_s=self.young_mod_s, k_hard=self.k_hard, soft_method="Collins")
 
-                model["Columns"][f"S{st + 1}"] = mphi.get_mphi()
+            model["Columns"][f"S{st + 1}"] = mphi.get_mphi()
 
-                hinge_models["Columns"][f"S{st + 1}"] = model["Columns"][f"S{st + 1}"][4]
+            hinge_models["Columns"][f"S{st + 1}"] = model["Columns"][f"S{st + 1}"][4]
 
-                '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
-                model_temp = self.ensure_local_ductility(b, h, model["Columns"][f"S{st + 1}"][0]["reinforcement"], mphi,
-                                                         None, None, eletype="Column", pflag=False)
+            '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
+            model_temp = self.ensure_local_ductility(b, h, model["Columns"][f"S{st + 1}"][0]["reinforcement"], mphi,
+                                                     None, None, eletype="Column", pflag=False)
 
-                if model_temp is not None:
-                    model["Columns"][f"S{st + 1}"] = model_temp
-                    hinge_models["Columns"][f"S{st + 1}"] = model_temp[4]
+            if model_temp is not None:
+                model["Columns"][f"S{st + 1}"] = model_temp
+                hinge_models["Columns"][f"S{st + 1}"] = model_temp[4]
 
         # Get hinge model information in DataFrame
-        columns = ["Element", "Storey", "b", "h", "coverNeg", "coverPos", "lp", "phi1Neg", "phi2Neg", "phi3Neg",
-                   "m1Neg", "m2Neg", "m3Neg", "phi1", "phi2", "phi3", "m1", "m2", "m3"]
+        columns = ["Element", "Storey", "Direction", "b", "h", "coverNeg", "coverPos", "lp", "phi1Neg", "phi2Neg",
+                   "phi3Neg", "m1Neg", "m2Neg", "m3Neg", "phi1", "phi2", "phi3", "m1", "m2", "m3"]
 
-        numericCols = ["Storey", "b", "h", "coverNeg", "coverPos", "lp", "phi1Neg", "phi2Neg", "phi3Neg",
+        numericCols = ["Storey", "b", "h", "Direction", "coverNeg", "coverPos", "lp", "phi1Neg", "phi2Neg", "phi3Neg",
                        "m1Neg", "m2Neg", "m3Neg", "phi1", "phi2", "phi3", "m1", "m2", "m3"]
 
         hinge_models = pd.DataFrame(columns=columns)
         for ele in model:
             m = model[ele]
-            for j in m:
-                lp = m[j][0]["lp"]
-                st = int(j[1])
+            if ele.lower() == "beams":
+                for j in m["Pos"]:
+                    lp = m["Pos"][j]["x"][0]["lp"]
+                    st = int(j[1])
+                    # Along X direction
+                    temp = np.array([ele[:-1], st, 0, model[ele]["Neg"][j]["x"][0]["b"],
+                                     model[ele]["Neg"][j]["x"][0]["h"], model[ele]["Neg"][j]["x"][0]["cover"],
+                                     model[ele]["Pos"][j]["x"][0]["cover"], lp])
+                    phiNeg = model[ele]["Neg"][j]["x"][4]["phi"][1:]
+                    mNeg = model[ele]["Neg"][j]["x"][4]["m"][1:]
+                    phiPos = model[ele]["Pos"][j]["x"][4]["phi"][1:]
+                    mPos = model[ele]["Pos"][j]["x"][4]["m"][1:]
 
-                if ele.lower() == "beams":
-                    temp = np.array([ele[:-1], st, model[ele][j][0]["b"], model[ele][j][0]["h"],
-                                     model[ele][j][0]["cover"], model[ele][j][0]["cover"], lp])
-                    phiNeg = model[ele][j][4]["phi"][1:]
-                    mNeg = model[ele][j][4]["m"][1:]
-                    phiPos = model[ele][j][4]["phi"][1:]
-                    mPos = model[ele][j][4]["m"][1:]
-                else:
-                    temp = np.array([ele[:-1], st, model[ele][j][0]["b"], model[ele][j][0]["h"],
+                    data = np.concatenate((temp, phiNeg, mNeg, phiPos, mPos)).reshape(1, len(columns))
+                    # Concatenate into the DataFrame
+                    hinge_models = hinge_models.append(pd.DataFrame(data=data, columns=columns), ignore_index=True)
+
+                    # Along Y direction
+                    lp = m["Pos"][j]["y"][0]["lp"]
+                    temp = np.array([ele[:-1], st, 1, model[ele]["Neg"][j]["y"][0]["b"],
+                                     model[ele]["Neg"][j]["y"][0]["h"], model[ele]["Neg"][j]["y"][0]["cover"],
+                                     model[ele]["Pos"][j]["y"][0]["cover"], lp])
+                    phiNeg = model[ele]["Neg"][j]["y"][4]["phi"][1:]
+                    mNeg = model[ele]["Neg"][j]["y"][4]["m"][1:]
+                    phiPos = model[ele]["Pos"][j]["y"][4]["phi"][1:]
+                    mPos = model[ele]["Pos"][j]["y"][4]["m"][1:]
+
+                    data = np.concatenate((temp, phiNeg, mNeg, phiPos, mPos)).reshape(1, len(columns))
+                    # Concatenate into the DataFrame
+                    hinge_models = hinge_models.append(pd.DataFrame(data=data, columns=columns), ignore_index=True)
+
+            else:
+                for j in m:
+                    lp = m[j][0]["lp"]
+                    st = int(j[1])
+                    temp = np.array([ele[:-1], st, 0, model[ele][j][0]["b"], model[ele][j][0]["h"],
                                      model[ele][j][0]["cover"], model[ele][j][0]["cover"], lp])
                     phiNeg = phiPos = model[ele][j][4]["phi"][1:]
                     mNeg = mPos = model[ele][j][4]["m"][1:]
 
-                data = np.concatenate((temp, phiNeg, mNeg, phiPos, mPos)).reshape(1, len(columns))
+                    data = np.concatenate((temp, phiNeg, mNeg, phiPos, mPos)).reshape(1, len(columns))
 
-                # Concatenate into the DataFrame
-                hinge_models = hinge_models.append(pd.DataFrame(data=data, columns=columns), ignore_index=True)
+                    # Concatenate into the DataFrame
+                    hinge_models = hinge_models.append(pd.DataFrame(data=data, columns=columns), ignore_index=True)
 
         for i in numericCols:
             hinge_models[i] = pd.to_numeric(hinge_models[i])
@@ -516,7 +559,7 @@ class Detailing:
                     warnings["MIN"]["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"] = self.WARN_ELE_MIN
                     if d_temp is not None:
                         data["Beams"]["Neg"][f"S{st + 1}B{bay + 1}"] = d_temp
-                        hinge_models["Beams"]["Pos"][f"S{st+1}B{bay+1}"] = d_temp[4]
+                        hinge_models["Beams"]["Neg"][f"S{st+1}B{bay+1}"] = d_temp[4]
 
             else:
                 # Design bending moment
@@ -628,6 +671,49 @@ class Detailing:
         hinge_models = self.model_to_df(data)
 
         return data, hinge_models, mu_c, mu_f, warnings
+
+    def get_details(self, b, h, m_pos, m_neg):
+        """
+        Gets details
+        Note: Update all detailing functions to use this one
+        :param b: float                     Widths of element
+        :param h: float                     Height of element
+        :param m_pos: float                 Positive bending moment
+        :param m_neg: float                 Negative bending moment
+        :return: dictionaries               Details
+        """
+        AsTotal, distributions = self.get_rebar_distribution(b, h, self.rebar_cover, m_pos, m_neg)
+        # Positive direction
+        mphiPos = MomentCurvatureRC(b, h, m_pos, d=self.rebar_cover, young_mod_s=self.young_mod_s,
+                                    k_hard=self.k_hard, AsTotal=AsTotal, distAs=distributions)
+        model_pos = mphiPos.get_mphi()
+
+        # Negative direction
+        mphiNeg = MomentCurvatureRC(b, h, m_neg, d=self.rebar_cover, young_mod_s=self.young_mod_s,
+                                    k_hard=self.k_hard, AsTotal=AsTotal, distAs=distributions[::-1])
+        model_neg = mphiNeg.get_mphi()
+
+        # Update the hinge models
+        hinge_models_pos = model_pos
+        hinge_models_neg = model_neg
+
+        # Ensure local ductility in positive direction
+        model_temp = self.ensure_local_ductility(b, h, model_pos[0]["reinforcement"], mphiPos, None, None,
+                                                 eletype="Beam", oppReinf=model_neg[0]["reinforcement"], pflag=False)
+
+        if model_temp is not None:
+            model_pos = model_temp
+            hinge_models_pos = model_temp[4]
+
+        # Ensure local ductility in negative direction
+        model_temp = self.ensure_local_ductility(b, h, model_neg[0]["reinforcement"], mphiNeg, None, None,
+                                                 eletype="Beam", oppReinf=model_pos[0]["reinforcement"], pflag=False)
+
+        if model_temp is not None:
+            model_neg = model_temp
+            hinge_models_neg = model_temp[4]
+
+        return model_pos, hinge_models_pos, model_neg, hinge_models_neg
 
     def model_to_df(self, model):
         """

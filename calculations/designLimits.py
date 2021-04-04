@@ -6,7 +6,7 @@ from client.slf import SLF
 
 
 class DesignLimits:
-    def __init__(self, slfDirectory, y, nst, flag3d=False, replCost=None):
+    def __init__(self, slfDirectory, y, nst, flag3d=False, replCost=None, eal_corrections=True):
         """
         Initialize SLF reading
         :param slfDirectory: str            Directory of SLFs derived via SLF Generator
@@ -14,6 +14,7 @@ class DesignLimits:
         :param nst: int                     Number of stories
         :param flag3d: bool                 False for "2d", True for "3d"
         :param replCost: float              Replacement cost of the entire building
+        :param eal_corrections: bool        Perform EAL corrections
         """
         self.slfDirectory = slfDirectory
         self.y = y
@@ -23,6 +24,7 @@ class DesignLimits:
         self.a_max = None                   # Peak floor acceleration in g
         self.SLFsCache = None
         self.replCost = replCost
+        self.eal_corrections = eal_corrections
         self.get_design_edps()
         
     def get_design_edps(self):
@@ -50,7 +52,7 @@ class DesignLimits:
             for k in slfs["y"][i]:
                 edp_limits[group][k] = np.array([])
 
-                # Story
+                # Storey
                 for st in slfs["y"][i][k]:
                     # ELRs
                     y = slfs["y"][i][k][st]
@@ -78,3 +80,38 @@ class DesignLimits:
         for i in range(len(self.theta_max)):
             self.theta_max[i] = round(min(edp_limits["PSD"][f"dir{i+1}"]), 4)
             self.a_max[i] = round(min(edp_limits["PFA"][f"dir{i+1}"]), 2)
+
+        # If EAL corrections need to be performed, the ELRs and EAL need to be recalculated
+        if self.eal_corrections:
+            y_perf_group = {}
+            y_total_slf = np.zeros((2, ))
+            y_total_sls = np.zeros((2, ))
+
+            # Performance group
+            for i in slfs["y"]:
+                if i == "PFA_NS" or i == "PFA":
+                    group = "PFA"
+                else:
+                    group = i
+
+                y_perf_group[group] = {}
+
+                # Direction
+                for k in slfs["y"][i]:
+                    y_perf_group[group][k] = np.array([])
+                    if group == "PFA":
+                        edp = self.a_max[int(k[-1]) - 1]
+                    else:
+                        edp = self.theta_max[int(k[-1]) - 1]
+
+                    # Storey
+                    for st in slfs["y"][i][k]:
+                        y_total_slf[int(k[-1]) - 1] += slfs["y"][i][k][st] / self.y
+
+                        # SLF interpolation functions
+                        s = slfs["edp_interpolation"][i][k][st]
+                        y_perf_group[group][k] = np.append(y_perf_group[group][k], float(s(edp)))
+                        y_total_sls[int(k[-1]) - 1] += float(s(edp))
+
+            # Recalculate ELR at SLS
+            self.y = sum(y_total_sls) / sum(y_total_slf)

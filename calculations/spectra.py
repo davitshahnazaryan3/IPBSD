@@ -22,7 +22,6 @@ class Spectra:
         self.sa, self.sd = self.get_spectra()
 
     def get_spectra(self):
-        # todo, in future, the function should be flexible to generate as many limit state spectra as necessary
         """
         Gets serviceability limit state spectra (SLS)
         :return: lists              Spectral accelerations and spectral displacements associated with the limit state
@@ -42,12 +41,10 @@ class Spectra:
             k0 = interpolator_k0(T_val)
             k1 = interpolator_k1(T_val)
             k2 = interpolator_k2(T_val)
-            # Compute the acceleration
-            temp = float(np.exp((-k1 + np.sqrt(k1 ** 2 - 4 * k2 * np.log(self.lam / k0))) / 2 / k2))
-            # Assign the acceleration in [g]
-            s[i] = temp
+            # Compute the acceleration, [g]
+            s[i] = float(np.exp((-k1 + np.sqrt(k1 ** 2 - 4 * k2 * np.log(self.lam / k0))) / 2 / k2))
 
             if T_val > 0.0:
                 # Assign the displacement in [cm]
-                d[i] = 100 * temp * 9.81 * (float(T_val) / 2 / np.pi) ** 2
+                d[i] = 100 * s[i] * 9.81 * (float(T_val) / 2 / np.pi) ** 2
         return s, d
