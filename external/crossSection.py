@@ -182,10 +182,10 @@ class CrossSection:
                 problem.addVariable(f'he{i+1}', np.array([self.solution_perp[f"he{i+1}"]]))
             else:
                 # A case where only one direction is being considered
-                problem.addVariable(f'he{i+1}', np.arange(0.25, 0.85, 0.05))
-            problem.addVariable(f'b{i+1}', np.arange(0.25, 0.55, 0.05))
-            problem.addVariable(f'h{i+1}', np.arange(0.40, 0.85, 0.05))
-            problem.addVariable(f'hi{i+1}', np.arange(0.25, 0.85, 0.05))
+                problem.addVariable(f'he{i+1}', np.arange(0.25, 1.0, 0.05))
+            problem.addVariable(f'b{i+1}', np.arange(0.25, 1.0, 0.05))
+            problem.addVariable(f'h{i+1}', np.arange(0.40, 1.0, 0.05))
+            problem.addVariable(f'hi{i+1}', np.arange(0.25, 1.0, 0.05))
             ele_types.append(f'he{i+1}')
             ele_types.append(f'hi{i+1}')
             ele_types.append(f'b{i+1}')

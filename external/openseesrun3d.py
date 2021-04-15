@@ -443,7 +443,6 @@ class OpenSeesRun3D:
 
         else:
             eiz = elastic_modulus * iz
-
             # Curvatures at yield
             phiyNeg = phiyPos = my / eiz
 
@@ -652,7 +651,6 @@ class OpenSeesRun3D:
                 for st in range(1, int(self.i_d.nst + 1)):
                     # Parameters for elastic static analysis
                     previous_st = st - 1
-
                     # Columns of seismic frame along x direction
                     if ybay == 1 or ybay == nbays_y + 1:
                         # External columns
@@ -694,7 +692,7 @@ class OpenSeesRun3D:
 
                     # Column element tag
                     et = int(f"1{xbay}{ybay}{st}")
-                    
+
                     # End nodes of column
                     inode = int(f"{xbay}{ybay}{previous_st}")
                     jnode = int(f"{xbay}{ybay}{st}")
@@ -724,7 +722,8 @@ class OpenSeesRun3D:
                         # Auxiliary parameters not important for linear static analysis
                         gt = self.COL_TRANSF_TAG
                         my = self.MY_CONSTANT
-                        lp = h_col * 1.0
+                        # Plastic hinge length is not important
+                        lp = h_col * 0.7
                         self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_col, h_col,
                                                   hingeModel=eleHinge)
 
@@ -804,9 +803,10 @@ class OpenSeesRun3D:
                         # Auxiliary parameters not important for linear static analysis
                         gt = self.BEAM_X_TRANSF_TAG
                         my = self.MY_CONSTANT
-                        lp = h_beam * 1.0
+                        lp = h_beam * 0.7
                         self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_beam, h_beam,
                                                   hingeModel=eleHinge)
+
                     else:
                         lp = 1.0 * h_beam  # not important for linear static analysis
                         my = self.MY_CONSTANT
@@ -871,9 +871,10 @@ class OpenSeesRun3D:
                         # Auxiliary parameters not important for linear static analysis
                         gt = self.BEAM_Y_TRANSF_TAG
                         my = self.MY_CONSTANT
-                        lp = h_beam * 1.0
+                        lp = h_beam * 0.7
                         self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_beam, h_beam,
                                                   hingeModel=eleHinge)
+
                     else:
                         lp = 1.0 * h_beam  # not important for linear static analysis
                         my = self.MY_CONSTANT
@@ -1388,30 +1389,40 @@ if __name__ == "__main__":
     idx_x = 20
     idx_y = 20
 
-    csx = pd.read_csv(csx, index_col=0).iloc[idx_x]
-    csy = pd.read_csv(csy, index_col=0).iloc[idx_y]
-    csg = pd.read_csv(csg, index_col=0).iloc[20]
-
+    csx = pd.read_csv(csx, index_col=0).iloc[680]
+    csy = pd.read_csv(csy, index_col=0).iloc[680]
+    csg = pd.read_csv(csg, index_col=0).iloc[680]
+    csy["hi1"] = 0.55
+    csy["h1"] = 0.8
+    csy["hi2"] = 0.55
+    csy["h2"] = 0.8
+    csy["hi3"] = 0.5
+    csy["h3"] = 0.75
+    csy["hi4"] = 0.5
+    csy["h4"] = 0.75
     cs = {"x_seismic": csx, "y_seismic": csy, "gravity": csg}
 
     actionx = pd.read_csv(actionx)
     actiony = pd.read_csv(actiony)
 
-    lat_action = list(actiony["Fi"])
+    lat_action = [267, 465, 633, 628]
 
     # Hinge models
-    # with open(hinge_models, 'rb') as file:
-    #     hinge = pickle.load(file)
+    with open(Path.cwd().parents[1] / "tests/temp.pickle", 'rb') as file:
+        data = pickle.load(file)
+    hinge = data["hinge"]
+    cs = data["sol"]
 
     hinge_elastic = {"x_seismic": None, "y_seismic": None, "gravity": None}
-    fstiff = 1.0
+    fstiff = 0.5
 
     # Read input data
     data = Input()
     data.read_inputs(input_file)
 
-    analysis = OpenSeesRun3D(data, cs, hinge=hinge_elastic, direction=direction, fstiff=fstiff)
-    results = analysis.elastic_analysis_3d(analysis=3, lat_action=lat_action, grav_loads=None)
+    # analysis = OpenSeesRun3D(data, cs, hinge=hinge_elastic, direction=direction, fstiff=fstiff, system="space",
+    #                          pflag=True)
+    # results = analysis.elastic_analysis_3d(analysis=3, lat_action=lat_action, grav_loads=None)
 
     # ma = OpenSeesRun3D(data, cs, hinge=hinge_elastic, direction=direction, fstiff=fstiff, system="space")
     # ma.create_model(True)
@@ -1419,14 +1430,13 @@ if __name__ == "__main__":
     # model_periods, modalShape, gamma, mstar = ma.ma_analysis(2)
     # ma.wipe()
 
-    print(results["x_seismic"]["Columns"])
+    modalShape = [.3, .58, .85, 1.]
+    spo = OpenSeesRun3D(data, cs, fstiff, hinge=hinge, direction=direction, system="space")
+    spo.create_model()
+    # spo.define_masses()
+    topDisp, baseShear = spo.spo_analysis(load_pattern=2, mode_shape=modalShape)
+    spo.wipe()
 
-    # spo = OpenSeesRun3D(data, cs, fstiff, hinge=hinge, direction=direction)
-    # spo.create_model()
-    # # spo.define_masses()
-    # topDisp, baseShear = spo.spo_analysis(load_pattern=2, mode_shape=modalShape)
-    # spo.wipe()
-
-    # spo_results = {"d": topDisp, "v": baseShear}
-    # with open(f"temp_spo.pickle", 'wb') as handle:
-    #     pickle.dump(spo_results, handle)
+    spo_results = {"d": topDisp, "v": baseShear}
+    with open(f"temp_spo.pickle", 'wb') as handle:
+        pickle.dump(spo_results, handle)

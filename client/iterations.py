@@ -141,40 +141,47 @@ class Iterations:
 
         yint = xint * slope
 
-        if d < 0:
-            # Determinant is negative, look for an alternative fitting approach
-            print("[WARNING SPO FITTING] Using an approximate method of fitting, as a solution is not feasible!")
-            f = lambda x: (0.5 * (Vmax + x[0]) * (dmax - x[0] / x[1]) - area_pl)
-            x0 = [m2, slope]
-            sol = optimize.least_squares(f, x0)
-            yint = min(sol.x[0], 0.85 * Vmax)
-            xint = yint / sol.x[1]
-        else:
-            # Force Vy not be larger than maximum V
-            print("[WARNING SPO FITTING] Using an approximate method of fitting, as a solution is not feasible!")
-            yint = min(yint, 0.99 * Vmax)
+        # Determinant is negative, look for an alternative fitting approach
+        # print("[WARNING SPO FITTING] Using an approximate method of fitting, as a solution is not feasible!")
+        # f = lambda x: (0.5 * (Vmax + x[0]) * (dmax - x[0] / x[1]) - area_pl)
+        # x0 = [m2, slope]
+        # sol = optimize.least_squares(f, x0)
+        # yint = min(sol.x[0], 0.85 * Vmax)
+        # xint = yint / sol.x[1]
 
-        # # Find point of plasticity initiation
-        # stf0 = (y[1] - y[0]) / (x[1] - x[0])
-        # for i in range(1, len(x)):
-        #     stf1 = (y[i + 1] - y[i]) / (x[i + 1] - x[i])
-        #     if stf1 <= 0.5 * stf0:
-        #         break
-        #     else:
-        #         stf0 = stf1
-        #
-        # if i == getIndex(Vmax, y):
-        #     i = i - 5
-        #
-        # dPl = x[i]
-        # mPl = y[i]
-        #
-        # a0, b0 = getEquation((d1, m1), (d2, m2))
-        # a1, b1 = getEquation((dPl, mPl), (dmax, Vmax))
-        #
-        # # Find intersection point, i.e. the nominal yield point
-        # xint = (b1 - b0) / (a0 - a1)
-        # yint = a0 * xint + b0
+        # if d < 0:
+        #     # Determinant is negative, look for an alternative fitting approach
+        #     print("[WARNING SPO FITTING] Using an approximate method of fitting, as a solution is not feasible!")
+        #     f = lambda x: (0.5 * (Vmax + x[0]) * (dmax - x[0] / x[1]) - area_pl)
+        #     x0 = [m2, slope]
+        #     sol = optimize.least_squares(f, x0)
+        #     yint = min(sol.x[0], 0.85 * Vmax)
+        #     xint = yint / sol.x[1]
+        # else:
+        #     # Force Vy not be larger than maximum V
+        #     yint = min(yint, 0.99 * Vmax)
+
+        # Find point of plasticity initiation
+        stf0 = (y[1] - y[0]) / (x[1] - x[0])
+        for i in range(1, len(x)):
+            stf1 = (y[i + 1] - y[i]) / (x[i + 1] - x[i])
+            if stf1 <= 0.85 * stf0:
+                break
+            else:
+                stf0 = stf1
+
+        if i == getIndex(Vmax, y):
+            i = i - 10
+
+        dPl = x[i]
+        mPl = y[i]
+
+        a0, b0 = getEquation((d1, m1), (d2, m2))
+        a1, b1 = getEquation((dPl, mPl), (dmax, Vmax))
+
+        # Find intersection point, i.e. the nominal yield point
+        xint = (b1 - b0) / (a0 - a1)
+        yint = a0 * xint + b0
 
         # Now, identify the residual strength point (here defined at V=0)
         yres = max(y[-1], yint * residual)
@@ -539,7 +546,7 @@ class Iterations:
 
         # Design elements of central/gravity elements if space systems are used - since they are part of the lateral
         # force resisting system
-        if detail_gravity:
+        if detail_gravity and self.flag3d:
             hinge_gravity = self.ipbsd.design_elements(gravity_demands, solution["gravity"], None, None,
                                                        cover=self.rebar_cover, direction=direction, gravity=True)
         else:
@@ -565,7 +572,7 @@ class Iterations:
                 self.ipbsd.design_elements(seismic_demands, solution, modes, dy, cover=self.rebar_cover,
                                            direction=direction)
             # Design elements of central/gravity elements if space systems are used
-            if detail_gravity:
+            if detail_gravity and self.flag3d:
                 hinge_gravity = self.ipbsd.design_elements(gravity_demands, solution["gravity"], None, None,
                                                            cover=self.rebar_cover, direction=direction, gravity=True)
 
@@ -1155,12 +1162,15 @@ class Iterations:
                     # TODO, issue when designing and detailing in momentcurvaturerc
 
                     modes_to_use = modes[direction] if self.flag3d else modes
+
                     phase_4 = self.iterate_phase_4(cy, dy, sa, period_range, opt_sol, modes_to_use, table_sls,
                                                    gravity_demands=demands_gravity, direction=idx)
+
                     forces = next(phase_4)
                     demands, dem_gr = next(phase_4)
                     details, new_hinge_model, hinge_gravity, hard_ductility, fract_ductility = next(phase_4)
                     warnMax, warnMin, warnings = next(phase_4)
+
                     # Update the gravity demands
                     demands_gravity[direction] = dem_gr
 
@@ -1209,7 +1219,7 @@ class Iterations:
                         opt_sol = solution
                         modes = m_temp
 
-                """Create an OpenSees model and run static pushoveriterate analysis.
+                """Create an OpenSees model and run static pushover - iterate analysis.
                 Acts as the first estimation of secant to yield period. Second step after initial modal analysis.
                 Here, the secant to yield period might vary from initial modal period. 
                 Therefore, we need to use the former one."""

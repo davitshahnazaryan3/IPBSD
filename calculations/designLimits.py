@@ -6,7 +6,7 @@ from client.slf import SLF
 
 
 class DesignLimits:
-    def __init__(self, slfDirectory, y, nst, flag3d=False, replCost=None, eal_corrections=True):
+    def __init__(self, slfDirectory, y, nst, flag3d=False, replCost=None, eal_corrections=True, perform_scaling=True):
         """
         Initialize SLF reading
         :param slfDirectory: str            Directory of SLFs derived via SLF Generator
@@ -15,6 +15,7 @@ class DesignLimits:
         :param flag3d: bool                 False for "2d", True for "3d"
         :param replCost: float              Replacement cost of the entire building
         :param eal_corrections: bool        Perform EAL corrections
+        :param perform_scaling: bool        Perform scaling of SLFs to replCost
         """
         self.slfDirectory = slfDirectory
         self.y = y
@@ -25,6 +26,7 @@ class DesignLimits:
         self.SLFsCache = None
         self.replCost = replCost
         self.eal_corrections = eal_corrections
+        self.perform_scaling = perform_scaling
         self.get_design_edps()
         
     def get_design_edps(self):
@@ -33,9 +35,9 @@ class DesignLimits:
         For a 3D building EDP limits will be calculated for each direction
         Non-directional SLFs and directional (corresponding to dir1 or dir2) will be summed
         """
-        slf = SLF(self.slfDirectory, self.y, self.nst, self.flag3d, self.replCost)
+        slf = SLF(self.slfDirectory, self.y, self.nst, self.flag3d, self.replCost, self.perform_scaling)
         slfs, self.SLFsCache = slf.slfs()
-
+        
         # Calculate the design limits of PSD and PFA beyond which EAL condition will not be met
         edp_limits = {}
         y_total = 0
@@ -77,9 +79,10 @@ class DesignLimits:
             n_dir = 1
         self.theta_max = np.zeros(n_dir)
         self.a_max = np.zeros(n_dir)
+
         for i in range(len(self.theta_max)):
-            self.theta_max[i] = round(min(edp_limits["PSD"][f"dir{i+1}"]), 4)
-            self.a_max[i] = round(min(edp_limits["PFA"][f"dir{i+1}"]), 2)
+            self.theta_max[i] = round(min(edp_limits["PSD"][f"dir{i+1}"]), 5)
+            self.a_max[i] = round(min(edp_limits["PFA"][f"dir{i+1}"]), 3)
 
         # If EAL corrections need to be performed, the ELRs and EAL need to be recalculated
         if self.eal_corrections:
@@ -106,12 +109,16 @@ class DesignLimits:
 
                     # Storey
                     for st in slfs["y"][i][k]:
-                        y_total_slf[int(k[-1]) - 1] += slfs["y"][i][k][st] / self.y
+                        if group == "PFA" and k == "dir2":
+                            # To avoid double counting PFA sensitive components
+                            pass
+                        else:
+                            y_total_slf[int(k[-1]) - 1] += slfs["y"][i][k][st] / self.y
 
-                        # SLF interpolation functions
-                        s = slfs["edp_interpolation"][i][k][st]
-                        y_perf_group[group][k] = np.append(y_perf_group[group][k], float(s(edp)))
-                        y_total_sls[int(k[-1]) - 1] += float(s(edp))
+                            # SLF interpolation functions
+                            s = slfs["edp_interpolation"][i][k][st]
+                            y_perf_group[group][k] = np.append(y_perf_group[group][k], float(s(edp)))
+                            y_total_sls[int(k[-1]) - 1] += float(s(edp))
 
             # Recalculate ELR at SLS
-            self.y = sum(y_total_sls) / sum(y_total_slf)
+            self.y = sum(y_total_sls[:n_dir]) / sum(y_total_slf[:n_dir])

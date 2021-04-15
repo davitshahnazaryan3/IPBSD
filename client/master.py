@@ -44,7 +44,7 @@ class Master:
         :param outputPath: str                      Outputs path
         :return None:
         """
-        self.data = Input()
+        self.data = Input(self.flag3d)
         self.data.read_inputs(input_file)
         self.coefs, self.hazard_data, self.original_hazard = self.data.read_hazard(hazard_file, outputPath)
 
@@ -101,16 +101,17 @@ class Master:
         s = Spectra(lam, self.coefs, self.hazard_data['T'])
         return s.sa, s.sd, s.T_RANGE
 
-    def get_design_values(self, slfDirectory, replCost=None, eal_corrections=True):
+    def get_design_values(self, slfDirectory, replCost=None, eal_corrections=True, perform_scaling=True):
         """
         gets the design values of IDR and PFA from the Storey-Loss-Functions
         :param slfDirectory: str                    Directory of SLFs derived via SLF Generator
         :param replCost: float                      Replacement cost of the entire building
         :param eal_corrections: bool                Perform EAL corrections
+        :param perform_scaling: bool                Perform scaling of SLFs to replCost
         :return: float, float                       Peak storey drift, (PSD) [-] and Peak floor acceleration, (PFA) [g]
         """
         y_sls = self.data.y[1]
-        dl = DesignLimits(slfDirectory, y_sls, self.data.nst, self.flag3d, replCost, eal_corrections)
+        dl = DesignLimits(slfDirectory, y_sls, self.data.nst, self.flag3d, replCost, eal_corrections, perform_scaling)
         slfsCache = dl.SLFsCache
         if eal_corrections:
             self.data.y[1] = dl.y
@@ -198,7 +199,7 @@ class Master:
 
             return n_seismic, masses
 
-        if self.data.configuration == "perimeter":
+        if self.data.configuration == "perimeter" or not self.flag3d:
             # Get number of seismic frames and lumped masses along the height
             n_seismic, masses = get_system(self.data, "x")
             if solution_x is None:

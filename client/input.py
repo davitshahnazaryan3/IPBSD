@@ -12,7 +12,7 @@ from external.spo2ida_call import spo2ida_allT
 
 class Input:
 
-    def __init__(self):
+    def __init__(self, flag3d=False):
         """
         initializes the input functions
         """
@@ -40,6 +40,7 @@ class Input:
         self.pdelta_loads = None                    # Gravity loads over P Delta columns                    dict
         self.elastic_modulus_steel = 200000.        # Steel elastic modulus in MPa                          float
         self.configuration = None                   # Space or Perimeter seismic frames                     str
+        self.flag3d = flag3d
 
     def read_inputs(self, filename):
         """
@@ -109,7 +110,7 @@ class Input:
         # Configuration type for 3D modelling: space or perimeter
         self.configuration = self.i_d["configuration"][0]
         # Important only for 2D modelling
-        if self.configuration == "perimeter":
+        if self.configuration == "perimeter" or not self.flag3d:
             # Masses will be subdivided between two seismic frames
             self.n_seismic = 2
             self.n_gravity = int(len(self.spans_y) - 1)

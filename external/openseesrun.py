@@ -332,8 +332,8 @@ class OpenSeesRun:
         M = np.zeros((self.i_d.nst, self.i_d.nst))
         for st in range(self.i_d.nst):
             M[st][st] = self.i_d.masses[st] / self.i_d.n_seismic
-
         identity = np.ones((1, self.i_d.nst))
+
         gamma = (modalShape.transpose().dot(M)).dot(identity.transpose()) / \
                 (modalShape.transpose().dot(M)).dot(modalShape)
         mstar = (modalShape.transpose().dot(M)).dot(identity.transpose())
@@ -369,6 +369,7 @@ class OpenSeesRun:
         elastic_modulus = (3320 * np.sqrt(fc) + 6900) * 1000 * self.fstiff
         area = b * h
         iz = b * h ** 3 / 12
+        iy = h * h ** 3 / 12
         eiz = elastic_modulus * iz
 
         # Curvatures at yield
@@ -416,7 +417,8 @@ class OpenSeesRun:
         ph_tag1 = int(f"106{et}")
         ph_tag2 = int(f"107{et}")
         integration_tag = int(f"108{et}")
-        op.section("Elastic", int_tag, elastic_modulus, area, iz, iz, 0.4 * elastic_modulus, 0.01)
+
+        op.section("Elastic", int_tag, elastic_modulus, area, iy, iz, 0.4 * elastic_modulus, 0.01)
         op.section("Uniaxial", ph_tag1, hingeMTag1, 'Mz')
         op.section("Uniaxial", ph_tag2, hingeMTag2, 'Mz')
 
@@ -433,6 +435,7 @@ class OpenSeesRun:
         n_cols = self.i_d.nst * (self.i_d.n_bays + 1)
         capacities_beam = [5000.0] * n_beams
         capacities_col = [5000.0] * n_cols
+
         # beam generation
         beam_id = 0
         beams = []
@@ -456,8 +459,10 @@ class OpenSeesRun:
                 gt = self.BEAM_TRANSF_TAG
                 inode = int(f"{bay}{st}")
                 jnode = int(f"{next_bay}{st}")
+
                 self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_beam, h_beam,
                                           hingeModel=eleHinge)
+
                 # Record beam element tag
                 beams.append(et)
         if self.pflag:
@@ -643,7 +648,7 @@ class OpenSeesRun:
             # print("[STEP] Applying triangular load pattern...")
             for h in range(len(self.i_d.heights)):
                 if self.i_d.heights[h] != 0.:
-                    loads.append(self.i_d.heights[h]/sum(self.i_d.heights[:h]))
+                    loads.append(self.i_d.heights[h] / sum(self.i_d.heights[:h]))
         elif load_pattern == 2:
             # print("[STEP] Applying 1st mode proportional load pattern...")
             for i in mode_shape:
@@ -684,11 +689,11 @@ class OpenSeesRun:
         while step <= nsteps and ok == 0 and loadf > 0:
             ok = op.analyze(1)
             loadf = op.getTime()
-            if ok != 0:
-                # print("[STEP] Trying relaxed convergence...")
-                op.test(testType, tol * .01, int(iterInit * 50))
-                ok = op.analyze(1)
-                op.test(testType, tol, iterInit)
+            # if ok != 0:
+            #     # print("[STEP] Trying relaxed convergence...")
+            #     op.test(testType, tol * .01, int(iterInit * 50))
+            #     ok = op.analyze(1)
+            #     op.test(testType, tol, iterInit)
             if ok != 0:
                 # print("[STEP] Trying Newton with initial then current...")
                 op.test(testType, tol * .01, int(iterInit * 50))

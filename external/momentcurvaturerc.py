@@ -62,6 +62,7 @@ class MomentCurvatureRC:
         self.phii = np.nan
         self.AsTotal = AsTotal
         self.distAs = distAs
+
         if self.distAs is None:
             self.distAs = np.array([0.5, 0.5])
         # Transverse reinforcement spacing in [m]
@@ -95,7 +96,6 @@ class MomentCurvatureRC:
         """
         # Force it to look for only positive values of c
         c = abs(c)
-
         # Reinforcement
         rebar = data[2]
         # Concrete strains
@@ -343,6 +343,7 @@ class MomentCurvatureRC:
             self.m_target = float(m_target)
         if cover is not None:
             self.d = cover
+
         # Concrete properties
         # Assumption - parabolic stress-strain relationship for the concrete
         # concrete elasticity modulus MPa
@@ -399,18 +400,25 @@ class MomentCurvatureRC:
                 c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100, xtol=1e-4)))
                 # Stop analysis if RunTimeWarning is caught (i.e. no convergence)
                 if math.isnan(self.mi):
-                    # Check if c initial should be modified, as the analysis stopped prematurely
-                    if m[-2] / m[-1] < 0.9:
-                        c = 0.02
+                    # Check if target moment was reached (it not then analysis stopped prematurely due to bad guess)
+                    if max(m) < self.m_target:
+                        # Rerun with different c
+                        c = 0.03
                         c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100,
                                                       xtol=1e-4)))
                     else:
+                        # Check if c initial should be modified, as the analysis stopped prematurely
                         if m[-2] / m[-1] < 0.9:
-                            c = 0.1
+                            c = 0.02
                             c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100,
                                                           xtol=1e-4)))
                         else:
-                            break
+                            if m[-2] / m[-1] < 0.9:
+                                c = 0.1
+                                c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100,
+                                                              xtol=1e-4)))
+                            else:
+                                break
 
                 # Sometimes even though the M-Phi is obtained, the solution is still converging, so we need to stop it
                 # to avoid inverse slopes of Curvature
@@ -444,7 +452,6 @@ class MomentCurvatureRC:
                 phi = phi[:idx]
             idx_max = -1
             m_max = m[idx_max]
-
             my_first = m[yield_index]
             phiy_first = phi[yield_index]
             m = np.array(m)
@@ -528,15 +535,14 @@ if __name__ == '__main__':
     young_modulus_s         reinforcement elastic modulus [MPa]
     """
     # Section properties
-    b = 0.5
-    h = 0.5
-    Mtarget = 112.237
-    N = 100.
+    b = 0.45
+    h = 0.45
+    Mtarget = 88.89
+    N = 287.7
     cover = 0.03
+    nlayers = 1
 
-    mphi = MomentCurvatureRC(b, h, Mtarget, length=1.8, p=155.7, nlayers=1, d=0.03, young_mod_s=200000.,
+    mphi = MomentCurvatureRC(b, h, Mtarget, length=1.8, p=N, nlayers=nlayers, d=cover, young_mod_s=200000.,
                              k_hard=1, soft_method="Collins")
 
     m = mphi.get_mphi()
-    
-    print(m)

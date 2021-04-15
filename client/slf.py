@@ -10,7 +10,7 @@ import pandas as pd
 
 
 class SLF:
-    def __init__(self, slfDirectory, y_sls, nst, geometry=False, replCost=None):
+    def __init__(self, slfDirectory, y_sls, nst, geometry=False, replCost=None, perform_scaling=True):
         """
         initialize storey loss function definition
         :param slfDirectory: dict                   SLF data file
@@ -18,6 +18,7 @@ class SLF:
         :param nst: int                             Number of stories
         :param geometry: int                        False for "2d", True for "3d"
         :param replCost: float                      Replacement cost of the entire building
+        :param perform_scaling: bool                Perform scaling of SLFs to add up to 1.0
         """
         self.slfDirectory = slfDirectory
         self.y_sls = y_sls
@@ -28,6 +29,7 @@ class SLF:
         self.NS_KEY = 2
         self.PERF_GROUP = ["PSD_S", "PSD_NS", "PFA_NS"]
         self.replCost = replCost
+        self.perform_scaling = perform_scaling
 
         # Normalization, currently will do normalization regardless, whereby having summation of max values of SLFs
         # equalling to unity, however in future updates, this will become a user input
@@ -275,6 +277,7 @@ class SLF:
             factor = 1.0
 
         # for directional and non-directional components
+        total_loss_factor = 0.0
         for i in SLFs:
             # for EDP performance groups
             for j in SLFs[i]:
@@ -285,6 +288,7 @@ class SLF:
                         for st in SLFs[i][j][k]:
                             loss = SLFs[i][j][k][st]["loss"]
                             slf_functions[j][k][st] += loss / factor
+                            total_loss_factor += max(loss / factor)
                 else:
                     # Non-directional SLFs and directional (corresponding to dir1 or dir2) will be summed
                     # for direction 1 and 2
@@ -297,6 +301,13 @@ class SLF:
                         for st in SLFs[i][j]:
                             loss = SLFs[i][j][st]["loss"]
                             slf_functions[j][k][st] += loss / factor
+                            total_loss_factor += max(loss / factor)
+
+        # Scaling factor
+        if self.perform_scaling:
+            scale = 1 / total_loss_factor
+        else:
+            scale = 1.
 
         # SLF interpolation functions and ELRs
         func = {"y": {}, "interpolation": {}, "edp_interpolation": {}}
@@ -319,8 +330,8 @@ class SLF:
                 func["interpolation"][i][k] = {}
                 func["edp_interpolation"][i][k] = {}
                 for st in slf_functions[i][k]:
-                    func["y"][i][k][st] = max(slf_functions[i][k][st]) * self.y_sls
-                    func["interpolation"][i][k][st] = interp1d(slf_functions[i][k][st], edp)
-                    func["edp_interpolation"][i][k][st] = interp1d(edp, slf_functions[i][k][st])
+                    func["y"][i][k][st] = max(slf_functions[i][k][st]) * self.y_sls * scale
+                    func["interpolation"][i][k][st] = interp1d(slf_functions[i][k][st] * scale, edp)
+                    func["edp_interpolation"][i][k][st] = interp1d(edp, slf_functions[i][k][st] * scale)
 
         return func, SLFs

@@ -17,7 +17,7 @@ class IPBSD:
     def __init__(self, input_file, hazard_file, slfDir, spo_file, limit_eal, target_mafc, outputPath, analysis_type=1,
                  damping=.05, num_modes=3, iterate=False, maxiter=20, fstiff=0.5, rebar_cover=0.03,
                  flag3d=False, solutionFileX=None, solutionFileY=None, export_cache=False, holdFlag=False,
-                 overstrength=None, replCost=None, gravity_cs=None, eal_correction=True):
+                 overstrength=None, replCost=None, gravity_cs=None, eal_correction=True, perform_scaling=True):
         """
         Initializes IPBSD
         :param input_file: str              Input filename as '*.csv'
@@ -57,6 +57,7 @@ class IPBSD:
         :param replCost: float              Replacement cost of the entire building
         :param gravity_cs: str              Path to gravity solution (for 3D modelling)
         :param eal_correction: bool         Perform EAL correction
+        :param perform_scaling: bool        Perform scaling of SLFs to replCost (the scaling should not matter)
         """
         self.dir = Path.cwd()
         self.input_file = input_file
@@ -81,6 +82,7 @@ class IPBSD:
         self.solutionFileX = solutionFileX
         self.solutionFileY = solutionFileY
         self.eal_correction = eal_correction
+        self.perform_scaling = perform_scaling
 
         # 2d (False) means, that even if the SLFs are provided for the entire building, only 1 direction
         # (defaulting to dir1) will be considered. This also entails the use of non-dimensional components,
@@ -167,7 +169,6 @@ class IPBSD:
         # Loads
         floorLoad = ipbsd.data.i_d["bldg_ch"][0]
         roofLoad = ipbsd.data.i_d["bldg_ch"][1]
-        area = ipbsd.data.i_d["bldg_ch"][2]
 
         nst = len(ipbsd.data.i_d["h_storeys"])
         nGravity = int(ipbsd.data.i_d["n_gravity_frames"][0])
@@ -187,6 +188,12 @@ class IPBSD:
 
         # Point loads, for now will be left as zero
         pLoads = 0.0
+
+        # Number of gravity frames
+        if ipbsd.data.configuration == "perimeter" and self.flag3d:
+            nGravity = len(spansY) - 1
+        else:
+            nGravity = 0
 
         # PDelta loads/ essentially loads going to the gravity frames
         if nGravity > 0:
@@ -393,7 +400,8 @@ class IPBSD:
                      "PLS": ipbsd.data.PLS}
 
         """Get design limits"""
-        theta_max, a_max, slfsCache = ipbsd.get_design_values(self.slfDir, self.replCost, self.eal_correction)
+        theta_max, a_max, slfsCache = ipbsd.get_design_values(self.slfDir, self.replCost, self.eal_correction,
+                                                              self.perform_scaling)
         if self.export_cache:
             self.export_results(self.outputPath / "Cache/SLFs", slfsCache, "pickle")
         print("[SUCCESS] SLF successfully read, and design limits are calculated")
@@ -402,6 +410,8 @@ class IPBSD:
             # Performing EAL corrections to avoid overestimation of costs
             eal, y_fit, lam_fit = ipbsd.get_loss_curve(lam_ls, self.limit_EAL)
             print(f"[SUCCESS] EAL corrections have been made, where the new EAL limit estimated to {eal:.2f}%")
+            lossCurve = {"y": ipbsd.data.y, "lam": lam_ls, "y_fit": y_fit, "lam_fit": lam_fit, "eal": eal,
+                         "PLS": ipbsd.data.PLS}
 
         """Transform design values into spectral coordinates"""
         tables, delta_spectral, alpha_spectral = ipbsd.perform_transformations(theta_max, a_max)
