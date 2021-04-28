@@ -24,6 +24,7 @@ class DesignLimits:
         self.theta_max = None               # Peak storey drift
         self.a_max = None                   # Peak floor acceleration in g
         self.SLFsCache = None
+        self.contributions = None
         self.replCost = replCost
         self.eal_corrections = eal_corrections
         self.perform_scaling = perform_scaling
@@ -40,7 +41,9 @@ class DesignLimits:
         
         # Calculate the design limits of PSD and PFA beyond which EAL condition will not be met
         edp_limits = {}
-        y_total = 0
+        # Initialize contributions
+        self.contributions = {"y_PSD_S": [], "y_PSD_NS": [], "y_PFA_NS": [], "PSD_S": [], "PSD_NS": [], "PFA_NS": []}
+
         # Performance group
         for i in slfs["y"]:
             if i == "PFA_NS" or i == "PFA":
@@ -58,10 +61,14 @@ class DesignLimits:
                 for st in slfs["y"][i][k]:
                     # ELRs
                     y = slfs["y"][i][k][st]
-                    y_total += y
                     # SLF interpolation functions
                     s = slfs["interpolation"][i][k][st]
                     edp_limits[group][k] = np.append(edp_limits[group][k], float(s(y)))
+                    if group == "PFA" and k == "dir2":
+                        pass
+                    else:
+                        self.contributions[i].append(float(s(y)))
+                        self.contributions["y_" + i].append(y)
 
         # Get the minimum value from structural and non-structural components
         edp_limits["PSD"] = {}
@@ -89,6 +96,9 @@ class DesignLimits:
             y_perf_group = {}
             y_total_slf = np.zeros((2, ))
             y_total_sls = np.zeros((2, ))
+
+            # Initialize contributions
+            self.contributions = {"y_PSD_S": [], "y_PSD_NS": [], "y_PFA_NS": [], "PSD_S": [], "PSD_NS": [], "PFA_NS": []}
 
             # Performance group
             for i in slfs["y"]:
@@ -119,6 +129,8 @@ class DesignLimits:
                             s = slfs["edp_interpolation"][i][k][st]
                             y_perf_group[group][k] = np.append(y_perf_group[group][k], float(s(edp)))
                             y_total_sls[int(k[-1]) - 1] += float(s(edp))
+                            self.contributions[i].append(edp)
+                            self.contributions["y_" + i].append(float(s(edp)))
 
             # Recalculate ELR at SLS
             self.y = sum(y_total_sls[:n_dir]) / sum(y_total_slf[:n_dir])

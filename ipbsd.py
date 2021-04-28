@@ -156,7 +156,6 @@ class IPBSD:
             data.to_csv(f"{filepath}.csv", index=False)
 
     def cacheRCMRF(self, ipbsd, details, sol, demands, path):
-        # TODO, modify to fit the needs of 3D and space systems
         """
         Creates cache to be used by RCMRF
         :param ipbsd: object                            Master class
@@ -166,42 +165,36 @@ class IPBSD:
         :param path: str                                Path to directory to export the files
         :return: None
         """
-        # Loads
-        floorLoad = ipbsd.data.i_d["bldg_ch"][0]
-        roofLoad = ipbsd.data.i_d["bldg_ch"][1]
-
+        # Number of storeys
         nst = len(ipbsd.data.i_d["h_storeys"])
-        nGravity = int(ipbsd.data.i_d["n_gravity_frames"][0])
-        nSeismic = int(ipbsd.data.i_d["n_seismic_frames"][0])
 
-        spansX = np.array([ipbsd.data.i_d["spans_X"][x] for x in ipbsd.data.i_d["spans_X"]])
-        spansY = np.array([ipbsd.data.i_d["spans_Y"][x] for x in ipbsd.data.i_d["spans_Y"]])
-        heights = np.array([ipbsd.data.i_d["h_storeys"][x] for x in ipbsd.data.i_d["h_storeys"]])
-
+        # Loads (the only parameter needed for 3D)
         q_floor = float(ipbsd.data.i_d["bldg_ch"][0])
         q_roof = float(ipbsd.data.i_d["bldg_ch"][1])
 
+        # For 2D only
+        spansY = np.array([ipbsd.data.i_d["spans_Y"][x] for x in ipbsd.data.i_d["spans_Y"]])
         distLength = spansY[0] / 2
 
         # Distributed loads
-        distLoads = [floorLoad * distLength, roofLoad * distLength]
+        distLoads = [q_floor * distLength, q_roof * distLength]
 
         # Point loads, for now will be left as zero
         pLoads = 0.0
 
         # Number of gravity frames
-        if ipbsd.data.configuration == "perimeter" and self.flag3d:
+        if not self.flag3d:
             nGravity = len(spansY) - 1
         else:
             nGravity = 0
 
-        # PDelta loads/ essentially loads going to the gravity frames
+        # PDelta loads/ essentially loads going to the gravity frames (for 2D only)
         if nGravity > 0:
             pDeltaLoad = ipbsd.data.pdelta_loads
         else:
             pDeltaLoad = 0.0
 
-        # Masses (actual frame mass is exported)
+        # Masses (actual frame mass is exported) (for 2D only)
         masses = np.array(ipbsd.data.masses)
 
         # Creating a DataFrame for loads
@@ -223,25 +216,26 @@ class IPBSD:
                                   "Pattern": "point external",
                                   "Load": pLoads}, ignore_index=True)
 
-            # PDelta loads
+            # PDelta loads (for 2D only)
             if nGravity > 0:
-
+                # Associated with each seismic frame
                 load = pDeltaLoad[st-1] / ipbsd.data.n_seismic
                 loads = loads.append({"Storey": st,
                                       "Pattern": "pdelta",
                                       "Load": load}, ignore_index=True)
 
             else:
+                # Add loads as zero
                 loads = loads.append({"Storey": st,
                                       "Pattern": "pdelta",
                                       "Load": pDeltaLoad}, ignore_index=True)
 
-            # Masses
+            # Masses (for 2D only)
             loads = loads.append({"Storey": st,
                                   "Pattern": "mass",
                                   "Load": masses[st - 1] / ipbsd.data.n_seismic}, ignore_index=True)
 
-            # Area loads
+            # Area loads (for both 2D and 3D)
             q = q_roof if st == nst else q_floor
             loads = loads.append({"Storey": st,
                                   "Pattern": "q",
@@ -270,7 +264,7 @@ class IPBSD:
         # Exporting the materials file for use by a Modeler module
         self.export_results(path / "materials", materials, "csv")
 
-        """Section properties (for the Haselton model)"""
+        # """Section properties (for the Haselton model)"""
         # def get_sections(i, sections, details, sol, demands, ele, iterator, st, bay, nbays, bayName):
         #     eleType = "Beam" if ele == "Beams" else "Column"
         #     pos = "External" if bay == 1 else "Internal"
@@ -400,10 +394,12 @@ class IPBSD:
                      "PLS": ipbsd.data.PLS}
 
         """Get design limits"""
-        theta_max, a_max, slfsCache = ipbsd.get_design_values(self.slfDir, self.replCost, self.eal_correction,
-                                                              self.perform_scaling)
+        theta_max, a_max, slfsCache, contributions = ipbsd.get_design_values(self.slfDir, self.replCost,
+                                                                             self.eal_correction, self.perform_scaling)
+
         if self.export_cache:
             self.export_results(self.outputPath / "Cache/SLFs", slfsCache, "pickle")
+            self.export_results(self.outputPath / "Cache/design_loss_contributions", contributions, "pickle")
         print("[SUCCESS] SLF successfully read, and design limits are calculated")
 
         if self.eal_correction:
@@ -570,9 +566,9 @@ class IPBSD:
                         hinge_models_to_store = hinge_models[i][f"{i}_seismic"]
                         modelOutputs_to_store = modelOutputs[i]
                         """Creating DataFrames to store for RCMRF input"""
-                        # self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store[f"{i}_seismic"], demands_to_store,
-                        #                 path=self.outputPath)
-                        self.export_results(self.outputPath / f"Cache/gravity_hinges", hinge_models["x"]["gravity"],
+                        self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store[f"{i}_seismic"], demands_to_store,
+                                        path=self.outputPath)
+                        self.export_results(self.outputPath / f"Cache/gravity_hinges", hinge_models[i]["gravity"],
                                             "csv")
                     else:
                         spoResults_to_store = spoResults
@@ -583,14 +579,12 @@ class IPBSD:
                         details_to_store = details
                         hinge_models_to_store = hinge_models
                         modelOutputs_to_store = modelOutputs
-                        # self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store, demands_to_store,
-                        #                 path=self.outputPath)
+                        self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store, demands_to_store,
+                                        path=self.outputPath)
 
                     """Storing the outputs"""
                     # Exporting the IPBSD outputs
                     self.create_folder(self.outputPath / f"Cache/frame{i}")
-                    self.export_results(self.outputPath / f"Cache/frame{i}/spoShape",
-                                        pd.DataFrame(iterations.spo_shape, index=[0]), "csv")
                     self.export_results(self.outputPath / f"Cache/frame{i}/lossCurve", lossCurve, "pickle")
                     self.export_results(self.outputPath / f"Cache/frame{i}/spoAnalysisCurveShape", spoResults_to_store,
                                         "pickle")

@@ -416,7 +416,6 @@ class Iterations:
         part_factor = opt_sol["Part Factor"]
         m_star = opt_sol["Mstar"]
         cy, dy = self.ipbsd.verify_mafc(period, spo2ida_data, part_factor, self.target_MAFC, omega, hazard="True")
-
         print("[SUCCESS] MAFC was validated")
         return part_factor, m_star, cy, dy, spo2ida_data
 
@@ -1081,6 +1080,7 @@ class Iterations:
             
             # Reread initial assumption of pushover shape (Same as for X direction)
             if direction == "y":
+                # Reread initial assumption of pushover shape (Same as for X direction)
                 self.spo_shape = self.ipbsd.data.initial_spo_data(self.period_to_use, self.spo_file)
                 modes_to_use = modes[direction]
 
@@ -1148,6 +1148,7 @@ class Iterations:
                         solution = opt_sol[direction + "_seismic"]
                     else:
                         solution = opt_sol
+
                     # Calculates the new cy for the corrected SPO shape, period, Overstrength and c-s
                     gamma, mstar, cy, dy, spo2ida_data = self.iterate_phase_3(solution, omega, read=read)
 

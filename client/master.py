@@ -116,7 +116,7 @@ class Master:
         if eal_corrections:
             self.data.y[1] = dl.y
 
-        return dl.theta_max, dl.a_max, slfsCache
+        return dl.theta_max, dl.a_max, slfsCache, dl.contributions
 
     def perform_transformations(self, th, a):
         """
