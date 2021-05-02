@@ -10,6 +10,7 @@ import numpy as np
 import pickle
 from client.master import Master
 from client.iterations import Iterations
+from client.seekdesign import SeekDesign
 from pathlib import Path
 
 
@@ -364,7 +365,7 @@ class IPBSD:
         # # Exporting the sections file for use by Modeler module as Haselton springs
         # self.export_results(path / "haselton_springs", sections, "csv")
 
-    def run_ipbsd(self):
+    def run_ipbsd(self, seekdesign=False):
 
         """Calling the master file"""
         ipbsd = Master(self.dir, flag3d=self.flag3d)
@@ -517,93 +518,101 @@ class IPBSD:
                 opt_sol = results["opt_sol"]
                 opt_modes = results["opt_modes"]
                 sols = results["sols"]
+            if seekdesign and self.flag3d:
+                seek = SeekDesign(ipbsd, sols, self.spo_file, self.target_mafc, self.analysis_type, self.damping,
+                                  self.num_modes, self.fstiff, self.rebar_cover, self.outputPath,
+                                  gravity_loads=gravity_loads)
 
-            # Call the iterations function (iterations have not yet started though)
-            iterations = Iterations(ipbsd, sols, self.spo_file, self.target_mafc, self.analysis_type, self.damping,
-                                    self.num_modes, self.fstiff, self.rebar_cover, self.outputPath,
-                                    gravity_loads=gravity_loads, flag3d=self.flag3d)
-
-            # Initiate design of the entire building / frame
-            if self.flag3d:
                 # Initial design solutions of all structural elements based on elastic analysis
-                init_design, demands_gravity = iterations.generate_initial_solutions(opt_sol, opt_modes,
-                                                                                     self.overstrength, sa,
-                                                                                     period_range, table_sls)
-
-                outputs = iterations.run_iterations_for_3d(init_design, demands_gravity, period_limits, opt_sol,
-                                                           opt_modes, sa, period_range, table_sls,
-                                                           iterate=self.iterate, maxiter=self.maxiter,
-                                                           omega=self.overstrength)
-                frames = ["x", "y"]
-                ipbsd_outputs = outputs["ipbsd_outputs"]
-                spoResults = outputs["spoResults"]
-                opt_sol = outputs["opt_sol"]
-                demands = outputs["demands"]
-                details = outputs["details"]
-                hinge_models = outputs["hinge_models"]
-                action = outputs["action"]
-                modelOutputs = outputs["modelOutputs"]
-
+                init_design, demands_gravity = seek.generate_initial_solutions(opt_sol, opt_modes, self.overstrength,
+                                                                               sa, period_range, table_sls)
             else:
-                # Run the validations and iterations if need be
-                ipbsd_outputs, spoResults, opt_sol, demands, details, hinge_models, action, modelOutputs = \
-                    iterations.validations(opt_sol, opt_modes, sa, period_range, table_sls, period_limits,
-                                           self.iterate, self.maxiter, omega=self.overstrength)
-                frames = ["x"]
-                outputs = None
+                # Call the iterations function (iterations have not yet started though)
+                iterations = Iterations(ipbsd, sols, self.spo_file, self.target_mafc, self.analysis_type, self.damping,
+                                        self.num_modes, self.fstiff, self.rebar_cover, self.outputPath,
+                                        gravity_loads=gravity_loads, flag3d=self.flag3d)
 
-            """Iterations are completed and IPBSD is finalized"""
-            # Export main outputs and cache
-            if self.export_cache:
-                for i in frames:
-                    if self.flag3d:
-                        spoResults_to_store = spoResults[i]
-                        opt_sol_to_store = opt_sol[i]
-                        action_to_store = action[i]
-                        demands_to_store = demands[i]
-                        ipbsd_outputs_to_store = ipbsd_outputs[i]
-                        details_to_store = details[i]
-                        hinge_models_to_store = hinge_models[i][f"{i}_seismic"]
-                        modelOutputs_to_store = modelOutputs[i]
-                        """Creating DataFrames to store for RCMRF input"""
-                        self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store[f"{i}_seismic"], demands_to_store,
-                                        path=self.outputPath)
-                        self.export_results(self.outputPath / f"Cache/gravity_hinges", hinge_models[i]["gravity"],
-                                            "csv")
-                    else:
-                        spoResults_to_store = spoResults
-                        opt_sol_to_store = opt_sol
-                        action_to_store = action
-                        demands_to_store = demands
-                        ipbsd_outputs_to_store = ipbsd_outputs
-                        details_to_store = details
-                        hinge_models_to_store = hinge_models
-                        modelOutputs_to_store = modelOutputs
-                        self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store, demands_to_store,
-                                        path=self.outputPath)
+                # Initiate design of the entire building / frame
+                if self.flag3d:
+                    # Initial design solutions of all structural elements based on elastic analysis
+                    init_design, demands_gravity = iterations.generate_initial_solutions(opt_sol, opt_modes,
+                                                                                         self.overstrength, sa,
+                                                                                         period_range, table_sls)
 
-                    """Storing the outputs"""
-                    # Exporting the IPBSD outputs
-                    self.create_folder(self.outputPath / f"Cache/frame{i}")
-                    self.export_results(self.outputPath / f"Cache/frame{i}/lossCurve", lossCurve, "pickle")
-                    self.export_results(self.outputPath / f"Cache/frame{i}/spoAnalysisCurveShape", spoResults_to_store,
-                                        "pickle")
-                    self.export_results(self.outputPath / f"Cache/frame{i}/optimal_solution", opt_sol_to_store,
-                                        "pickle")
-                    self.export_results(self.outputPath / f"Cache/frame{i}/action", action_to_store, "csv")
-                    self.export_results(self.outputPath / f"Cache/frame{i}/demands", demands_to_store, "pickle")
-                    self.export_results(self.outputPath / f"Cache/frame{i}/ipbsd", ipbsd_outputs_to_store, "pickle")
-                    self.export_results(self.outputPath / f"Cache/frame{i}/details", details_to_store, "pickle")
-                    self.export_results(self.outputPath / f"Cache/frame{i}/hinge_models", hinge_models_to_store, "csv")
-                    self.export_results(self.outputPath / f"Cache/frame{i}/modelOutputs", modelOutputs_to_store,
-                                        "pickle")
+                    outputs = iterations.run_iterations_for_3d(init_design, demands_gravity, period_limits, opt_sol,
+                                                               opt_modes, sa, period_range, table_sls,
+                                                               iterate=self.iterate, maxiter=self.maxiter,
+                                                               omega=self.overstrength)
+                    frames = ["x", "y"]
+                    ipbsd_outputs = outputs["ipbsd_outputs"]
+                    spoResults = outputs["spoResults"]
+                    opt_sol = outputs["opt_sol"]
+                    demands = outputs["demands"]
+                    details = outputs["details"]
+                    hinge_models = outputs["hinge_models"]
+                    action = outputs["action"]
+                    modelOutputs = outputs["modelOutputs"]
 
-            print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
-            # Note: stiffness based off first yield point, at nominal point the stiffness is actually lower, and
-            # might act as a more realistic value. Notably Haselton, 2016 limits the secant yield stiffness between
-            # 0.2EIg and 0.6EIg.
+                else:
+                    # Run the validations and iterations if need be
+                    ipbsd_outputs, spoResults, opt_sol, demands, details, hinge_models, action, modelOutputs = \
+                        iterations.validations(opt_sol, opt_modes, sa, period_range, table_sls, period_limits,
+                                               self.iterate, self.maxiter, omega=self.overstrength)
+                    frames = ["x"]
+                    outputs = None
 
-            print("[END] IPBSD was performed successfully")
+                """Iterations are completed and IPBSD is finalized"""
+                # Export main outputs and cache
+                if self.export_cache:
+                    for i in frames:
+                        if self.flag3d:
+                            spoResults_to_store = spoResults[i]
+                            opt_sol_to_store = opt_sol[i]
+                            action_to_store = action[i]
+                            demands_to_store = demands[i]
+                            ipbsd_outputs_to_store = ipbsd_outputs[i]
+                            details_to_store = details[i]
+                            hinge_models_to_store = hinge_models[i][f"{i}_seismic"]
+                            modelOutputs_to_store = modelOutputs[i]
+                            """Creating DataFrames to store for RCMRF input"""
+                            self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store[f"{i}_seismic"], demands_to_store,
+                                            path=self.outputPath)
+                            self.export_results(self.outputPath / f"Cache/gravity_hinges", hinge_models[i]["gravity"],
+                                                "csv")
+                        else:
+                            spoResults_to_store = spoResults
+                            opt_sol_to_store = opt_sol
+                            action_to_store = action
+                            demands_to_store = demands
+                            ipbsd_outputs_to_store = ipbsd_outputs
+                            details_to_store = details
+                            hinge_models_to_store = hinge_models
+                            modelOutputs_to_store = modelOutputs
+                            self.cacheRCMRF(ipbsd, details_to_store, opt_sol_to_store, demands_to_store,
+                                            path=self.outputPath)
+
+                        """Storing the outputs"""
+                        # Exporting the IPBSD outputs
+                        self.create_folder(self.outputPath / f"Cache/frame{i}")
+                        self.export_results(self.outputPath / f"Cache/frame{i}/lossCurve", lossCurve, "pickle")
+                        self.export_results(self.outputPath / f"Cache/frame{i}/spoAnalysisCurveShape", spoResults_to_store,
+                                            "pickle")
+                        self.export_results(self.outputPath / f"Cache/frame{i}/optimal_solution", opt_sol_to_store,
+                                            "pickle")
+                        self.export_results(self.outputPath / f"Cache/frame{i}/action", action_to_store, "csv")
+                        self.export_results(self.outputPath / f"Cache/frame{i}/demands", demands_to_store, "pickle")
+                        self.export_results(self.outputPath / f"Cache/frame{i}/ipbsd", ipbsd_outputs_to_store, "pickle")
+                        self.export_results(self.outputPath / f"Cache/frame{i}/details", details_to_store, "pickle")
+                        self.export_results(self.outputPath / f"Cache/frame{i}/hinge_models", hinge_models_to_store, "csv")
+                        self.export_results(self.outputPath / f"Cache/frame{i}/modelOutputs", modelOutputs_to_store,
+                                            "pickle")
+
+                print("[SUCCESS] Structural elements were designed and detailed. SPO curve parameters were estimated")
+                # Note: stiffness based off first yield point, at nominal point the stiffness is actually lower, and
+                # might act as a more realistic value. Notably Haselton, 2016 limits the secant yield stiffness between
+                # 0.2EIg and 0.6EIg.
+
+                print("[END] IPBSD was performed successfully")
 
 
 if __name__ == "__main__":

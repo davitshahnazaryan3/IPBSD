@@ -45,7 +45,7 @@ class Iterations:
         self.warnT = True
         # Whether static pushover curve shape is not correct (False necessitates iterations)
         self.spo_validate = False
-        # Model outputs to be exproted
+        # Model outputs to be exported
         self.model_outputs = None
         # Period to be used when performing important calculations
         self.period_to_use = None
@@ -199,9 +199,141 @@ class Iterations:
         area_soft = np.trapz(y_soft, dx=dx)
         xmin = 2 * area_soft / (Vmax + ymin) + dmax
 
+        # Avoid negative residual strength and zero as residual strength
+        if ymin <= 0:
+            ymin = 10.
+
         # Get the curve
         d = np.array([0., xint, dmax, xmin])
         v = np.array([0., yint, Vmax, ymin])
+
+        return d, v
+
+    def derive_spo(self, spo, residual=0.1):
+        # Top displacement and base shear
+        try:
+            x = spo["d"]
+            y = spo["v"]
+        except:
+            x = spo[0]
+            y = spo[1]
+
+        def getIndex(x, data):
+            if np.where(data >= x)[0].size == 0:
+                return np.nan
+            else:
+                return np.where(data >= x)[0][0]
+
+        def getEquation(p1, p2):
+            points = [p1, p2]
+            x_coords, y_coords = zip(*points)
+            A = vstack([x_coords, ones(len(x_coords))]).T
+            m, c = lstsq(A, y_coords)[0]
+            return m, c
+
+        """
+        The point below the max point is quite subjective
+        So we need to identify two points
+        Keep Vmax as the max point as long as the 
+        Stiffness is reducing consistently
+        And as long as the V is not varying from the max
+        significantly.
+        """
+        # Identify the maximum point
+        ymax = max(y)
+        xmax = x[getIndex(ymax, y)]
+
+        # Gradient of y
+        grad = np.gradient(y)
+
+        # Look for a very steep gradient
+        idx = getIndex(10, -grad) - 1
+        # Make sure that the new potential peak is not way lower than the maximum value
+        # This new peak is due to P-delta effects
+        if y[idx] / ymax >= 0.85:
+            ymax = y[idx]
+            xmax = x[idx]
+
+        # Yield point
+        # Get initial stiffness
+        m1 = 0.2 * ymax
+        d1 = x[getIndex(m1, y)]
+        stiff_elastic = m1 / d1
+        temp = y / x
+        stfIdx = np.where(temp < 0.9 * stiff_elastic)[0][0]
+        d2 = x[stfIdx]
+        m2 = y[stfIdx]
+        slope = m2 / d2
+
+        # Fitting the plasticity portion based on the area under the curve
+        y_pl = y[stfIdx: getIndex(ymax, y)]
+        nbins = len(y_pl) - 1
+        dx = (xmax - d2) / nbins
+        area_pl = np.trapz(y_pl, dx=dx)
+
+        a = slope
+        b = ymax - slope * xmax
+        c = 2 * area_pl - ymax * xmax
+        d = b ** 2 - 4 * a * c
+        sol1 = (-b - np.sqrt(d)) / (2 * a)
+        sol2 = (-b + np.sqrt(d)) / (2 * a)
+        if sol1 > 0 and sol2 > 0:
+            xint = min(sol1, sol2)
+        elif sol1 > 0 and sol2 <= 0:
+            xint = sol1
+        else:
+            xint = sol2
+
+        yint = xint * slope
+
+        # Find point of plasticity initiation
+        stf0 = (y[1] - y[0]) / (x[1] - x[0])
+        for i in range(1, len(x)):
+            stf1 = (y[i + 1] - y[i]) / (x[i + 1] - x[i])
+            if stf1 <= 0.85 * stf0:
+                break
+            else:
+                stf0 = stf1
+
+        if i == getIndex(ymax, y):
+            i = i - 10
+
+        dPl = x[i]
+        mPl = y[i]
+
+        a0, b0 = getEquation((d1, m1), (d2, m2))
+        a1, b1 = getEquation((dPl, mPl), (xmax, ymax))
+
+        # Find intersection point, i.e. the nominal yield point
+        xint = (b1 - b0) / (a0 - a1)
+        yint = a0 * xint + b0
+
+        # Now, identify the residual strength point (here defined at V=0)
+        yres = max(y[-1], yint * residual)
+        idx = getIndex(1.01 * yres, y[::-1])
+        xres = x[::-1][idx]
+        # Getting the actual residual strength and corresponding displacement
+        ymin = y[-1]
+        # xmin = (Vmax - ymin) * (xres - dmax) / (Vmax - yres) + dmax
+
+        # Select the softening slope until residual displacement
+        # Fitting based on the area under the softening slope
+        y_soft = y[getIndex(ymax, y): getIndex(xres, x)]
+        nbins = len(y_soft) - 1
+        dx = (xres - xmax) / nbins
+        area_soft = np.trapz(y_soft, dx=dx)
+        xmin = 2 * area_soft / (ymax + ymin) + xmax
+
+        # Avoid negative residual strength and zero as residual strength
+        if ymin <= 0:
+            ymin = 10.
+        # Make sure that peak is not lower than yield point (incompatible for SPO2IDA)
+        if yint > ymax:
+            ymax = yint
+
+        # Get the curve
+        d = np.array([0., xint, xmax, xmin])
+        v = np.array([0., yint, ymax, ymin])
 
         return d, v
 
@@ -239,7 +371,7 @@ class Iterations:
         :return: Series                             Solution containing c-s and modal properties
         :return: dict                               Modes corresponding to the solution for RSMA
         """
-        # Get the solution of interest
+        # Get the seismic solution of interest
         if self.flag3d:
             opt = opt_sol[direction + "_seismic"]
         else:
@@ -248,137 +380,162 @@ class Iterations:
         # Number of storeys
         nst = self.ipbsd.data.nst
 
-        # Remove column values
-        cols_to_drop = ["T", "Weight", "Mstar", "Part Factor"]
-        opt.loc[cols_to_drop] = np.nan
+        # Remove column values not related to cross-section dimensions
+        if self.ipbsd.data.configuration == "perimeter":
+            cols_to_drop = ["T", "Weight", "Mstar", "Part Factor"]
+            opt.loc[cols_to_drop] = np.nan
+
+        # All solutions
+        if self.ipbsd.data.configuration == "perimeter":
+            all_solutions = self.sols[direction]
+        else:
+            # For space systems solutions are more entangled
+            all_solutions = self.sols
+
+        # Create an empty dictionary of warnings
+        w = {x: False for x in opt.keys()}
 
         # After modifications, equally between c-s of two storeys might not hold
         # Increment for cross-section modifications for elements with warnings
         increment = 0.05
-        any_warnings = 0
+        any_warnings = False
         # Columns
         for ele in warnings["MAX"]["Columns"]:
             if warnings["MAX"]["Columns"][ele] == 1:
-                inc = increment
-                any_warnings = 1
-            # elif warnings["MIN"]["Columns"][ele] == 1:
-            #     inc = -increment
-            #     any_warnings = 1
-            else:
-                inc = 0
+                any_warnings = True
 
-            # Modify cross-section
-            storey = ele[1]
-            bay = int(ele[3])
-            if bay == 1:
-                opt[f"he{storey}"] = opt[f"he{storey}"] + inc
-
-            else:
-                opt[f"hi{storey}"] = opt[f"hi{storey}"] + inc
+                # Modify cross-section
+                storey = ele[1]
+                bay = int(ele[3])
+                if bay == 1:
+                    opt[f"he{storey}"] = opt[f"he{storey}"] + increment
+                    w[f"he{storey}"] = True
+                else:
+                    opt[f"hi{storey}"] = opt[f"hi{storey}"] + increment
+                    w[f"hi{storey}"] = True
 
         # Beams
         for i in warnings["MAX"]["Beams"]:
             for ele in warnings["MAX"]["Beams"][i]:
                 storey = ele[1]
                 if warnings["MAX"]["Beams"][i][ele] == 1:
-                    inc = increment
-                    any_warnings = 1
-                # elif warnings["MIN"]["Beams"][i][ele] == 1:
-                #     inc = -increment
-                #     any_warnings = 1
-                else:
-                    inc = 0
+                    any_warnings = True
 
-                # Increase section cross-section
-                opt[f"b{storey}"] = opt[f"he{storey}"]
-                opt[f"h{storey}"] = opt[f"h{storey}"] + inc
+                    # Increase section cross-section
+                    opt[f"b{storey}"] = opt[f"he{storey}"]
+                    opt[f"h{storey}"] = opt[f"h{storey}"] + increment
+                    w[f"h{storey}"] = True
 
         # If any section was modified, we need to reapply the constraints
-        if any_warnings == 1:
-            '''Enforce constraints'''
-            # Column storey constraints
-            for st in range(1, nst, 2):
-                if opt[f"he{st}"] != opt[f"he{st + 1}"]:
-                    opt[f"he{st + 1}"] = opt[f"he{st}"]
-                if opt[f"he{st}"] < opt[f"he{st + 1}"]:
-                    opt[f"he{st}"] = opt[f"he{st + 1}"]
+        perp_dir = None
+        opt_perp = None
+        opt_gr = None
+        if self.ipbsd.data.configuration == "space":
+            # Modify the seismic solution of dependencies of perpendicular direction
+            perp_dir = "y" if direction == "x" else "x"
+            opt_perp = opt_sol[perp_dir + "_seismic"]
+            opt_gr = opt_sol["gravity"]
 
-                if opt[f"hi{st}"] != opt[f"hi{st + 1}"]:
-                    opt[f"hi{st + 1}"] = opt[f"hi{st}"]
-                if opt[f"hi{st}"] < opt[f"hi{st + 1}"]:
-                    opt[f"hi{st}"] = opt[f"hi{st + 1}"]
+            # Call CrossSectionSpace object to fix dependencies
+            fd = CrossSectionSpace(self.ipbsd.data, None, None)
+            for key in w.keys():
+                # Check whether warning was raised (i.e. component cross-section was modified)
+                if w[key]:
+                    # Call to fix dependencies
+                    opt, opt_perp, opt_gr = fd.fix_dependencies(key, opt, opt_perp, opt_gr)
 
-            # Column bay constraints
-            for st in range(1, nst + 1):
-                if opt[f"hi{st}"] > opt[f"he{st}"] + 0.2:
-                    opt[f"he{st}"] = opt[f"hi{st}"] - 0.2
+        else:
+            if any_warnings:
+                '''Enforce constraints'''
+                # Column storey constraints
+                for st in range(1, nst, 2):
+                    if opt[f"he{st}"] != opt[f"he{st + 1}"]:
+                        opt[f"he{st + 1}"] = opt[f"he{st}"]
+                    if opt[f"he{st}"] < opt[f"he{st + 1}"]:
+                        opt[f"he{st}"] = opt[f"he{st + 1}"]
 
-                if opt[f"hi{st}"] < opt[f"he{st}"]:
-                    opt[f"hi{st}"] = opt[f"he{st}"]
+                    if opt[f"hi{st}"] != opt[f"hi{st + 1}"]:
+                        opt[f"hi{st + 1}"] = opt[f"hi{st}"]
+                    if opt[f"hi{st}"] < opt[f"hi{st + 1}"]:
+                        opt[f"hi{st}"] = opt[f"hi{st + 1}"]
 
-            # Beam width and external column width constraint
-            if opt[f"b{nst}"] != opt[f"he{nst}"]:
-                opt[f"b{nst}"] = opt[f"he{nst}"] = max(opt[f"b{nst}"], opt[f"he{nst}"])
+                # Column bay constraints
+                for st in range(1, nst + 1):
+                    if opt[f"hi{st}"] > opt[f"he{st}"] + 0.2:
+                        opt[f"he{st}"] = opt[f"hi{st}"] - 0.2
 
-            # Beam equality constraint
-            for st in range(1, nst, 2):
-                if opt[f"b{st}"] != opt[f"b{st + 1}"]:
-                    opt[f"b{st}"] = opt[f"b{st + 1}"] = max(opt[f"b{st}"], opt[f"b{st + 1}"])
+                    if opt[f"hi{st}"] < opt[f"he{st}"]:
+                        opt[f"hi{st}"] = opt[f"he{st}"]
 
-                if opt[f"h{st}"] != opt[f"h{st + 1}"]:
-                    opt[f"h{st}"] = opt[f"h{st + 1}"] = max(opt[f"h{st}"], opt[f"h{st + 1}"])
+                # Beam width and external column width constraint
+                if opt[f"b{nst}"] != opt[f"he{nst}"]:
+                    opt[f"b{nst}"] = opt[f"he{nst}"] = max(opt[f"b{nst}"], opt[f"he{nst}"])
 
-            # Max value limits
-            for st in range(1, nst + 1):
-                if opt[f"b{st}"] > 0.55:
-                    opt[f"b{st}"] = 0.55
-                if opt[f"h{st}"] > 0.75:
-                    opt[f"h{st}"] = 0.75
-                if opt[f"hi{st}"] > 0.75:
-                    opt[f"hi{st}"] = 0.75
-                if opt[f"he{st}"] > 0.75:
-                    opt[f"he{st}"] = 0.75
+                # Beam equality constraint
+                for st in range(1, nst, 2):
+                    if opt[f"b{st}"] != opt[f"b{st + 1}"]:
+                        opt[f"b{st}"] = opt[f"b{st + 1}"] = max(opt[f"b{st}"], opt[f"b{st + 1}"])
 
-            # Beam width to height ratio constraint
-            for st in range(1, nst):
-                if opt[f"b{st}"] > opt[f"h{st}"] - 0.1:
-                    opt[f"h{st}"] = opt[f"b{st}"] + 0.1
-                if opt[f"b{st}"] < opt[f"h{st}"] - 0.3:
-                    opt[f"b{st}"] = opt[f"h{st}"] - 0.3
+                    if opt[f"h{st}"] != opt[f"h{st + 1}"]:
+                        opt[f"h{st}"] = opt[f"h{st + 1}"] = max(opt[f"h{st}"], opt[f"h{st + 1}"])
+
+                # Max value limits
+                for st in range(1, nst + 1):
+                    if opt[f"b{st}"] > 0.55:
+                        opt[f"b{st}"] = 0.55
+                    if opt[f"h{st}"] > 0.75:
+                        opt[f"h{st}"] = 0.75
+                    if opt[f"hi{st}"] > 0.75:
+                        opt[f"hi{st}"] = 0.75
+                    if opt[f"he{st}"] > 0.75:
+                        opt[f"he{st}"] = 0.75
+
+                # Beam width to height ratio constraint
+                for st in range(1, nst):
+                    if opt[f"b{st}"] > opt[f"h{st}"] - 0.1:
+                        opt[f"h{st}"] = opt[f"b{st}"] + 0.1
+                    if opt[f"b{st}"] < opt[f"h{st}"] - 0.3:
+                        opt[f"b{st}"] = opt[f"h{st}"] - 0.3
 
         # Finding a matching solution from the already generated DataFrame
-        solution = self.sols[direction][self.sols[direction] == opt].dropna(thresh=
-                                                                            len(self.sols[direction].columns) - 4)
-        solution = self.sols[direction].loc[solution.index]
+        if self.ipbsd.data.configuration == "perimeter":
+            solution = all_solutions[all_solutions == opt].dropna(thresh=len(all_solutions.columns) - 4)
+            solution = all_solutions.loc[solution.index]
 
-        # Solutions to look for
-        if self.flag3d:
-            if direction == "x":
-                solution_x = solution.iloc[0]
-                solution_y = opt_sol["y_seismic"]
-            else:
-                solution_x = opt_sol["x_seismic"]
-                print(solution)
-                solution_y = solution.iloc[0]
-        else:
-            solution_x = solution.iloc[0]
-            solution_y = None
-
-        if solution.empty:
-            raise ValueError("[EXCEPTION] No solution satisfying the period range condition was found!")
-        else:
-            results = self.ipbsd.get_all_section_combinations(period_limits=None, solution_x=solution_x,
-                                                              solution_y=solution_y, data=self.ipbsd.data,
-                                                              cache_dir=self.outputPath / "Cache")
-
+            # Solutions to look for
             if self.flag3d:
-                solution = results[0]["opt_sol"] if direction == "x" else results[1]["opt_sol"]
-                modes = results[0]["opt_modes"] if direction == "x" else results[1]["opt_modes"]
+                if direction == "x":
+                    solution_x = solution.iloc[0]
+                    solution_y = opt_sol["y_seismic"]
+                else:
+                    solution_x = opt_sol["x_seismic"]
+                    solution_y = solution.iloc[0]
             else:
-                solution = results["opt_sol"]
-                modes = results["opt_modes"]
+                solution_x = solution.iloc[0]
+                solution_y = None
 
-            return solution, modes
+            if solution.empty:
+                raise ValueError("[EXCEPTION] No solution satisfying the period range condition was found!")
+            else:
+                results = self.ipbsd.get_all_section_combinations(period_limits=None, solution_x=solution_x,
+                                                                  solution_y=solution_y, data=self.ipbsd.data,
+                                                                  cache_dir=self.outputPath / "Cache")
+
+                if self.flag3d:
+                    solution = results[0]["opt_sol"] if direction == "x" else results[1]["opt_sol"]
+                    modes = results[0]["opt_modes"] if direction == "x" else results[1]["opt_modes"]
+                else:
+                    solution = results["opt_sol"]
+                    modes = results["opt_modes"]
+
+                return solution, modes
+        else:
+            # Space systems
+            opt_sol[direction + "_seismic"] = opt
+            opt_sol[perp_dir + "_seismic"] = opt_perp
+            opt_sol["gravity"] = opt_gr
+
+            return opt_sol
 
     def iterate_phase_3(self, opt_sol, omega, read=True):
         """
@@ -734,7 +891,12 @@ class Iterations:
         spoResults = self.ipbsd.spo_opensees(opt_sol, hinge_models, forces, self.fstiff, modalShape, direction=d)
 
         # Get the idealized version of the SPO curve and create a warningSPO = True if the assumed shape was incorrect
-        d, v = self.derive_spo_shape(spoResults, residual=0.3)
+        # DEVELOPER TOOL
+        new_fitting = False
+        if new_fitting:
+            d, v = self.derive_spo(spoResults, residual=0.3)
+        else:
+            d, v = self.derive_spo_shape(spoResults, residual=0.3)
 
         # Actual overstrength
         if self.flag3d and self.ipbsd.data.configuration == "perimeter":
@@ -1205,20 +1367,25 @@ class Iterations:
 
                 # Exiting warnT correction
                 # Correction if unsatisfactory detailing, modifying only towards increasing c-s, based on phase 4
+                # TODO: Warnings on gravity/central columns to be added
                 if warnMax:
                     # Generally not being run at first iteration
                     """Look for a different solution"""
                     # Get the new design solution and the modal shapes
-                    solution, m_temp = self.seek_solution(warnings, opt_sol, direction=direction)
-                    print("[RERUN COMPLETE] New design solution has been selected due to unsatisfactory detailing...")
                     # Update the solutions
-                    if self.flag3d:
-                        opt_sol[tag] = solution
-                        modes[direction]["Periods"] = m_temp["Periods"]
-                        modes[direction]["Modes"] = m_temp["Modes"]
+                    if self.ipbsd.data.configuration == "perimeter":
+                        solution, m_temp = self.seek_solution(warnings, opt_sol, direction=direction)
+                        if self.flag3d:
+                            opt_sol[tag] = solution
+                            modes[direction]["Periods"] = m_temp["Periods"]
+                            modes[direction]["Modes"] = m_temp["Modes"]
+                        else:
+                            opt_sol = solution
+                            modes = m_temp
                     else:
-                        opt_sol = solution
-                        modes = m_temp
+                        opt_sol = self.seek_solution(warnings, opt_sol, direction=direction)
+
+                    print("[RERUN COMPLETE] New design solution was selected due to unsatisfactory detailing...")
 
                 """Create an OpenSees model and run static pushover - iterate analysis.
                 Acts as the first estimation of secant to yield period. Second step after initial modal analysis.

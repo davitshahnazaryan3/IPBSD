@@ -220,7 +220,14 @@ class OpenSeesRun3D:
 
         return results
 
-    def apply_gravity_loads(self, beams, q_floor, q_roof, spans_x, spans_y, distributed=False):
+    def apply_gravity_loads(self, beams, distributed=True):
+        q_roof = self.i_d.i_d['bldg_ch'][1]
+        q_floor = self.i_d.i_d['bldg_ch'][0]
+        spans_x = self.i_d.spans_x
+        spans_y = self.i_d.spans_y
+        op.timeSeries("Linear", 2)
+        op.pattern("Plain", 2, 2)
+
         for d in beams:
             for beam in beams[d]:
                 st = int(str(beam)[-1])
@@ -249,7 +256,7 @@ class OpenSeesRun3D:
                                spans_x[xbay - 1]
 
                     if distributed:
-                        op.eleLoad('-ele', beam, '-type', '-beamUniform', -load, self.NEGLIGIBLE)
+                        op.eleLoad('-ele', beam, '-type', '-beamUniform', load, self.NEGLIGIBLE)
                     else:
                         inode = beam - 3000
                         jnode = beam - 3000 + 100
@@ -270,7 +277,7 @@ class OpenSeesRun3D:
 
                         # Applying the load
                         if distributed:
-                            op.eleLoad('-ele', beam, '-type', '-beamUniform', -load, self.NEGLIGIBLE)
+                            op.eleLoad('-ele', beam, '-type', '-beamUniform', load, self.NEGLIGIBLE)
                         else:
                             inode = beam - 3000
                             jnode = beam - 3000 + 100
@@ -293,7 +300,7 @@ class OpenSeesRun3D:
 
                     # Applying the load
                     if distributed:
-                        op.eleLoad('-ele', beam, '-type', '-beamUniform', -load, self.NEGLIGIBLE)
+                        op.eleLoad('-ele', beam, '-type', '-beamUniform', load, self.NEGLIGIBLE)
                     else:
                         inode = beam - 2000
                         jnode = beam - 2000 + 10
@@ -314,7 +321,7 @@ class OpenSeesRun3D:
 
                         # Applying the load
                         if distributed:
-                            op.eleLoad('-ele', beam, '-type', '-beamUniform', -load, self.NEGLIGIBLE)
+                            op.eleLoad('-ele', beam, '-type', '-beamUniform', load, self.NEGLIGIBLE)
                         else:
                             inode = beam - 2000
                             jnode = beam - 2000 + 10
@@ -607,26 +614,19 @@ class OpenSeesRun3D:
                 # Seismic frames
                 for ele in beams["x"]:
                     st = int(str(ele)[-1]) - 1
-                    op.eleLoad('-ele', ele, '-type', '-beamUniform', -abs(grav_loads["x"][st]), self.NEGLIGIBLE)
+                    op.eleLoad('-ele', ele, '-type', '-beamUniform', abs(grav_loads["x"][st]), self.NEGLIGIBLE)
                 for ele in beams["y"]:
                     st = int(str(ele)[-1]) - 1
-                    op.eleLoad('-ele', ele, '-type', '-beamUniform', -abs(grav_loads["y"][st]), self.NEGLIGIBLE)
+                    op.eleLoad('-ele', ele, '-type', '-beamUniform', abs(grav_loads["y"][st]), self.NEGLIGIBLE)
                 # Gravity frames
                 for ele in beams["gravity_x"]:
                     st = int(str(ele)[-1]) - 1
-                    op.eleLoad('-ele', ele, '-type', '-beamUniform', -2 * abs(grav_loads["x"][st]), self.NEGLIGIBLE)
+                    op.eleLoad('-ele', ele, '-type', '-beamUniform', 2 * abs(grav_loads["x"][st]), self.NEGLIGIBLE)
                 for ele in beams["gravity_y"]:
                     st = int(str(ele)[-1]) - 1
-                    op.eleLoad('-ele', ele, '-type', '-beamUniform', -2 * abs(grav_loads["y"][st]), self.NEGLIGIBLE)
+                    op.eleLoad('-ele', ele, '-type', '-beamUniform', 2 * abs(grav_loads["y"][st]), self.NEGLIGIBLE)
             else:
-                q_roof = self.i_d.i_d['bldg_ch'][1]
-                q_floor = self.i_d.i_d['bldg_ch'][0]
-                spans_x = self.i_d.spans_x
-                spans_y = self.i_d.spans_y
-                op.timeSeries("Linear", 2)
-                op.pattern("Plain", 2, 2)
-
-                self.apply_gravity_loads(beams, q_floor, q_roof, spans_x, spans_y)
+                self.apply_gravity_loads(beams)
 
         # Analysis parameters
         self.static_analysis()
@@ -638,9 +638,10 @@ class OpenSeesRun3D:
 
         return results
 
-    def create_model(self, elastic=False):
+    def create_model(self, gravity=False, elastic=False):
         """
         creates the model
+        :param gravity: bool                    Apply gravity loads
         :param elastic: bool                    Run elastic analysis or not
         :return: array                          Beam and column element tags
         """
@@ -657,6 +658,11 @@ class OpenSeesRun3D:
         self.rigid_diaphragm(spans_x, spans_y, nbays_x, nbays_y)
         self.define_transformations()
         beams, columns = self.create_elements(nbays_x, nbays_y, elastic=elastic)
+        if gravity:
+            self.apply_gravity_loads(beams)
+            # Static analysis
+            self.static_analysis()
+
         return beams, columns
 
     def create_elements(self, nbays_x, nbays_y, elastic=True):
@@ -1315,8 +1321,8 @@ class OpenSeesRun3D:
         :return: None
         """
         # Number of steps
-        nsteps = 1000
-        tol = 1.e-8
+        nsteps = 10000
+        tol = 1.e-6
         iterInit = 10
         testType = "EnergyIncr"
         algorithmType = "KrylovNewton"
@@ -1391,7 +1397,6 @@ class OpenSeesRun3D:
         op.integrator("DisplacementControl", self.spo_nodes[-1], self.direction + 1,
                       0.1 * sum(self.i_d.heights) / nsteps)
         op.analysis("Static")
-
         topDisp, baseShear = self.spo_algorithm(testType, algorithmType, nsteps, iterInit, tol)
 
         return topDisp, baseShear
@@ -1405,7 +1410,7 @@ if __name__ == "__main__":
     import pickle
     import sys
 
-    directory = Path.cwd().parents[1] / ".applications/LOSS Validation Manuscript/space/case4"
+    directory = Path.cwd().parents[1] / ".applications/LOSS Validation Manuscript/space/case8"
 
     # actionx = directory.parents[0] / "sample" / "actionx.csv"
     # actiony = directory.parents[0] / "sample" / "actiony.csv"
@@ -1415,27 +1420,27 @@ if __name__ == "__main__":
     input_file = directory / "ipbsd_input.csv"
     # hinge_models = Path.cwd().parents[0] / "tempHinge.pickle"
     direction = 1
-    modalShape = np.array([0.012795333277274425, 0.027597220180917488, 0.04248371129296387, 0.05289081741224354])
-    modalShape = np.round(modalShape / max(modalShape), 2)
+    modalShape = np.array([.27, .55, .81, 1.])
 
     # Read the cross-section files
-    csx = pd.read_csv(csx, index_col=0).iloc[333]
-    csy = pd.read_csv(csy, index_col=0).iloc[333]
-    csg = pd.read_csv(csg, index_col=0).iloc[333]
+    csx = pd.read_csv(csx, index_col=0).iloc[540]
+    csy = pd.read_csv(csy, index_col=0).iloc[540]
+    csg = pd.read_csv(csg, index_col=0).iloc[540]
 
-    csy["hi1"] = 0.6
-    csy["h1"] = 0.8
-    csy["hi2"] = 0.6
-    csy["h2"] = 0.8
-    csy["hi3"] = 0.55
-    csy["h3"] = 0.75
-    csy["hi4"] = 0.55
-    csy["h4"] = 0.75
+    # csy["hi1"] = 0.6
+    # csy["h1"] = 0.8
+    # csy["hi2"] = 0.6
+    # csy["h2"] = 0.8
+    # csy["hi3"] = 0.55
+    # csy["h3"] = 0.75
+    # csy["hi4"] = 0.55
+    # csy["h4"] = 0.75
+    #
+    # csg["hy1"] = 0.8
+    # csg["hy2"] = 0.8
+    # csg["hy3"] = 0.75
+    # csg["hy4"] = 0.75
 
-    csg["hy1"] = 0.8
-    csg["hy2"] = 0.8
-    csg["hy3"] = 0.75
-    csg["hy4"] = 0.75
     cs = {"x_seismic": csx, "y_seismic": csy, "gravity": csg}
 
     # actionx = pd.read_csv(actionx)
@@ -1444,8 +1449,11 @@ if __name__ == "__main__":
     lat_action = [267, 465, 633, 628]
 
     # Hinge models
-    with open(directory / "hinge_temp.pickle", 'rb') as file:
+    with open(directory / "temp_hinge.pickle", 'rb') as file:
         data = pickle.load(file)
+
+    with open(directory / "temp_opt_sol.pickle", 'rb') as file:
+        cs = pickle.load(file)
 
     hinge = data
 
@@ -1456,9 +1464,9 @@ if __name__ == "__main__":
     data = Input()
     data.read_inputs(input_file)
 
-    analysis = OpenSeesRun3D(data, cs, hinge=hinge_elastic, direction=direction, fstiff=fstiff, system="space",
-                             pflag=True)
-    results = analysis.elastic_analysis_3d(analysis=3, lat_action=lat_action, grav_loads=None)
+    # analysis = OpenSeesRun3D(data, cs, hinge=hinge_elastic, direction=direction, fstiff=fstiff, system="space",
+    #                          pflag=True)
+    # results = analysis.elastic_analysis_3d(analysis=3, lat_action=lat_action, grav_loads=None)
 
     # ma = OpenSeesRun3D(data, cs, hinge=hinge_elastic, direction=direction, fstiff=fstiff, system="space")
     # ma.create_model(True)
@@ -1467,11 +1475,11 @@ if __name__ == "__main__":
     # ma.wipe()
 
     spo = OpenSeesRun3D(data, cs, fstiff, hinge=hinge, direction=direction, system="space")
-    spo.create_model()
+    spo.create_model(gravity=True)
     # spo.define_masses()
     topDisp, baseShear = spo.spo_analysis(load_pattern=2, mode_shape=modalShape)
     spo.wipe()
 
     spo_results = {"d": topDisp, "v": baseShear}
-    with open(f"temp_spo.pickle", 'wb') as handle:
+    with open(directory / f"temp_spo.pickle", 'wb') as handle:
         pickle.dump(spo_results, handle)

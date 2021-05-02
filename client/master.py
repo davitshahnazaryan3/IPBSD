@@ -543,7 +543,7 @@ class Master:
             spo = OpenSeesRun3D(self.data, solution, fstiff, hinge=hinge, direction=direction, system=system)
         else:
             spo = OpenSeesRun(self.data, solution, fstiff, hinge=hinge)
-        spo.create_model()
+        spo.create_model(gravity=True)
         # spo.define_masses()
         if not self.flag3d:
             spo.pdelta_columns(action)

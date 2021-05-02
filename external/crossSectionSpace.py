@@ -215,6 +215,41 @@ class CrossSectionSpace:
 
         return cs
 
+    def fix_dependencies(self, key, main, perp, gravity):
+        # Storey of hive element
+        storey = int(key[-1])
+
+        # Elements storey-wise
+        for st in range(1, self.nst, 2):
+            if storey % 2 == 0:
+                hive = f"{key[:-1]}{st+1}"
+                bee = f"{key[:-1]}{st}"
+            else:
+                hive = f"{key[:-1]}{st}"
+                bee = f"{key[:-1]}{st+1}"
+            main[bee] = main[hive]
+            # Force allowable variations of c-s dimensions between elements of adjacent groups
+            if st <= self.nst - 2:
+                hive = f"{key[:-1]}{st+2}"
+                bee = f"{key[:-1]}{st}"
+                if main[hive] > main[bee]:
+                    main[bee] = main[hive]
+                    main[f"{key[:-1]}{st+1}"] = main[bee]
+
+        if key[:-1] == "he":
+            # Constraints for columns in perpendicular direction
+            for st in range(1, self.nst + 1):
+                perp[f"he{st}"] = main[f"he{st}"]
+                # Constrain beam widths not be larger than the column height
+                hive = f"b{st}"
+                bee = f"he{st}"
+                if main[hive] > main[bee]:
+                    main[bee] = main[hive]
+                if perp[hive] > perp[bee]:
+                    perp[bee] = perp[hive]
+
+        return main, perp, gravity
+
     def constraint_function(self):
         """
         Constraint functions for identifying the combinations of all possible cross-sections
@@ -457,7 +492,7 @@ class CrossSectionSpace:
                     internal = f"h{x}2{st}"
                     problem.addConstraint(bay_constraint, [internal, external])
 
-        # Fin all possible solutions within the constraints specified
+        # Find all possible solutions within the constraints specified
         solutions = problem.getSolutions()
 
         print(f"[SUCCESS] Number of solutions found: {len(solutions)}")
