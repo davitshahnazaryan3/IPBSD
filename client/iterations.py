@@ -617,7 +617,7 @@ class Iterations:
         else:
             corr = None
 
-        # Gravity loads
+        # Seismic solution
         if self.flag3d:
             seismic_solution = solution["x_seismic"] if direction == 0 else solution["y_seismic"]
         else:
@@ -703,8 +703,9 @@ class Iterations:
         # Design elements of central/gravity elements if space systems are used - since they are part of the lateral
         # force resisting system
         if detail_gravity and self.flag3d:
-            hinge_gravity = self.ipbsd.design_elements(gravity_demands, solution["gravity"], None, None,
-                                                       cover=self.rebar_cover, direction=direction, gravity=True)
+            hinge_gravity, warn_gravity = self.ipbsd.design_elements(gravity_demands, solution["gravity"], None, None,
+                                                                     cover=self.rebar_cover, direction=direction,
+                                                                     gravity=True)
         else:
             hinge_gravity = None
 
@@ -729,8 +730,9 @@ class Iterations:
                                            direction=direction)
             # Design elements of central/gravity elements if space systems are used
             if detail_gravity and self.flag3d:
-                hinge_gravity = self.ipbsd.design_elements(gravity_demands, solution["gravity"], None, None,
-                                                           cover=self.rebar_cover, direction=direction, gravity=True)
+                hinge_gravity, warn_gravity = self.ipbsd.design_elements(gravity_demands, solution["gravity"], None,
+                                                                         None, cover=self.rebar_cover,
+                                                                         direction=direction, gravity=True)
 
             print("[RERUN COMPLETE] Rerun of analysis and detailing complete due to modified stiffness.")
 
@@ -880,7 +882,7 @@ class Iterations:
         :param vy: float                        Design base shear of the MDOF system (excludes Omega)
         :param modalShape: list                 First-mode shape from MA
         :param omega: float                     Overstrength factor
-        :pararm direction: str of               Direction of pushover action
+        :param direction: str                   Direction of pushover action
         :return: tuple                          SPO outputs (Top displacement vs. Base Shear)
         :return: tuple                          Idealized SPO curve fit (Top displacement vs. Base Shear)
         :return: float                          Overstrength factor
@@ -994,7 +996,7 @@ class Iterations:
             """Get action and demands"""
             print("[PHASE] Commencing phase 4...")
             phase_4 = self.iterate_phase_4(cy, dy, sa, period_range, opt_sol, modes, table, direction=direction,
-                                           gravity_demands=demands_gravity, detail_gravity=False)
+                                           gravity_demands=demands_gravity, detail_gravity=False, rerun=False)
             forces = next(phase_4)
             demands, demands_gravity[i] = next(phase_4)
             details, hinge_models, hinge_gravity, hard_ductility, fract_ductility = next(phase_4)
@@ -1039,8 +1041,8 @@ class Iterations:
 
         # TODO, add warnings for central elements of space systems as well
         # Detail the gravity frames in both direction (envelope)
-        hinge_gravity = self.ipbsd.design_elements(demands_gravity, opt_sol["gravity"], None, None,
-                                                   cover=self.rebar_cover, direction=0, gravity=True)
+        hinge_gravity, warn_gravity = self.ipbsd.design_elements(demands_gravity, opt_sol["gravity"], None, None,
+                                                                 cover=self.rebar_cover, direction=0, gravity=True)
         design_outputs["gravity"]["hinge_models"] = hinge_gravity
 
         return design_outputs, demands_gravity
@@ -1405,10 +1407,10 @@ class Iterations:
                 self.period_to_use = spo_period
 
                 if not spo_period <= t_upper * 1.05:
-                    # If SPO based secant to yield period is not within the tolerance of upper period limit
+                    # Even though SPO period might not match modal period, the condition is still satisfying
                     self.warnT = True
                 else:
-                    # Even though SPO period might not match modal period, the condition is still satisfying
+                    # If SPO based secant to yield period is not within the tolerance of upper period limit
                     self.warnT = False
 
                 # Record OpenSees outputs

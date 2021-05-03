@@ -360,6 +360,8 @@ class Detailing:
         # Initialize hinge models
         model = {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}
         hinge_models = {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}
+        warnings = {"MAX": {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}},
+                    "MIN": {"Beams": {"Pos": {}, "Neg": {}}, "Columns": {}}}
 
         # Design of beams
         for st in range(self.nst):
@@ -374,22 +376,32 @@ class Detailing:
             m_target_neg = beam_demands_neg[st][0]
             b = self.sections[f"bx{st + 1}"]
             h = self.sections[f"hx{st + 1}"]
-            model_pos, hinge_pos, model_neg, hinge_neg = self.get_details(b, h, m_target_pos, m_target_neg)
+            model_pos, hinge_pos, model_neg, hinge_neg, w = self.get_details(b, h, m_target_pos, m_target_neg)
             model["Beams"]["Pos"][f"S{st + 1}"]["x"] = model_pos
             model["Beams"]["Neg"][f"S{st + 1}"]["x"] = model_neg
             hinge_models["Beams"]["Pos"][f"S{st + 1}"]["x"] = hinge_pos
             hinge_models["Beams"]["Neg"][f"S{st + 1}"]["x"] = hinge_neg
+            # Add the warnings
+            warnings["MAX"]["Beams"]["Pos"][f"S{st + 1}x"] = w["pos"][0]
+            warnings["MIN"]["Beams"]["Pos"][f"S{st + 1}x"] = w["pos"][1]
+            warnings["MAX"]["Beams"]["Neg"][f"S{st + 1}x"] = w["neg"][0]
+            warnings["MIN"]["Beams"]["Neg"][f"S{st + 1}x"] = w["neg"][1]
 
             # Detail elements along Y direction for space systems
             m_target_pos = beam_demands_pos[st][1]
             m_target_neg = beam_demands_neg[st][1]
             b = self.sections[f"by{st + 1}"]
             h = self.sections[f"hy{st + 1}"]
-            model_pos, hinge_pos, model_neg, hinge_neg = self.get_details(b, h, m_target_pos, m_target_neg)
+            model_pos, hinge_pos, model_neg, hinge_neg, w = self.get_details(b, h, m_target_pos, m_target_neg)
             model["Beams"]["Pos"][f"S{st + 1}"]["y"] = model_pos
             model["Beams"]["Neg"][f"S{st + 1}"]["y"] = model_neg
             hinge_models["Beams"]["Pos"][f"S{st + 1}"]["y"] = hinge_pos
             hinge_models["Beams"]["Neg"][f"S{st + 1}"]["y"] = hinge_neg
+            # Add the warnings
+            warnings["MAX"]["Beams"]["Pos"][f"S{st + 1}y"] = w["pos"][0]
+            warnings["MIN"]["Beams"]["Pos"][f"S{st + 1}y"] = w["pos"][1]
+            warnings["MAX"]["Beams"]["Neg"][f"S{st + 1}y"] = w["neg"][0]
+            warnings["MIN"]["Beams"]["Neg"][f"S{st + 1}y"] = w["neg"][1]
 
         # Design of columns
         for st in range(self.nst):
@@ -414,6 +426,9 @@ class Detailing:
             '''Local ductility requirement checks (following Eurocode 8 recommendations)'''
             model_temp = self.ensure_local_ductility(b, h, model["Columns"][f"S{st + 1}"][0]["reinforcement"], mphi,
                                                      None, None, eletype="Column", pflag=False)
+            # Any warnings
+            warnings["MAX"]["Columns"][f"S{st + 1}"] = self.WARN_ELE_MAX
+            warnings["MIN"]["Columns"][f"S{st + 1}"] = self.WARN_ELE_MIN
 
             if model_temp is not None:
                 model["Columns"][f"S{st + 1}"] = model_temp
@@ -477,7 +492,7 @@ class Detailing:
         for i in numericCols:
             hinge_models[i] = pd.to_numeric(hinge_models[i])
 
-        return hinge_models
+        return hinge_models, warnings
 
     def design_elements(self, modes=None):
         """
@@ -675,7 +690,8 @@ class Detailing:
     def get_details(self, b, h, m_pos, m_neg):
         """
         Gets details
-        Note: Update all detailing functions to use this one
+        Note:   Update all detailing functions to use this one
+                Currently run only for central elements (gravity)
         :param b: float                     Widths of element
         :param h: float                     Height of element
         :param m_pos: float                 Positive bending moment
@@ -700,6 +716,8 @@ class Detailing:
         # Ensure local ductility in positive direction
         model_temp = self.ensure_local_ductility(b, h, model_pos[0]["reinforcement"], mphiPos, None, None,
                                                  eletype="Beam", oppReinf=model_neg[0]["reinforcement"], pflag=False)
+        # Any warnings
+        w = {"pos": [self.WARN_ELE_MAX, self.WARN_ELE_MIN]}
 
         if model_temp is not None:
             model_pos = model_temp
@@ -708,12 +726,14 @@ class Detailing:
         # Ensure local ductility in negative direction
         model_temp = self.ensure_local_ductility(b, h, model_neg[0]["reinforcement"], mphiNeg, None, None,
                                                  eletype="Beam", oppReinf=model_pos[0]["reinforcement"], pflag=False)
+        # Any warnings
+        w["neg"] = [self.WARN_ELE_MAX, self.WARN_ELE_MIN]
 
         if model_temp is not None:
             model_neg = model_temp
             hinge_models_neg = model_temp[4]
 
-        return model_pos, hinge_models_pos, model_neg, hinge_models_neg
+        return model_pos, hinge_models_pos, model_neg, hinge_models_neg, w
 
     def model_to_df(self, model):
         """

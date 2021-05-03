@@ -570,7 +570,7 @@ class OpenSeesRun3D:
         self.define_transformations()
 
         # Create structural elements
-        beams, columns = self.create_elements(nbays_x, nbays_y, elastic=True)
+        beams, columns = self.create_elements(nbays_x, nbays_y)
 
         # Apply lateral loads for static analysis
         # lat_action represents loads for each seismic frame
@@ -657,7 +657,7 @@ class OpenSeesRun3D:
         self.define_nodes()
         self.rigid_diaphragm(spans_x, spans_y, nbays_x, nbays_y)
         self.define_transformations()
-        beams, columns = self.create_elements(nbays_x, nbays_y, elastic=elastic)
+        beams, columns = self.create_elements(nbays_x, nbays_y)
         if gravity:
             self.apply_gravity_loads(beams)
             # Static analysis
@@ -665,11 +665,10 @@ class OpenSeesRun3D:
 
         return beams, columns
 
-    def create_elements(self, nbays_x, nbays_y, elastic=True):
+    def create_elements(self, nbays_x, nbays_y):
         """
         creates elements
         consideration given only for ELFM, so capacities are arbitrary
-        :param elastic: bool                        For elastic analysis or inelastic
         :return: list                               Element tags
         """
         # Cross-sections
@@ -735,44 +734,13 @@ class OpenSeesRun3D:
                     inode = int(f"{xbay}{ybay}{previous_st}")
                     jnode = int(f"{xbay}{ybay}{st}")
 
-                    # Column cross-section area and moment of inertia
-                    area = b_col * h_col
-                    inertia = b_col * h_col ** 3 / 12
-                    inertiay = h_col * b_col ** 3 / 12
-                    if elastic:
-                        # Seismic frame along x direction
-                        if ybay == 1 or ybay == nbays_y + 1:
-                            el_mod = self.get_elastic_modulus(hinge_x, st, "Column", inertia, xbay)
-                        elif (xbay == 1 or xbay == nbays_x + 1) and (1 < ybay < nbays_y + 1):
-                            # Seismic frame along y direction
-                            el_mod = self.get_elastic_modulus(hinge_y, st, "Column", inertia, ybay)
-                        else:
-                            # Gravity frame columns
-                            el_mod = self.get_elastic_modulus(hinge_gr, st, "Column", inertia)
+                    # Placeholder
+                    my = self.MY_CONSTANT
 
-                        nu = 0.2
-                        Gc = el_mod / 2.0 / (1 + nu)
-
-                        # Create the elastic element
-                        # op.element("elasticBeamColumn", et, inode, jnode, area, el_mod, Gc,
-                        #            self.UBIG, inertiay, inertia, self.COL_TRANSF_TAG)
-
-                        # Auxiliary parameters not important for linear static analysis
-                        gt = self.COL_TRANSF_TAG
-                        my = self.MY_CONSTANT
-                        # Plastic hinge length is not important
-                        lp = h_col * 0.7
-                        self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_col, h_col,
-                                                  hingeModel=eleHinge)
-
-                    else:
-                        # Placeholder
-                        my = self.MY_CONSTANT
-
-                        lp = h_col * 1.0  # not important for linear static analysis
-                        gt = self.COL_TRANSF_TAG
-                        self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_col, h_col,
-                                                  hingeModel=eleHinge)
+                    lp = h_col * 0.7  # not important for linear static analysis
+                    gt = self.COL_TRANSF_TAG
+                    self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_col, h_col,
+                                              hingeModel=eleHinge)
 
                     # For recorders
                     if ybay == 1 or ybay == nbays_y + 1:
@@ -819,38 +787,13 @@ class OpenSeesRun3D:
                     et = int(f"3{xbay}{ybay}{st}")
                     inode = int(f"{xbay}{ybay}{st}")
                     jnode = int(f"{next_bay_x}{ybay}{st}")
-                    area = b_beam * h_beam
-                    inertia = b_beam * h_beam ** 3 / 12
-                    inertiay = h_beam * b_beam ** 3 / 12
 
-                    # Stiffness reduction
-                    if elastic:
-                        if ybay == 1 or ybay == nbays_y + 1:
-                            el_mod = self.get_elastic_modulus(hinge_x, st, "Beam", inertia, xbay)
-                        else:
-                            # While columns are identical, beams may vary depending on length
-                            el_mod = self.get_elastic_modulus(hinge_gr, st, "Beam", inertia, xbay)
-
-                        nu = 0.2
-                        Gc = el_mod / 2.0 / (1 + nu)
-
-                        # Create the element
-                        # op.element("elasticBeamColumn", et, inode, jnode, area, el_mod, Gc,
-                        #            self.UBIG, inertiay, inertia, self.BEAM_X_TRANSF_TAG)
-
-                        # Auxiliary parameters not important for linear static analysis
-                        gt = self.BEAM_X_TRANSF_TAG
-                        my = self.MY_CONSTANT
-                        lp = h_beam * 0.7
-                        self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_beam, h_beam,
-                                                  hingeModel=eleHinge)
-
-                    else:
-                        lp = 1.0 * h_beam  # not important for linear static analysis
-                        my = self.MY_CONSTANT
-                        gt = self.BEAM_X_TRANSF_TAG
-                        self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_beam, h_beam,
-                                                  hingeModel=eleHinge)
+                    # Placeholders
+                    lp = 0.7 * h_beam  # not important for linear static analysis
+                    my = self.MY_CONSTANT
+                    gt = self.BEAM_X_TRANSF_TAG
+                    self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_beam, h_beam,
+                                              hingeModel=eleHinge)
 
                     # For recorders
                     if ybay == 1 or ybay == nbays_y + 1:
@@ -888,37 +831,12 @@ class OpenSeesRun3D:
                     inode = int(f"{xbay}{ybay}{st}")
                     jnode = int(f"{xbay}{next_bay_y}{st}")
 
-                    area = b_beam * h_beam
-                    inertia = b_beam * h_beam**3 / 12
-                    inertiay = h_beam * b_beam ** 3 / 12
-
-                    # Stiffness reduction
-                    if elastic:
-                        if xbay == 1 or xbay == nbays_x + 1:
-                            el_mod = self.get_elastic_modulus(hinge_y, st, "Beam", inertia, ybay)
-                        else:
-                            # While columns are identical, beams may vary depending on length
-                            el_mod = self.get_elastic_modulus(hinge_gr, st, "Beam", inertia, ybay)
-
-                        nu = 0.2
-                        Gc = el_mod / 2.0 / (1 + nu)
-
-                        # Create the element
-                        # op.element("elasticBeamColumn", et, inode, jnode, area, el_mod, Gc,
-                        #            self.UBIG, inertiay, inertia, self.BEAM_Y_TRANSF_TAG)
-                        # Auxiliary parameters not important for linear static analysis
-                        gt = self.BEAM_Y_TRANSF_TAG
-                        my = self.MY_CONSTANT
-                        lp = h_beam * 0.7
-                        self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_beam, h_beam,
-                                                  hingeModel=eleHinge)
-
-                    else:
-                        lp = 1.0 * h_beam  # not important for linear static analysis
-                        my = self.MY_CONSTANT
-                        gt = self.BEAM_Y_TRANSF_TAG
-                        self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_beam, h_beam,
-                                                  hingeModel=eleHinge)
+                    # Placeholders
+                    lp = 0.7 * h_beam  # not important for linear static analysis
+                    my = self.MY_CONSTANT
+                    gt = self.BEAM_Y_TRANSF_TAG
+                    self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_beam, h_beam,
+                                              hingeModel=eleHinge)
 
                     # For recorders
                     if xbay == 1 or xbay == nbays_x + 1:
@@ -1131,9 +1049,9 @@ class OpenSeesRun3D:
         # Modify indices of modal properties as follows:
         # index 0 = direction x
         # index 1 = direction y
-        period = [period[i] for i in range(len(positions))]
-        gamma = [gamma[i] for i in range(len(positions))]
-        mstar = [mstar[i] for i in range(len(positions))]
+        period = np.array([period[i] for i in range(len(positions))])
+        gamma = np.array([gamma[i] for i in range(len(positions))])
+        mstar = np.array([mstar[i] for i in range(len(positions))])
         return period, modalShape, gamma, mstar
 
     def singlePush(self, ctrlNode, ctrlDOF, nSteps):

@@ -577,9 +577,12 @@ class Master:
                       self.data.n_seismic, self.data.masses, dy, sections, ductility_class=ductility_class,
                       rebar_cover=cover, est_ductilities=est_ductilities, direction=direction)
         if gravity:
-            hinge_models = d.design_gravity()
+            hinge_models, w = d.design_gravity()
+            warnMax = d.WARNING_MAX
+            warnMin = d.WARNING_MIN
+            warnings = {"warnings": w, "warnMax": warnMax, "warnMin": warnMin}
 
-            return hinge_models
+            return hinge_models, warnings
         else:
             data, hinge_models, mu_c, mu_f, warnings = d.design_elements(modes)
             warnMax = d.WARNING_MAX

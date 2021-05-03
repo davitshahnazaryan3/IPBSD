@@ -366,7 +366,11 @@ class IPBSD:
         # self.export_results(path / "haselton_springs", sections, "csv")
 
     def run_ipbsd(self, seekdesign=False):
-
+        """
+        Runs the framework
+        :param seekdesign: bool                     TODO, currently supports 3D space systems
+        :return:
+        """
         """Calling the master file"""
         ipbsd = Master(self.dir, flag3d=self.flag3d)
 
@@ -524,8 +528,33 @@ class IPBSD:
                                   gravity_loads=gravity_loads)
 
                 # Initial design solutions of all structural elements based on elastic analysis
-                init_design, demands_gravity = seek.generate_initial_solutions(opt_sol, opt_modes, self.overstrength,
-                                                                               sa, period_range, table_sls)
+                details = seek.generate_initial_solutions(opt_sol, opt_modes, self.overstrength, table_sls)
+                outputs = seek.run_iterations(opt_sol, period_limits, table_sls, maxiter=self.maxiter)
+
+                ipbsd_outputs = outputs[0]
+                spo_results = outputs[1]
+                opt_sol = outputs[2]
+                modes = outputs[3]
+                details = outputs[4]
+                hinges = outputs[5]
+                model_outputs = outputs[6]
+
+                # Export outputs and cache
+                if self.export_cache:
+                    """Creating DataFrames to store for RCMRF input"""
+                    self.cacheRCMRF(ipbsd, None, None, None, path=self.outputPath)
+
+                    # Exporting the IPBSD outputs
+                    self.create_folder(self.outputPath / f"Cache")
+                    self.export_results(self.outputPath / f"Cache/lossCurve", lossCurve, "pickle")
+                    self.export_results(self.outputPath / f"Cache/spoAnalysisCurveShape", spo_results, "pickle")
+                    self.export_results(self.outputPath / f"Cache/optimal_solution", opt_sol, "pickle")
+                    self.export_results(self.outputPath / f"Cache/modes", modes, "pickle")
+                    self.export_results(self.outputPath / f"Cache/ipbsd", ipbsd_outputs, "pickle")
+                    self.export_results(self.outputPath / f"Cache/details", details, "pickle")
+                    self.export_results(self.outputPath / f"Cache/hinge_models", hinges, "pickle")
+                    self.export_results(self.outputPath / f"Cache/modelOutputs", model_outputs, "pickle")
+
             else:
                 # Call the iterations function (iterations have not yet started though)
                 iterations = Iterations(ipbsd, sols, self.spo_file, self.target_mafc, self.analysis_type, self.damping,
@@ -612,7 +641,7 @@ class IPBSD:
                 # might act as a more realistic value. Notably Haselton, 2016 limits the secant yield stiffness between
                 # 0.2EIg and 0.6EIg.
 
-                print("[END] IPBSD was performed successfully")
+        print("[END] IPBSD was performed successfully")
 
 
 if __name__ == "__main__":
