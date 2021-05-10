@@ -18,7 +18,8 @@ class IPBSD:
     def __init__(self, input_file, hazard_file, slfDir, spo_file, limit_eal, target_mafc, outputPath, analysis_type=1,
                  damping=.05, num_modes=3, iterate=False, maxiter=20, fstiff=0.5, rebar_cover=0.03,
                  flag3d=False, solutionFileX=None, solutionFileY=None, export_cache=False, holdFlag=False,
-                 overstrength=None, replCost=None, gravity_cs=None, eal_correction=True, perform_scaling=True):
+                 overstrength=None, replCost=None, gravity_cs=None, eal_correction=True, perform_scaling=True,
+                 solutionFile=None):
         """
         Initializes IPBSD
         :param input_file: str              Input filename as '*.csv'
@@ -59,6 +60,7 @@ class IPBSD:
         :param gravity_cs: str              Path to gravity solution (for 3D modelling)
         :param eal_correction: bool         Perform EAL correction
         :param perform_scaling: bool        Perform scaling of SLFs to replCost (the scaling should not matter)
+        :param solutionFile: str            Solution file containing a dictionary for the Space System (*.pickle)
         """
         self.dir = Path.cwd()
         self.input_file = input_file
@@ -84,6 +86,7 @@ class IPBSD:
         self.solutionFileY = solutionFileY
         self.eal_correction = eal_correction
         self.perform_scaling = perform_scaling
+        self.solutionFile = solutionFile
 
         # 2d (False) means, that even if the SLFs are provided for the entire building, only 1 direction
         # (defaulting to dir1) will be considered. This also entails the use of non-dimensional components,
@@ -424,10 +427,14 @@ class IPBSD:
         print("[PHASE] Commencing phase 2...")
         sa, sd, period_range = ipbsd.get_spectra(lam_ls[1])
         if self.export_cache:
-            i = sa.shape[0]
-            sls_spectrum = np.concatenate((period_range.reshape(i, 1), sd.reshape(i, 1), sa.reshape(i, 1)), axis=1)
-            sls_spectrum = pd.DataFrame(data=sls_spectrum, columns=["Period", "Sd", "Sa"])
-            self.export_results(self.outputPath / "Cache/sls_spectrum", sls_spectrum, "csv")
+            try:
+                i = sa.shape[0]
+                sls_spectrum = np.concatenate((period_range.reshape(i, 1), sd.reshape(i, 1), sa.reshape(i, 1)), axis=1)
+                sls_spectrum = pd.DataFrame(data=sls_spectrum, columns=["Period", "Sd", "Sa"])
+                self.export_results(self.outputPath / "Cache/sls_spectrum", sls_spectrum, "csv")
+            except:
+                sls_spectrum = {"sa": sa, "sd": sd, "periods": period_range}
+                self.export_results(self.outputPath / "Cache/sls_spectrum", sls_spectrum, "pickle")
 
         print("[SUCCESS] Response spectra generated")
 
@@ -435,7 +442,7 @@ class IPBSD:
         period_limits = {}
         for i in range(delta_spectral.shape[0]):
             period_limits[f"{i+1}"] = ipbsd.get_period_range(delta_spectral[i], alpha_spectral[i], sd, sa)
-        print("[SUCCESS] Feasible period range identified")
+            print(f"[SUCCESS] Feasible period range identified: {period_limits[f'{i+1}']}")
 
         """Get all section combinations satisfying period bounds range
         Notes: 
@@ -470,10 +477,17 @@ class IPBSD:
             solution_y = self.solutionFileY
 
         # Generates all possible section combinations assuming a stiffness reduction factor
-        results = ipbsd.get_all_section_combinations(period_limits, fstiff=self.fstiff, data=ipbsd.data,
-                                                     cache_dir=self.outputPath/"Cache",
-                                                     solution_x=solution_x, solution_y=solution_y)
-        print("[SUCCESS] All section combinations were identified")
+        if self.solutionFile is None:
+            results = ipbsd.get_all_section_combinations(period_limits, fstiff=self.fstiff, data=ipbsd.data,
+                                                         cache_dir=self.outputPath/"Cache",
+                                                         solution_x=solution_x, solution_y=solution_y)
+            print("[SUCCESS] All section combinations were identified")
+        else:
+            if isinstance(self.solutionFile, str):
+                with open(self.solutionFile, "rb") as f:
+                    opt_sol = pickle.load(f)
+            else:
+                opt_sol = self.solutionFile
 
         # The main portion of IPBSD is completed. Now corrections should be made for the assumptions
         if not self.holdFlag:
@@ -519,17 +533,35 @@ class IPBSD:
                 # Just the direction of interest (modelling a 2D frame, without the perpendicular frame or
                 # gravity frames
                 # For 3D space systems opt_sol includes information on all structural elements
-                opt_sol = results["opt_sol"]
-                opt_modes = results["opt_modes"]
-                sols = results["sols"]
+                if "results" in locals():
+                    opt_sol = results["opt_sol"]
+                    opt_modes = results["opt_modes"]
+                    # Solutions file is not necessary in SeekDesign
+                    sols = results["sols"]
+                else:
+                    # Run Modal Analysis and identify the modal parameters
+                    model_periods, modalShape, gamma, mstar = ipbsd.ma_analysis(opt_sol, None, None, self.fstiff)
+                    # Initial solution was provided
+                    opt_sol["x_seismic"]["T"] = model_periods[0]
+                    opt_sol["x_seismic"]["Part Factor"] = gamma[0]
+                    opt_sol["x_seismic"]["Mstar"] = mstar[0]
+
+                    opt_sol["y_seismic"]["T"] = model_periods[1]
+                    opt_sol["y_seismic"]["Part Factor"] = gamma[1]
+                    opt_sol["y_seismic"]["Mstar"] = mstar[1]
+
+                    opt_modes = {"Periods": model_periods, "Modes": modalShape}
+                    # Update tee
+                    sols = None
+
             if seekdesign and self.flag3d:
-                seek = SeekDesign(ipbsd, sols, self.spo_file, self.target_mafc, self.analysis_type, self.damping,
+                seek = SeekDesign(ipbsd, self.spo_file, self.target_mafc, self.analysis_type, self.damping,
                                   self.num_modes, self.fstiff, self.rebar_cover, self.outputPath,
                                   gravity_loads=gravity_loads)
 
                 # Initial design solutions of all structural elements based on elastic analysis
                 details = seek.generate_initial_solutions(opt_sol, opt_modes, self.overstrength, table_sls)
-                outputs = seek.run_iterations(opt_sol, period_limits, table_sls, maxiter=self.maxiter)
+                outputs = seek.run_iterations(opt_sol, opt_modes, period_limits, table_sls, maxiter=self.maxiter)
 
                 ipbsd_outputs = outputs[0]
                 spo_results = outputs[1]

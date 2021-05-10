@@ -98,7 +98,7 @@ class Master:
         :return: array, array                       Spectral accelerations [g] and spectral displacements [cm] at SLS
                                                     and Period range [s]
         """
-        s = Spectra(lam, self.coefs, self.hazard_data['T'])
+        s = Spectra(lam, self.coefs, self.hazard_data['T'], self.original_hazard)
         return s.sa, s.sd, s.T_RANGE
 
     def get_design_values(self, slfDirectory, replCost=None, eal_corrections=True, perform_scaling=True):
@@ -511,6 +511,9 @@ class Master:
         :param direction: bool
         :return: list                               Modal periods
         """
+        if hinge is None:
+            hinge = {"x_seismic": None, "y_seismic": None, "gravity": None}
+
         if self.flag3d:
             ma = OpenSeesRun3D(self.data, solution, fstiff, hinge=hinge, direction=direction,
                                system=self.data.configuration)
@@ -544,7 +547,7 @@ class Master:
         else:
             spo = OpenSeesRun(self.data, solution, fstiff, hinge=hinge)
         spo.create_model(gravity=True)
-        # spo.define_masses()
+        spo.define_masses()
         if not self.flag3d:
             spo.pdelta_columns(action)
         topDisp, baseShear = spo.spo_analysis(load_pattern=2, mode_shape=modalShape)

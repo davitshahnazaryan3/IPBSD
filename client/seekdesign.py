@@ -12,14 +12,29 @@ def geo_mean(iterable):
     return np.exp(a.mean())
 
 
+def getIndex(My, data):
+    if np.where(data >= My)[0].size == 0:
+        return np.nan
+    else:
+        return np.where(data >= My)[0][0]
+
+
+def getEquation(p1, p2):
+    points = [p1, p2]
+    x_coords, y_coords = zip(*points)
+    A = vstack([x_coords, ones(len(x_coords))]).T
+    m, c = lstsq(A, y_coords)[0]
+    return m, c
+
+
 class SeekDesign:
     """For 3D modelling only"""
-    def __init__(self, ipbsd, sols, spo_file, target_MAFC, analysis_type, damping, num_modes, fstiff, rebar_cover,
+
+    def __init__(self, ipbsd, spo_file, target_MAFC, analysis_type, damping, num_modes, fstiff, rebar_cover,
                  outputPath, gravity_loads):
         """
         Initialize iterations
         :param ipbsd: object                            IPBSD object for input reading
-        :param sols: dict                               Solutions containing structural element information
         :param spo_file: str                            Path to .csv containing SPO shape assumptions
         :param target_MAFC: float                       Target MAFC
         :param analysis_type: int                       Type of elastic analysis for design purpose
@@ -31,7 +46,6 @@ class SeekDesign:
         :param gravity_loads: dict                      Gravity loads to be applied
         """
         self.ipbsd = ipbsd
-        self.sols = sols
         self.spo_file = spo_file
         self.target_MAFC = target_MAFC
         self.analysis_type = analysis_type
@@ -207,46 +221,46 @@ class SeekDesign:
                 self.ipbsd.design_elements(demands[key][key + "_seismic"], solution[key + "_seismic"], modes, dy[d],
                                            cover=self.rebar_cover, direction=d, est_ductilities=False)
             details[key] = {"details": designs, "hinge_models": hinge_models, "mu_c": mu_c, "mu_f": mu_f,
-                            "warnMax": warnMax, "warnMin": warnMin, "warnings": warnings}
-
-        # Design the central elements (envelope of both directions)
-        hinge_gravity, warn_gravity = self.ipbsd.design_elements(gravity_demands, solution["gravity"], None, None,
-                                                                 cover=self.rebar_cover, direction=0, gravity=True,
-                                                                 est_ductilities=False)
-
-        # Take the critical of hinge models from both directions
-        hinge_x, hinge_y = self.get_critical_designs(details["x"]["hinge_models"], details["y"]["hinge_models"])
-
-        """Rerun demand estimation and designs using the identified hinge models"""
-        # hinge models
-        hinge = {"x_seismic": hinge_x, "y_seismic": hinge_y, "gravity": hinge_gravity}
-        for key in details.keys():
-            d = 0 if key == "x" else 1
-            demands[key] = self.run_analysis(solution, forces[key], direction=d, hinge=hinge)
-
-            # Update the Gravity demands
-            gravity_demands[key] = demands[key]["gravity"]
-
-            # Design the structural elements
-            designs, hinge_models, mu_c, mu_f, warnMax, warnMin, warnings = \
-                self.ipbsd.design_elements(demands[key][key + "_seismic"], solution[key + "_seismic"], modes, dy[d],
-                                           cover=self.rebar_cover, direction=d, est_ductilities=False)
-            details[key] = {"details": designs, "hinge_models": hinge_models, "mu_c": mu_c, "mu_f": mu_f,
                             "warnMax": warnMax, "warnMin": warnMin, "warnings": warnings, "cy": cy, "dy": dy}
 
         # Design the central elements (envelope of both directions)
         hinge_gravity, warn_gravity = self.ipbsd.design_elements(gravity_demands, solution["gravity"], None, None,
                                                                  cover=self.rebar_cover, direction=0, gravity=True,
                                                                  est_ductilities=False)
-        details["gravity"] = {"hinge_models": hinge_gravity, "warnings": warn_gravity}
 
         # Take the critical of hinge models from both directions
         hinge_x, hinge_y = self.get_critical_designs(details["x"]["hinge_models"], details["y"]["hinge_models"])
 
+        # """Rerun demand estimation and designs using the identified hinge models"""
+        # # hinge models
+        # hinge = {"x_seismic": hinge_x, "y_seismic": hinge_y, "gravity": hinge_gravity}
+        # for key in details.keys():
+        #     d = 0 if key == "x" else 1
+        #     demands[key] = self.run_analysis(solution, forces[key], direction=d, hinge=hinge)
+        #
+        #     # Update the Gravity demands
+        #     gravity_demands[key] = demands[key]["gravity"]
+        #
+        #     # Design the structural elements
+        #     designs, hinge_models, mu_c, mu_f, warnMax, warnMin, warnings = \
+        #         self.ipbsd.design_elements(demands[key][key + "_seismic"], solution[key + "_seismic"], modes, dy[d],
+        #                                    cover=self.rebar_cover, direction=d, est_ductilities=False)
+        #     details[key] = {"details": designs, "hinge_models": hinge_models, "mu_c": mu_c, "mu_f": mu_f,
+        #                     "warnMax": warnMax, "warnMin": warnMin, "warnings": warnings, "cy": cy, "dy": dy}
+        #
+        # # Design the central elements (envelope of both directions)
+        # hinge_gravity, warn_gravity = self.ipbsd.design_elements(gravity_demands, solution["gravity"], None, None,
+        #                                                          cover=self.rebar_cover, direction=0, gravity=True,
+        #                                                          est_ductilities=False)
+        #
+        # # Take the critical of hinge models from both directions
+        # hinge_x, hinge_y = self.get_critical_designs(details["x"]["hinge_models"], details["y"]["hinge_models"])
+
+        details["gravity"] = {"hinge_models": hinge_gravity, "warnings": warn_gravity}
+
         # Update the existing hinge models
         details["x"]["hinge_models"] = hinge_x
         details["y"]["hinge_models"] = hinge_y
-
         return details
 
     def generate_initial_solutions(self, opt_sol, opt_modes, omega, table_sls):
@@ -321,17 +335,17 @@ class SeekDesign:
         if model_periods[0] > tol * upper_limits[0] and do_corrections:
             for st in range(self.ipbsd.data.nst):
                 # Internal columns of external frames along X
-                solution["x_seismic"][f"hi{st+1}"] += 0.05
+                solution["x_seismic"][f"hi{st + 1}"] += 0.05
                 # Gravity beams along X
-                solution["gravity"][f"hx{st+1}"] += 0.05
+                solution["gravity"][f"hx{st + 1}"] += 0.05
                 # Gravity columns
-                solution["gravity"][f"hi{st+1}"] += 0.05
+                solution["gravity"][f"hi{st + 1}"] += 0.05
                 # If within XX% do not increase beam heights along corner frames
                 if tol * upper_limits[0] / model_periods[0] < 0.75:
-                    solution["x_seismic"][f"h{st+1}"] += 0.05
+                    solution["x_seismic"][f"h{st + 1}"] += 0.05
                 # If any of the cross-section dimensions is beyond an undesirable value, raise a warning
-                vlist = [solution["x_seismic"][f"hi{st+1}"], solution["x_seismic"][f"h{st+1}"],
-                         solution["gravity"][f"hx{st+1}"]]
+                vlist = [solution["x_seismic"][f"hi{st + 1}"], solution["x_seismic"][f"h{st + 1}"],
+                         solution["gravity"][f"hx{st + 1}"]]
                 if not all(v < 0.95 for v in vlist):
                     print("[WARNING] Cross-section dimensions are above 0.9m.")
 
@@ -344,19 +358,19 @@ class SeekDesign:
         if model_periods[1] > tol * upper_limits[1] and do_corrections:
             for st in range(self.ipbsd.data.nst):
                 # Internal columns of external frames along Y
-                solution["y_seismic"][f"hi{st+1}"] += 0.05
+                solution["y_seismic"][f"hi{st + 1}"] += 0.05
                 # Gravity beams along Y
-                solution["gravity"][f"hy{st+1}"] += 0.05
+                solution["gravity"][f"hy{st + 1}"] += 0.05
                 # Only if no warning was raised along Y (as we don't want to increase the sections twice)
                 if model_periods[0] <= tol * upper_limits[0]:
                     # Gravity columns
-                    solution["gravity"][f"hi{st+1}"] += 0.05
+                    solution["gravity"][f"hi{st + 1}"] += 0.05
                 # If within XX% do not increase beam heights along corner frames
                 if tol * upper_limits[1] / model_periods[1] < 0.75:
-                    solution["y_seismic"][f"h{st+1}"] += 0.05
+                    solution["y_seismic"][f"h{st + 1}"] += 0.05
                 # If any of the cross-section dimensions is beyond an undesirable value, raise a warning
-                vlist = [solution["y_seismic"][f"hi{st+1}"], solution["y_seismic"][f"h{st+1}"],
-                         solution["gravity"][f"hy{st+1}"]]
+                vlist = [solution["y_seismic"][f"hi{st + 1}"], solution["y_seismic"][f"h{st + 1}"],
+                         solution["gravity"][f"hy{st + 1}"]]
                 if not all(v < 0.95 for v in vlist):
                     print("[WARNING] Cross-section dimensions are above 0.9m.")
 
@@ -372,6 +386,15 @@ class SeekDesign:
         # will provide the actual secant to yield periods
         if self.warnT:
             model_periods, modalShape, gamma, mstar = self.ipbsd.ma_analysis(solution, hinge, None, self.fstiff)
+
+        # Update the modal parameters in solution
+        solution["x_seismic"]["T"] = model_periods[0]
+        solution["x_seismic"]["Part Factor"] = gamma[0]
+        solution["x_seismic"]["Mstar"] = mstar[0]
+
+        solution["y_seismic"]["T"] = model_periods[1]
+        solution["y_seismic"]["Part Factor"] = gamma[1]
+        solution["y_seismic"]["Mstar"] = mstar[1]
 
         return model_periods, modalShape, gamma, mstar, solution
 
@@ -463,6 +486,95 @@ class SeekDesign:
 
         return opt_sol
 
+    def conservative_spo_shape(self, spo, residual=0.25):
+        x = spo[0]
+        y = spo[1]
+
+        # All negatives to zero
+        y[y < 0] = 0.0
+
+        # Get maximum point for reference
+        Vmax = max(y)
+
+        # Get initial stiffness
+        m1 = 0.2 * Vmax
+        d1 = x[getIndex(m1, y)]
+        stiff_elastic = m1 / d1
+
+        # Get the yield point
+        slopes = y / x
+        stfIdx = np.where(slopes[1:] < 0.85 * stiff_elastic)[0][0]
+        xint = x[stfIdx + 1]
+        yint = y[stfIdx + 1]
+
+        # Get the point of softening
+        for i in range(len(x) - 1):
+            stf = (y[i + 1] - y[i]) / (x[i] - x[i + 1])
+
+            if stf > 50000:
+                # High spikes
+                ymax = y[i]
+                xmax = x[i]
+                break
+
+        if "ymax" not in locals():
+            ymax = max(y)
+            xmax = x[getIndex(ymax, y)]
+
+        # Make sure yield point is not larger than max point
+        if yint > ymax:
+            yint = ymax
+
+        # # Residual point
+        # yres = max(y[-1], residual * yint)
+        # xres = x[i + getIndex(-yres, -y[i + 1:])]
+        #
+        # for i in range(len(x) - 1, 0, -1):
+        #     if y[i] <= 0.0:
+        #         y[i] = residual * yint
+        #     if y[i - 1] / y[i] > 1.2 and y[i-1] > residual * yint:
+        #         xres = x[i - 1]
+        #         yres = y[i - 1]
+        #         break
+        # try:
+        #     if yres > 0.35 * yint:
+        #         yres = 0.35 * yint
+        #         xres = x[i + getIndex(-yres, -y[i + 1:])]
+        # except:
+        #     pass
+
+        # # Now, identify the residual strength point (here defined at V=0)
+        # yres = max(y[-1], yint * residual)
+        # idx = getIndex(1.01 * yres, y[::-1])
+        # xres = x[::-1][idx]
+        # # Getting the actual residual strength and corresponding displacement
+        # ymin = yres
+        #
+        # # Select the softening slope until residual displacement
+        # # Fitting based on the area under the softening slope
+        # y_soft = y[getIndex(Vmax, y): getIndex(xres, x)]
+        # nbins = len(y_soft) - 1
+        # dx = (xres - xmax) / nbins
+        # area_soft = np.trapz(y_soft, dx=dx)
+        # xmin = 2 * area_soft / (Vmax + ymin) + xmax
+        #
+        # xres = xmin
+        # yres = ymin
+
+        # Using the Stiffness up till 0.8*ymax
+        y_80 = 0.6 * yint
+        idx = getIndex(1.01 * y_80, y[::-1])
+        x_80 = x[::-1][idx]
+
+        yres = residual * yint
+        xres = (ymax - yres) * (x_80 - xmax) / (ymax - y_80) + xmax
+
+        # Define the curve
+        d = np.array([0., xint, xmax, xres])
+        v = np.array([0., yint, ymax, yres])
+
+        return d, v
+
     def derive_spo_shape(self, spo, residual=0.1):
         """
         Fits a curve to the model SPO shape
@@ -473,19 +585,6 @@ class SeekDesign:
         # Top displacement and base shear
         x = spo[0]
         y = spo[1]
-
-        def getIndex(My, data):
-            if np.where(data >= My)[0].size == 0:
-                return np.nan
-            else:
-                return np.where(data >= My)[0][0]
-
-        def getEquation(p1, p2):
-            points = [p1, p2]
-            x_coords, y_coords = zip(*points)
-            A = vstack([x_coords, ones(len(x_coords))]).T
-            m, c = lstsq(A, y_coords)[0]
-            return m, c
 
         # Get maximum moment point
         Vmax = max(y)
@@ -569,7 +668,16 @@ class SeekDesign:
         idx = getIndex(1.01 * yres, y[::-1])
         xres = x[::-1][idx]
         # Getting the actual residual strength and corresponding displacement
-        ymin = y[-1]
+        ymin = yres
+
+        # ymin = y[-1]
+        #
+        # # Avoid negative residual strength and zero as residual strength
+        # cnt = 2
+        # while ymin <= 0:
+        #     ymin = y[-cnt]
+        #     cnt += 1
+
         # xmin = (Vmax - ymin) * (xres - dmax) / (Vmax - yres) + dmax
 
         # Select the softening slope until residual displacement
@@ -579,10 +687,6 @@ class SeekDesign:
         dx = (xres - dmax) / nbins
         area_soft = np.trapz(y_soft, dx=dx)
         xmin = 2 * area_soft / (Vmax + ymin) + dmax
-
-        # Avoid negative residual strength and zero as residual strength
-        if ymin <= 0:
-            ymin = 10.
 
         # Get the curve
         d = np.array([0., xint, dmax, xmin])
@@ -598,19 +702,6 @@ class SeekDesign:
         except:
             x = spo[0]
             y = spo[1]
-
-        def getIndex(x, data):
-            if np.where(data >= x)[0].size == 0:
-                return np.nan
-            else:
-                return np.where(data >= x)[0][0]
-
-        def getEquation(p1, p2):
-            points = [p1, p2]
-            x_coords, y_coords = zip(*points)
-            A = vstack([x_coords, ones(len(x_coords))]).T
-            m, c = lstsq(A, y_coords)[0]
-            return m, c
 
         """
         The point below the max point is quite subjective
@@ -792,9 +883,9 @@ class SeekDesign:
 
         # Get the idealized version of the SPO curve and create a warningSPO = True if the assumed shape was incorrect
         # DEVELOPER TOOL
-        new_fitting = False
+        new_fitting = True
         if new_fitting:
-            d, v = self.derive_spo(spo_results, residual=0.3)
+            d, v = self.conservative_spo_shape(spo_results)
         else:
             d, v = self.derive_spo_shape(spo_results, residual=0.3)
 
@@ -802,11 +893,27 @@ class SeekDesign:
         omega_new = v[1] / vy
 
         # Verify that overstrength is correct
-        if omega * 0.95 <= omega_new <= omega * 1.05:
+        # Additionally, if a threshold of warnings of WarnMin is exceeded, do not update the overstrength
+        # As demands are too low for the given cross-section dimensions and the overstrength value will just snowball
+        # without impact
+        # (the only impact of it being the meaningless decrease of cy for the same level of increase in overstrength)
+        # Subject to change and calibration (currently Min check only on columns)
+        warnings_min = sum(self.details["x"]["warnings"]["MIN"]["Columns"].values()) + \
+                       sum(self.details["y"]["warnings"]["MIN"]["Columns"].values()) + \
+                       sum(self.details["gravity"]["warnings"]["warnings"]["MIN"]["Columns"].values())
+        n_elements = len(self.details["x"]["warnings"]["MIN"]["Columns"]) + \
+                     len(self.details["y"]["warnings"]["MIN"]["Columns"]) + \
+                     len(self.details["gravity"]["warnings"]["warnings"]["MIN"]["Columns"])
+
+        if warnings_min / n_elements < 0.5:
+            if omega * 0.95 <= omega_new <= omega * 1.05:
+                omega_new = omega
+                self.omegaWarn = False
+            else:
+                self.omegaWarn = True
+        else:
             omega_new = omega
             self.omegaWarn = False
-        else:
-            self.omegaWarn = True
 
         # There is a high likelihood that Fundamental period and SPO curve shape will not match the assumptions.
         # Therefore the first iteration should correct both assumptions (further corrections are likely not to be large)
@@ -830,7 +937,7 @@ class SeekDesign:
 
         return spo_results, [d, v], omega_new
 
-    def run_iterations(self, opt_sol, period_limits, table, maxiter=10, omega=1.0):
+    def run_iterations(self, opt_sol, opt_modes, period_limits, table, maxiter=10, omega=1.0):
         """
         Runs iterations in order to find a suitable solution (uses both directions at once, instead of coming up with a
         solution sequentially)
@@ -850,6 +957,11 @@ class SeekDesign:
         8. Run SPO analysis in both directions, identify SPO Period and SPO shape
         :return:
         """
+        # Initial assumptions for modal parameters
+        mstar = np.array([opt_sol["x_seismic"]["Mstar"], opt_sol["y_seismic"]["Mstar"]])
+        gamma = np.array([opt_sol["x_seismic"]["Part Factor"], opt_sol["y_seismic"]["Part Factor"]])
+        modes = opt_modes["Modes"]
+
         # Initialize demands on central/gravity structural elements
         bx_gravity = np.zeros((self.ipbsd.data.nst, self.ipbsd.data.n_bays, len(self.ipbsd.data.spans_y) - 1))
         by_gravity = np.zeros((self.ipbsd.data.nst, self.ipbsd.data.n_bays - 1, len(self.ipbsd.data.spans_y)))
@@ -871,9 +983,10 @@ class SeekDesign:
         hinge_models = {"x_seismic": hinge_x, "y_seismic": hinge_y, "gravity": hinge_gr}
         cy = self.details["x"]["cy"]
 
-        # Run modal analysis
-        print("[PHASE] Running Modal Analysis...")
-        periods, modes, gamma, mstar, opt_sol = self.run_ma(opt_sol, hinge_models, period_limits)
+        # # Run modal analysis
+        # print("[PHASE] Running Modal Analysis...")
+        # # Optimal solution might change here, however hinge element cross-sections are not updated yet
+        # periods, modes, gamma, mstar, opt_sol = self.run_ma(opt_sol, hinge_models, period_limits)
 
         # Iterate until all conditions are met
         cnt = 0
@@ -892,6 +1005,8 @@ class SeekDesign:
             if (not self.spo_validate or self.omegaWarn or self.warnT) and cnt > 0:
                 # Rerun Modal analysis if warnT was raised
                 print("[PHASE] Running Modal Analysis...")
+                # Optimal solution might change, but the hinge_models cross-sections are not changed yet
+                # It will be modified accordingly during design of the building
                 periods, modes, gamma, mstar, opt_sol = self.run_ma(opt_sol, hinge_models, period_limits,
                                                                     spo_period=spo_period)
 
@@ -913,22 +1028,33 @@ class SeekDesign:
                 warnMax = self.details["x"]["warnMax"] or self.details["y"]["warnMax"] or \
                           self.details["gravity"]["warnings"]["warnMax"]
 
-            # Correction if unsatisfactory detailing: modifying only towards increasing c-s
-            # Direction X
-            if self.details["x"]["warnMax"]:
-                warnings = self.details["x"]["warnings"]
-                opt_sol = self.seek_solution(warnings, opt_sol, direction="x")
-            # Direction Y
-            if self.details["y"]["warnMax"]:
-                warnings = self.details["y"]["warnings"]
-                opt_sol = self.seek_solution(warnings, opt_sol, direction="y")
-            # Central components
-            if self.details["gravity"]["warnings"]["warnMax"]:
-                warnings = self.details["gravity"]["warnings"]["warnings"]
-                opt_sol = self.seek_solution(warnings, opt_sol, direction="gravity")
+                # Correction if unsatisfactory detailing: modifying only towards increasing c-s
+                # Direction X
+                if self.details["x"]["warnMax"]:
+                    warnings = self.details["x"]["warnings"]
+                    opt_sol = self.seek_solution(warnings, opt_sol, direction="x")
+                # Direction Y
+                if self.details["y"]["warnMax"]:
+                    warnings = self.details["y"]["warnings"]
+                    opt_sol = self.seek_solution(warnings, opt_sol, direction="y")
+                # Central components
+                if self.details["gravity"]["warnings"]["warnMax"]:
+                    warnings = self.details["gravity"]["warnings"]["warnings"]
+                    opt_sol = self.seek_solution(warnings, opt_sol, direction="gravity")
 
-            if warnMax:
-                print("[RERUN COMPLETE] New design solution was selected due to unsatisfactory detailing...")
+                if warnMax:
+                    # If the optimal solutions were modified new design of the building should be carried out
+                    self.details = self.design_building(cy, dy, opt_sol, modes, table, demands_gravity)
+                    # Retrieve necessary information from detailing results
+                    hinge_gr = self.details["gravity"]["hinge_models"]
+                    hinge_x = self.details["x"]["hinge_models"]
+                    hinge_y = self.details["y"]["hinge_models"]
+                    hinge_models = {"x_seismic": hinge_x, "y_seismic": hinge_y, "gravity": hinge_gr}
+
+                    # Any warnings because of detailing?
+                    warnMax = self.details["x"]["warnMax"] or self.details["y"]["warnMax"] or \
+                              self.details["gravity"]["warnings"]["warnMax"]
+                    print("[RERUN COMPLETE] New design solution was selected due to unsatisfactory detailing...")
 
             """Create an OpenSees model and run static pushover - iterate analysis.
             Acts as the first estimation of secant to yield period. Second step after initial modal analysis.
@@ -936,7 +1062,7 @@ class SeekDesign:
             Therefore, we need to use the former one."""
             # For a single frame assumed yield base shear
             vy_design = cy * gamma * mstar * 9.81
-            omega_cache = omega
+            omega_cache = omega.copy()
             spo_shape_cache = self.spo_shape
             spo_pattern = np.round(modes, 2)
             # Run SPO analysis
@@ -945,6 +1071,9 @@ class SeekDesign:
                                                         omega[0], direction="x")
             spo_y, idealized_y, omega[1] = self.run_spo(opt_sol, hinge_models, vy_design[1], spo_pattern[:, 1],
                                                         omega[1], direction="y")
+            for i in range(len(omega)):
+                if omega[i] < 1.0:
+                    omega[i] = 1.0
 
             # Calculate the period as secant to yield period
             spo_period = np.zeros((2, ))

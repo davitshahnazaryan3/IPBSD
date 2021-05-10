@@ -23,7 +23,7 @@ class OpenSeesRun3D:
         self.i_d = i_d
         self.cs = cs
         self.fstiff = fstiff
-        self.NEGLIGIBLE = 1.e-10
+        self.NEGLIGIBLE = 1.e-9
         self.UBIG = 1.e10
         self.pflag = pflag
         self.hinge = hinge
@@ -68,12 +68,13 @@ class OpenSeesRun3D:
         return el_mod
 
     def static_analysis(self):
-        op.constraints("Penalty", 1.0e15, 1.0e15)
+        dgravity = 1.0 / 1
+        op.integrator("LoadControl", dgravity)
         op.numberer("RCM")
         op.system("UmfPack")
-        op.test("EnergyIncr", 1.0e-8, 6)
-        op.integrator("LoadControl", 1.0)
-        op.algorithm("Linear")
+        op.constraints("Penalty", 1.0e15, 1.0e15)
+        op.test("EnergyIncr", 1.0e-8, 10)
+        op.algorithm("Newton")
         op.analysis("Static")
         op.analyze(1)
         op.loadConst("-time", 0.0)
@@ -254,12 +255,14 @@ class OpenSeesRun3D:
                         # Trapezoidal rule
                         load = 1 / 4 * q * spans_y[ybay - 1] * (2 * spans_x[xbay - 1] - spans_y[ybay - 1]) / \
                                spans_x[xbay - 1]
+                    load = round(load, 2)
+
+                    inode = beam - 3000
+                    jnode = beam - 3000 + 100
 
                     if distributed:
                         op.eleLoad('-ele', beam, '-type', '-beamUniform', load, self.NEGLIGIBLE)
                     else:
-                        inode = beam - 3000
-                        jnode = beam - 3000 + 100
                         op.load(inode, self.NEGLIGIBLE, self.NEGLIGIBLE, -load * spans_x[xbay - 1] / 2,
                                 self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE)
                         op.load(jnode, self.NEGLIGIBLE, self.NEGLIGIBLE, -load * spans_x[xbay - 1] / 2,
@@ -274,13 +277,15 @@ class OpenSeesRun3D:
                             # Trapezoidal rule
                             load = 1 / 4 * q * spans_y[ybay - 2] * (2 * spans_x[xbay - 1] - spans_y[ybay - 2]) / \
                                    spans_x[xbay - 1]
+                        load = round(load, 2)
+
+                        inode = beam - 3000
+                        jnode = beam - 3000 + 100
 
                         # Applying the load
                         if distributed:
                             op.eleLoad('-ele', beam, '-type', '-beamUniform', load, self.NEGLIGIBLE)
                         else:
-                            inode = beam - 3000
-                            jnode = beam - 3000 + 100
                             op.load(inode, self.NEGLIGIBLE, self.NEGLIGIBLE, -load * spans_x[xbay - 1] / 2,
                                     self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE)
                             op.load(jnode, self.NEGLIGIBLE, self.NEGLIGIBLE, -load * spans_x[xbay - 1] / 2,
@@ -297,13 +302,15 @@ class OpenSeesRun3D:
                         # Trapezoidal rule
                         load = 1 / 4 * q * spans_x[xbay - 1] * (2 * spans_y[ybay - 1] - spans_x[xbay - 1]) / \
                                spans_y[ybay - 1]
+                    load = round(load, 2)
+
+                    inode = beam - 2000
+                    jnode = beam - 2000 + 10
 
                     # Applying the load
                     if distributed:
                         op.eleLoad('-ele', beam, '-type', '-beamUniform', load, self.NEGLIGIBLE)
                     else:
-                        inode = beam - 2000
-                        jnode = beam - 2000 + 10
                         op.load(inode, self.NEGLIGIBLE, self.NEGLIGIBLE, -load * spans_y[ybay - 1] / 2,
                                 self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE)
                         op.load(jnode, self.NEGLIGIBLE, self.NEGLIGIBLE, -load * spans_y[ybay - 1] / 2,
@@ -318,13 +325,15 @@ class OpenSeesRun3D:
                             # Trapezoidal rule
                             load = 1 / 4 * q * spans_x[xbay - 2] * (2 * spans_y[ybay - 1] - spans_x[xbay - 2]) / \
                                    spans_y[ybay - 1]
+                        load = round(load, 2)
+
+                        inode = beam - 2000
+                        jnode = beam - 2000 + 10
 
                         # Applying the load
                         if distributed:
                             op.eleLoad('-ele', beam, '-type', '-beamUniform', load, self.NEGLIGIBLE)
                         else:
-                            inode = beam - 2000
-                            jnode = beam - 2000 + 10
                             op.load(inode, self.NEGLIGIBLE, self.NEGLIGIBLE, -load * spans_y[ybay - 1] / 2,
                                     self.NEGLIGIBLE, self.NEGLIGIBLE, self.NEGLIGIBLE)
                             op.load(jnode, self.NEGLIGIBLE, self.NEGLIGIBLE, -load * spans_y[ybay - 1] / 2,
@@ -393,10 +402,10 @@ class OpenSeesRun3D:
                     op.node(nodetag, xloc, yloc, zloc)
                     # Appending nodes for pushover analysis
                     if self.direction == 0:
-                        if (ybay == nbays_y or ybay == 0) and xbay == 0:
+                        if (ybay == nbays_y or ybay == 0) and xbay == nbays_x:
                             self.spo_nodes.append(nodetag)
                     else:
-                        if (xbay == nbays_x or xbay == 0) and ybay == 0:
+                        if (xbay == nbays_x or xbay == 0) and ybay == nbays_y:
                             self.spo_nodes.append(nodetag)
 
                 # Increment y coordinate
@@ -654,10 +663,10 @@ class OpenSeesRun3D:
         self.wipe()
         op.model('Basic', '-ndm', 3, '-ndf', 6)
 
-        self.define_nodes()
-        self.rigid_diaphragm(spans_x, spans_y, nbays_x, nbays_y)
         self.define_transformations()
+        self.define_nodes()
         beams, columns = self.create_elements(nbays_x, nbays_y)
+        self.rigid_diaphragm(spans_x, spans_y, nbays_x, nbays_y)
         if gravity:
             self.apply_gravity_loads(beams)
             # Static analysis
@@ -736,7 +745,6 @@ class OpenSeesRun3D:
 
                     # Placeholder
                     my = self.MY_CONSTANT
-
                     lp = h_col * 0.7  # not important for linear static analysis
                     gt = self.COL_TRANSF_TAG
                     self.lumped_hinge_element(et, gt, inode, jnode, my, lp, self.i_d.fc, b_col, h_col,
@@ -1153,71 +1161,58 @@ class OpenSeesRun3D:
         step = 1
         loadf = 1.0
 
+        # It happens so, that column shear ID matches the disp_dir ID, they are not the same thing
+        col_shear_idx = self.direction + 1
+
         # Recording top displacement and base shear
-        if self.direction == 0:
-            # Along X direction
-            topDisp = np.array([op.nodeResponse(self.spo_nodes[-1], 1, 1)])
-            baseShear = np.array([0.0])
-            for col in self.base_cols:
-                baseShear[0] += op.eleForce(col, 1)
-        else:
-            # Along Y direction
-            topDisp = np.array([op.nodeResponse(self.spo_nodes[-1], 2, 1)])
-            baseShear = np.array([0.0])
-            for col in self.base_cols:
-                baseShear[0] += op.eleForce(col, 2)
+        topDisp = np.array([op.nodeResponse(self.spo_nodes[-1], self.direction + 1, 1)])
+        baseShear = np.array([0.0])
+        for col in self.base_cols:
+            baseShear[0] += op.eleForce(int(col), col_shear_idx)
 
         while step <= nsteps and ok == 0 and loadf > 0:
             ok = op.analyze(1)
             loadf = op.getTime()
             if ok != 0:
-                # print("[STEP] Trying relaxed convergence...")
+                print("[STEP] Trying relaxed convergence...")
                 op.test(testType, tol * .01, int(iterInit * 50))
                 ok = op.analyze(1)
                 op.test(testType, tol, iterInit)
             if ok != 0:
-                # print("[STEP] Trying Newton with initial then current...")
+                print("[STEP] Trying Newton with initial then current...")
                 op.test(testType, tol * .01, int(iterInit * 50))
                 op.algorithm("Newton", "-initialThenCurrent")
                 ok = op.analyze(1)
                 op.algorithm(algorithmType)
                 op.test(testType, tol, iterInit)
             if ok != 0:
-                # print("[STEP] Trying ModifiedNewton with initial...")
+                print("[STEP] Trying ModifiedNewton with initial...")
                 op.test(testType, tol * .01, int(iterInit * 50))
                 op.algorithm("ModifiedNewton", "-initial")
                 ok = op.analyze(1)
                 op.algorithm(algorithmType)
                 op.test(testType, tol, iterInit)
             if ok != 0:
-                # print("[STEP] Trying KrylovNewton...")
+                print("[STEP] Trying KrylovNewton...")
                 op.test(testType, tol * .01, int(iterInit * 50))
                 op.algorithm("KrylovNewton")
                 ok = op.analyze(1)
                 op.algorithm(algorithmType)
                 op.test(testType, tol, iterInit)
             if ok != 0:
-                # print("[STEP] Perform a Hail Mary...")
+                print("[STEP] Perform a Hail Mary...")
                 op.test("FixedNumIter", iterInit)
                 ok = op.analyze(1)
 
             # Recording the displacements and base shear forces
-            if self.direction == 0:
-                topDisp = np.append(topDisp, (op.nodeResponse(self.spo_nodes[-1], 1, 1)))
-            else:
-                topDisp = np.append(topDisp, (op.nodeResponse(self.spo_nodes[-1], 2, 1)))
-
+            topDisp = np.append(topDisp, op.nodeResponse(self.spo_nodes[-1], self.direction + 1, 1))
             # topDisp1 = np.append(topDisp, (op.nodeResponse(self.spo_nodes[-1], 1, 1)))
             # topDisp2 = np.append(topDisp, (op.nodeResponse(self.spo_nodes[-1], 2, 1)))
             # topDisp = (topDisp1**2 + topDisp2**2) ** 0.5
 
             eleForceTemp = 0.
             for col in self.base_cols:
-                if self.direction == 0:
-                    eleForceTemp += op.eleForce(col, 1)
-                else:
-                    eleForceTemp += op.eleForce(col, 2)
-
+                eleForceTemp += op.eleForce(col, col_shear_idx)
             baseShear = np.append(baseShear, eleForceTemp)
             loadf = op.getTime()
             step += 1
@@ -1239,8 +1234,8 @@ class OpenSeesRun3D:
         :return: None
         """
         # Number of steps
-        nsteps = 10000
-        tol = 1.e-6
+        nsteps = 1000
+        tol = 1.e-8
         iterInit = 10
         testType = "EnergyIncr"
         algorithmType = "KrylovNewton"
@@ -1308,9 +1303,9 @@ class OpenSeesRun3D:
         '''Set initial analysis parameters'''
         op.constraints("Penalty", 1e15, 1e15)
         # op.constraints("Transformation")
-        op.numberer("RCM")
         op.system("UmfPack")
-        op.test(testType, tol, iterInit, 0)
+        op.numberer("RCM")
+        op.test(testType, tol, iterInit)
         op.algorithm(algorithmType)
         op.integrator("DisplacementControl", self.spo_nodes[-1], self.direction + 1,
                       0.1 * sum(self.i_d.heights) / nsteps)
@@ -1328,22 +1323,22 @@ if __name__ == "__main__":
     import pickle
     import sys
 
-    directory = Path.cwd().parents[1] / ".applications/LOSS Validation Manuscript/space/case8"
+    directory = Path.cwd().parents[1] / ".applications/LOSS Validation Manuscript/space/case4"
 
     # actionx = directory.parents[0] / "sample" / "actionx.csv"
     # actiony = directory.parents[0] / "sample" / "actiony.csv"
-    csx = directory / "Cache/solution_cache_space_x.csv"
-    csy = directory / "Cache/solution_cache_space_y.csv"
-    csg = directory / "Cache/solution_cache_space_gr.csv"
+    # csx = directory / "Cache/solution_cache_space_x.csv"
+    # csy = directory / "Cache/solution_cache_space_y.csv"
+    # csg = directory / "Cache/solution_cache_space_gr.csv"
     input_file = directory / "ipbsd_input.csv"
     # hinge_models = Path.cwd().parents[0] / "tempHinge.pickle"
-    direction = 1
-    modalShape = np.array([.27, .55, .81, 1.])
+    direction = 0
+    modalShape = np.array([.58, 1.0])
 
-    # Read the cross-section files
-    csx = pd.read_csv(csx, index_col=0).iloc[540]
-    csy = pd.read_csv(csy, index_col=0).iloc[540]
-    csg = pd.read_csv(csg, index_col=0).iloc[540]
+    # # Read the cross-section files
+    # csx = pd.read_csv(csx, index_col=0).iloc[540]
+    # csy = pd.read_csv(csy, index_col=0).iloc[540]
+    # csg = pd.read_csv(csg, index_col=0).iloc[540]
 
     # csy["hi1"] = 0.6
     # csy["h1"] = 0.8
@@ -1359,7 +1354,7 @@ if __name__ == "__main__":
     # csg["hy3"] = 0.75
     # csg["hy4"] = 0.75
 
-    cs = {"x_seismic": csx, "y_seismic": csy, "gravity": csg}
+    # cs = {"x_seismic": csx, "y_seismic": csy, "gravity": csg}
 
     # actionx = pd.read_csv(actionx)
     # actiony = pd.read_csv(actiony)
@@ -1367,10 +1362,10 @@ if __name__ == "__main__":
     lat_action = [267, 465, 633, 628]
 
     # Hinge models
-    with open(directory / "temp_hinge.pickle", 'rb') as file:
+    with open(Path.cwd().parents[1] / "tests/hinge_temp.pickle", 'rb') as file:
         data = pickle.load(file)
 
-    with open(directory / "temp_opt_sol.pickle", 'rb') as file:
+    with open(Path.cwd().parents[1] / "tests/sol_temp.pickle", 'rb') as file:
         cs = pickle.load(file)
 
     hinge = data
@@ -1394,7 +1389,7 @@ if __name__ == "__main__":
 
     spo = OpenSeesRun3D(data, cs, fstiff, hinge=hinge, direction=direction, system="space")
     spo.create_model(gravity=True)
-    # spo.define_masses()
+    spo.define_masses()
     topDisp, baseShear = spo.spo_analysis(load_pattern=2, mode_shape=modalShape)
     spo.wipe()
 

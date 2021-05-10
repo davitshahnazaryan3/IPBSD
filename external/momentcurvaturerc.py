@@ -486,7 +486,7 @@ class MomentCurvatureRC:
         phi_critical = max(phi[-1], phi_critical)
         # TODO, check into phi_critical and get rid of the following if statement
         if phi_critical == max(phi):
-            phi_critical = max(phi)*1.01
+            phi_critical = max(phi) * 1.01
 
         phi_model = np.array([1e-9, phi_yield_nom, max(phi), phi_critical])
 
