@@ -7,6 +7,21 @@ from external.crossSectionSpace import CrossSectionSpace
 import sys
 
 
+def getIndex(My, data):
+    if np.where(data >= My)[0].size == 0:
+        return np.nan
+    else:
+        return np.where(data >= My)[0][0]
+
+
+def getEquation(p1, p2):
+    points = [p1, p2]
+    x_coords, y_coords = zip(*points)
+    A = vstack([x_coords, ones(len(x_coords))]).T
+    m, c = lstsq(A, y_coords)[0]
+    return m, c
+
+
 class Iterations:
     def __init__(self, ipbsd, sols, spo_file, target_MAFC, analysis_type, damping, num_modes, fstiff, rebar_cover,
                  outputPath, gravity_loads, flag3d=False):
@@ -873,6 +888,59 @@ class Iterations:
 
         return model_periods, modalShape, gamma, mstar, opt_sol
 
+    def conservative_spo_shape(self, spo, residual=0.25):
+        x = spo[0]
+        y = spo[1]
+
+        # All negatives to zero
+        y[y < 0] = 0.0
+
+        # Get maximum point for reference
+        Vmax = max(y)
+
+        # Get initial stiffness
+        m1 = 0.2 * Vmax
+        d1 = x[getIndex(m1, y)]
+        stiff_elastic = m1 / d1
+
+        # Get the yield point
+        slopes = y / x
+        stfIdx = np.where(slopes[1:] < 0.85 * stiff_elastic)[0][0]
+        xint = x[stfIdx + 1]
+        yint = y[stfIdx + 1]
+
+        # Get the point of softening
+        for i in range(len(x) - 1):
+            stf = (y[i + 1] - y[i]) / (x[i] - x[i + 1])
+
+            if stf > 50000:
+                # High spikes
+                ymax = y[i]
+                xmax = x[i]
+                break
+
+        if "ymax" not in locals():
+            ymax = max(y)
+            xmax = x[getIndex(ymax, y)]
+
+        # Make sure yield point is not larger than max point
+        if yint > ymax:
+            yint = ymax
+
+        # Using the Stiffness up till 0.8*ymax
+        y_80 = 0.6 * yint
+        idx = getIndex(1.01 * y_80, y[::-1])
+        x_80 = x[::-1][idx]
+
+        yres = residual * yint
+        xres = (ymax - yres) * (x_80 - xmax) / (ymax - y_80) + xmax
+
+        # Define the curve
+        d = np.array([0., xint, xmax, xres])
+        v = np.array([0., yint, ymax, yres])
+
+        return d, v
+
     def run_spo(self, opt_sol, hinge_models, forces, vy, modalShape, omega, direction="x"):
         """
         Create a nonlinear model in OpenSees and runs SPO
@@ -894,9 +962,9 @@ class Iterations:
 
         # Get the idealized version of the SPO curve and create a warningSPO = True if the assumed shape was incorrect
         # DEVELOPER TOOL
-        new_fitting = False
+        new_fitting = True
         if new_fitting:
-            d, v = self.derive_spo(spoResults, residual=0.3)
+            d, v = self.conservative_spo_shape(spoResults)
         else:
             d, v = self.derive_spo_shape(spoResults, residual=0.3)
 

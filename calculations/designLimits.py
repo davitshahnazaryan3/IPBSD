@@ -6,7 +6,8 @@ from client.slf import SLF
 
 
 class DesignLimits:
-    def __init__(self, slfDirectory, y, nst, flag3d=False, replCost=None, eal_corrections=True, perform_scaling=True):
+    def __init__(self, slfDirectory, y, nst, flag3d=False, replCost=None, eal_corrections=True, perform_scaling=True,
+                 edp_profiles=None):
         """
         Initialize SLF reading
         :param slfDirectory: str            Directory of SLFs derived via SLF Generator
@@ -28,6 +29,7 @@ class DesignLimits:
         self.replCost = replCost
         self.eal_corrections = eal_corrections
         self.perform_scaling = perform_scaling
+        self.edp_profiles = edp_profiles
         self.get_design_edps()
         
     def get_design_edps(self):
@@ -38,7 +40,7 @@ class DesignLimits:
         """
         slf = SLF(self.slfDirectory, self.y, self.nst, self.flag3d, self.replCost, self.perform_scaling)
         slfs, self.SLFsCache = slf.slfs()
-        
+
         # Calculate the design limits of PSD and PFA beyond which EAL condition will not be met
         edp_limits = {}
         # Initialize contributions
@@ -116,9 +118,14 @@ class DesignLimits:
                         edp = self.a_max[int(k[-1]) - 1]
                     else:
                         edp = self.theta_max[int(k[-1]) - 1]
-
                     # Storey
                     for st in slfs["y"][i][k]:
+                        # Use specific profiles if provided
+                        if self.edp_profiles is not None:
+                            if group == "PFA":
+                                edp = self.a_max[int(k[-1]) - 1] * self.edp_profiles[0][int(st)]
+                            else:
+                                edp = self.theta_max[int(k[-1]) - 1] * self.edp_profiles[1][int(st)-1]
                         if group == "PFA" and k == "dir2":
                             # To avoid double counting PFA sensitive components
                             pass

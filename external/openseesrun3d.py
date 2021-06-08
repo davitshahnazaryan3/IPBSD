@@ -647,7 +647,7 @@ class OpenSeesRun3D:
 
         return results
 
-    def create_model(self, gravity=False, elastic=False):
+    def create_model(self, gravity=False):
         """
         creates the model
         :param gravity: bool                    Apply gravity loads

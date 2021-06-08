@@ -211,7 +211,7 @@ class OpenSeesRun:
         """
         op.wipe()
 
-    def create_model(self, mode='3D'):
+    def create_model(self, mode='3D', gravity=False):
         """
         creates the model
         :param mode: str                        2D or 3D
@@ -228,6 +228,12 @@ class OpenSeesRun:
         self.define_nodes()
         self.define_transformations()
         beams, columns = self.create_elements()
+        if gravity:
+            loads = [self.i_d.w_seismic["floor"]] * (self.i_d.nst - 1) + [self.i_d.w_seismic["roof"]]
+            # Apply gravity loads and run static analysis
+            self.gravity_loads(loads, beams)
+            self.static_analysis()
+
         return beams, columns
 
     def define_transformations(self):
@@ -689,11 +695,11 @@ class OpenSeesRun:
         while step <= nsteps and ok == 0 and loadf > 0:
             ok = op.analyze(1)
             loadf = op.getTime()
-            # if ok != 0:
-            #     # print("[STEP] Trying relaxed convergence...")
-            #     op.test(testType, tol * .01, int(iterInit * 50))
-            #     ok = op.analyze(1)
-            #     op.test(testType, tol, iterInit)
+            if ok != 0:
+                # print("[STEP] Trying relaxed convergence...")
+                op.test(testType, tol * .01, int(iterInit * 50))
+                ok = op.analyze(1)
+                op.test(testType, tol, iterInit)
             if ok != 0:
                 # print("[STEP] Trying Newton with initial then current...")
                 op.test(testType, tol * .01, int(iterInit * 50))

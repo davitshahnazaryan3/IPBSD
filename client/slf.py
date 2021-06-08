@@ -277,7 +277,6 @@ class SLF:
             factor = 1.0
 
         # for directional and non-directional components
-        total_loss_factor = 0.0
         for i in SLFs:
             # for EDP performance groups
             for j in SLFs[i]:
@@ -288,7 +287,6 @@ class SLF:
                         for st in SLFs[i][j][k]:
                             loss = SLFs[i][j][k][st]["loss"]
                             slf_functions[j][k][st] += loss / factor
-                            total_loss_factor += max(loss / factor)
                 else:
                     # Non-directional SLFs and directional (corresponding to dir1 or dir2) will be summed
                     # for direction 1 and 2
@@ -301,11 +299,10 @@ class SLF:
                         for st in SLFs[i][j]:
                             loss = SLFs[i][j][st]["loss"]
                             slf_functions[j][k][st] += loss / factor
-                            total_loss_factor += max(loss / factor)
 
         # Scaling factor
         if self.perform_scaling:
-            scale = 1 / total_loss_factor
+            scale = 1 / (maxCost / self.replCost)
         else:
             scale = 1.
 

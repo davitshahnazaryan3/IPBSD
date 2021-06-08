@@ -101,17 +101,21 @@ class Master:
         s = Spectra(lam, self.coefs, self.hazard_data['T'], self.original_hazard)
         return s.sa, s.sd, s.T_RANGE
 
-    def get_design_values(self, slfDirectory, replCost=None, eal_corrections=True, perform_scaling=True):
+    def get_design_values(self, slfDirectory, replCost=None, eal_corrections=True, perform_scaling=True,
+                          edp_profiles=None):
         """
         gets the design values of IDR and PFA from the Storey-Loss-Functions
         :param slfDirectory: str                    Directory of SLFs derived via SLF Generator
         :param replCost: float                      Replacement cost of the entire building
         :param eal_corrections: bool                Perform EAL corrections
         :param perform_scaling: bool                Perform scaling of SLFs to replCost
+        :param edp_profiles: list                   0 = pfa profiles, 1 = psd profiles (DEV variable, optional)
+                                                    Force tool to use specific EDP profiles
         :return: float, float                       Peak storey drift, (PSD) [-] and Peak floor acceleration, (PFA) [g]
         """
         y_sls = self.data.y[1]
-        dl = DesignLimits(slfDirectory, y_sls, self.data.nst, self.flag3d, replCost, eal_corrections, perform_scaling)
+        dl = DesignLimits(slfDirectory, y_sls, self.data.nst, self.flag3d, replCost, eal_corrections, perform_scaling,
+                          edp_profiles)
         slfsCache = dl.SLFsCache
         if eal_corrections:
             self.data.y[1] = dl.y

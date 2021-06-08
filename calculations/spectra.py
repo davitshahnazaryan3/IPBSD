@@ -53,6 +53,7 @@ class Spectra:
                     d[i] = 100 * s[i] * 9.81 * (float(T_val) / 2 / np.pi) ** 2
 
         else:
+            self.T_RANGE = np.zeros(len(self.hazard[0]))
             s = np.zeros(len(self.hazard[0]))
             d = np.zeros(len(self.hazard[0]))
 
@@ -62,6 +63,7 @@ class Spectra:
                 sval = interpolator(self.lam)
                 dval = 100 * sval * 9.81 * (float(i/10) / 2 / np.pi) ** 2
 
+                self.T_RANGE[i] = float(i/10)
                 s[i] = sval
                 d[i] = dval
 

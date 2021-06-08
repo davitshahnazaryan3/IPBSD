@@ -122,7 +122,12 @@ class SeekDesign:
         # Get maximum Cy of both directions
         # Only cy is consistent when designing both directions, the rest of the parameters are unique to the direction
         # cy = geo_mean(cy_xy)
-        cy = max(cy_xy)
+        # DEVELOPER TOOL
+        same_cy = True
+        if same_cy:
+            cy = max(cy_xy)
+        else:
+            cy = np.array(cy_xy)
 
         return cy, dy_xy, spo2ida_data
 
@@ -202,9 +207,15 @@ class SeekDesign:
             hinge = {"x_seismic": None, "y_seismic": None, "gravity": None}
 
         # Get the acting lateral forces based on cy for each direction
-        forces = {"x": self.ipbsd.get_action(solution["x_seismic"], cy, pd.DataFrame.from_dict(table_sls["x"]),
+        if not isinstance(cy, float):
+            cyx = cy[0]
+            cyy = cy[1]
+        else:
+            cyx = cyy = cy
+
+        forces = {"x": self.ipbsd.get_action(solution["x_seismic"], cyx, pd.DataFrame.from_dict(table_sls["x"]),
                                              self.gravity_loads, self.analysis_type),
-                  "y": self.ipbsd.get_action(solution["y_seismic"], cy, pd.DataFrame.from_dict(table_sls["y"]),
+                  "y": self.ipbsd.get_action(solution["y_seismic"], cyy, pd.DataFrame.from_dict(table_sls["y"]),
                                              self.gravity_loads, self.analysis_type)}
 
         # Demands on all elements of the system where plastic hinge information is missing
@@ -891,7 +902,6 @@ class SeekDesign:
 
         # Actual overstrength
         omega_new = v[1] / vy
-
         # Verify that overstrength is correct
         # Additionally, if a threshold of warnings of WarnMin is exceeded, do not update the overstrength
         # As demands are too low for the given cross-section dimensions and the overstrength value will just snowball
@@ -1062,6 +1072,7 @@ class SeekDesign:
             Therefore, we need to use the former one."""
             # For a single frame assumed yield base shear
             vy_design = cy * gamma * mstar * 9.81
+
             omega_cache = omega.copy()
             spo_shape_cache = self.spo_shape
             spo_pattern = np.round(modes, 2)
