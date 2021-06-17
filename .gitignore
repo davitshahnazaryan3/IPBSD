@@ -18,3 +18,7 @@ runIPBSDSeekDesign.py
 runIPBSD1.py
 runIPBSD2.py
 runIPBSD3.py
+__pycache__/*
+calculations/__pycache__/*
+client/__pycache__/*
+
