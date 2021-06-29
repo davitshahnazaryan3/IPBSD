@@ -11,12 +11,17 @@ As long as there are no Failures and/or Warnings, then the framework has success
 4. [Future upgrade objectives](#future)
 
 ### Literature <a id='lit'>
-* O’Reilly GJ, Calvi GM. Conceptual seismic design in performance-based earthquake engineering. 
-*Earthquake Engineering & Structural Dynamics* 2019; **48**(4): 389–411. DOI: 10.1002/eqe.3141.
 
+* Shahnazaryan D, O’Reilly GJ, Monteiro R. Storey loss functions of seismic design and assessment: development of tools and application. *Earthquake Spectra* 2021; DOI: 10.1177/87552930211023523.
+	
+* Shahnazaryan D, O’Reilly GJ. Integrated expected loss and collapse risk in performance-based seismic design of structures. *Bulletin of Earthquake Engineering* 2021; **19**(2): 978-1025. DOI: 10.1007/s10518-020-01003-x.
+	
 * Shahnazaryan D, O’Reilly GJ, Monteiro R. Using direct economic losses and collapse risk for seismic 
 design of RC buildings. *COMPDYN 2019 - 7th International Conference on Computational Methods in 
 Structural Dynamics and Earthquake Engineering*, Crete Island, Greece: 2019. DOI: https://doi.org/10.7712/120119.7281.19516.
+
+* O’Reilly GJ, Calvi GM. Conceptual seismic design in performance-based earthquake engineering. 
+*Earthquake Engineering & Structural Dynamics* 2019; **48**(4): 389–411. DOI: 10.1002/eqe.3141.
 
 </a><font color=blue><div style="text-align: right">[up](#contents)
 
