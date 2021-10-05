@@ -330,5 +330,5 @@ class SLF:
                     func["y"][i][k][st] = max(slf_functions[i][k][st]) * self.y_sls * scale
                     func["interpolation"][i][k][st] = interp1d(slf_functions[i][k][st] * scale, edp)
                     func["edp_interpolation"][i][k][st] = interp1d(edp, slf_functions[i][k][st] * scale)
-
+        print(func["y"])
         return func, SLFs

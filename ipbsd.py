@@ -404,7 +404,7 @@ class IPBSD:
         """Get design limits"""
         theta_max, a_max, slfsCache, contributions = ipbsd.get_design_values(self.slfDir, self.replCost,
                                                                              self.eal_correction, self.perform_scaling)
-
+        sys.exit()
         if self.export_cache:
             self.export_results(self.outputPath / "Cache/SLFs", slfsCache, "pickle")
             self.export_results(self.outputPath / "Cache/design_loss_contributions", contributions, "pickle")
