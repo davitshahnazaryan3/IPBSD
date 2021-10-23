@@ -9,6 +9,15 @@ As long as there are no Failures and/or Warnings, then the framework has success
 
       python -m pip install -r requirements.txt
 
+**Run tests**: 
+
+      python -m unittest tests/test_inputs.py
+
+**Run**: 
+
+      python main.py
+
+
 ### Table of Contents
 <details open>
 <a name="contents"></a>
@@ -51,7 +60,7 @@ Structural Dynamics and Earthquake Engineering*, Crete Island, Greece: 2019. DOI
 
 <h5 align="center">Flowchart</h5>
 <p align="center">
-  <img src="https://github.com/davitshahnazaryan3/IPBSD/blob/master/sample/figs/Workflow.PNG" width=600>
+  <img src="https://github.com/davitshahnazaryan3/IPBSD/blob/master/sample/figs/workflow.PNG" width=600>
 </p>
 
 </details>
@@ -218,9 +227,11 @@ Note: *Iterations 1a and 1b are manual, while iterations 3a and 4a may be manual
 
 * [ ] Add class of reinforcement and concrete as input arguments
 
-* [ ] Considerations for shear design, will be useful also in identifying inelastic rotation capacities, then input ro_sh based on that for Haselton platic hinge length definition
+* [ ] Considerations for shear design, will be useful also in identifying inelastic rotation capacities, then input 
+  ro_sh based on that for Haselton plastic hinge length definition
+
+* [ ] **Data visualization**
 
 </details>
 
-* [ ] **Data visualization**
 

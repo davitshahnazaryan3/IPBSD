@@ -142,7 +142,7 @@ if __name__ == "__main__":
     overstrength = 1.0
     replCost = 349459.2
     export_cache = True
-    holdFlag = False
+    holdFlag = True
     iterate = True
     flag3d = True
 
@@ -156,5 +156,5 @@ if __name__ == "__main__":
 
     main = Main(input_file, hazard_file, spo_file, slfDir, limit_eal, mafc_target, outputPath, analysis_type, damping,
                 iterate=iterate, maxiter=maxiter, fstiff=fstiff, flag3d=flag3d, export=export_cache,
-                overstrength=overstrength, repl_cost=replCost, gravity_cs=gravity_cs)
+                overstrength=overstrength, repl_cost=replCost, gravity_cs=gravity_cs, hold_flag=holdFlag)
     main.run_master()

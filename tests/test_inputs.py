@@ -250,3 +250,7 @@ class TestMain(unittest.TestCase):
             if not isinstance(self.solutionFileY, int):
                 verify(self.solutionFileY, "csv", "Path to solutions file in Y direction is incorrect! "
                                                   "Must be a csv file!")
+
+
+if __name__ == "__main__":
+    unittest.main()
