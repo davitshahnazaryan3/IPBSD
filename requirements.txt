@@ -1,0 +1,17 @@
+Pillow~=8.3.2
+pip~=20.1.1
+pytz~=2021.3
+numpy~=1.21.2
+setuptools~=47.1.0
+scipy~=1.7.1
+matplotlib~=3.4.3
+pandas~=1.3.3
+python-dateutil~=2.8.2
+six~=1.16.0
+python-constraint~=1.4.0
+cycler~=0.10.0
+pyparsing~=2.4.7
+kiwisolver~=1.3.2
+openseespy~=3.3.0.1.1
+openseespywin~=3.3.0.1
+colorama~=0.4.4

@@ -1,16 +1,34 @@
-# IPBSD
+<h1 align="center">Integrated Performance-Based Seismic Design (IPBSD) Framework</h1> 
+
 Integrated Performance-Based Seismic Design
 
 Design framework based on limiting economic losses, i.e. expected annual loss (EAL) and targeting a probability of collapse, i.e. mean annual frequency of collapse (MAFC).
 As long as there are no Failures and/or Warnings, then the framework has successfully completed.
 
-**Contents**<a id='contents'></a>
-1. [Literature](#lit)
-2. [Input arguments and files](#input)
-3. [Step by step procedures](#process)
-4. [Future upgrade objectives](#future)
+**Required libraries**: 
 
-### Literature <a id='lit'>
+      python -m pip install -r requirements.txt
+
+### Table of Contents
+<details open>
+<a name="contents"></a>
+<summary>Show/Hide</summary>
+<br>
+
+1. [Publications](#lit)
+2. [Workflow and Modules](#workflow)
+3. [Input arguments and files](#input)
+4. [Step by step procedures](#process)
+5. [Future upgrade objectives](#future)
+
+</details>
+
+
+### Publications
+<details>
+<a name="publications"></a>
+<summary>Show/Hide</summary>
+<br>
 
 * Shahnazaryan D, O’Reilly GJ, Monteiro R. Storey loss functions of seismic design and assessment: development of tools and application. *Earthquake Spectra* 2021; DOI: 10.1177/87552930211023523.
 	
@@ -23,9 +41,26 @@ Structural Dynamics and Earthquake Engineering*, Crete Island, Greece: 2019. DOI
 * O’Reilly GJ, Calvi GM. Conceptual seismic design in performance-based earthquake engineering. 
 *Earthquake Engineering & Structural Dynamics* 2019; **48**(4): 389–411. DOI: 10.1002/eqe.3141.
 
-</a><font color=blue><div style="text-align: right">[up](#contents)
+</details>
 
-### Input arguments and files <a id='input'>
+### Workflow and Modules
+<details>
+<a name="workflow"></a>
+<summary>Show/Hide</summary>
+<br>
+
+<h5 align="center">Flowchart</h5>
+<p align="center">
+  <img src="https://github.com/davitshahnazaryan3/IPBSD/blob/master/sample/figs/Workflow.PNG" width=600>
+</p>
+
+</details>
+
+### Input arguments and files
+<details>
+<a name="inputs"></a>
+<summary>Show/Hide</summary>
+<br>
 
 Additional explanations of each file are provided within the relevant directories.
 
@@ -78,9 +113,14 @@ Additional explanations of each file are provided within the relevant directorie
         - mf -                    	Fracturing ductility
         - pw -                    	Pinching weight (default 1.0)
 
-</a><font color=blue><div style="text-align: right">[up](#contents)
+</details>
 
-### Step by step procedure<a id='process'>
+
+### Step-by-step procedure
+<details>
+<a name="process"></a>
+<summary>Show/Hide</summary>
+<br>
 
 -> **Phase 1 - Performance objectives:**<br/>
 Iterations: 1a. if EAL is not below the objective EAL limit (software outputs an Error message)
@@ -162,36 +202,25 @@ Iterations:  4a. if local ductility requirements are not met
 
 Note: *Iterations 1a and 1b are manual, while iterations 3a and 4a may be manual or automatic.*
 
-</a><font color=blue><div style="text-align: right">[up](#contents)
-  
+</details>
+
 ### Future upgrade objectives<a id='future'>
+<details>
+<a name="future"></a>
+<summary>Show/Hide</summary>
+<br>
+
+* [ ] **2D iterative phase**
+
+* [ ] **Other analysis methods, 4 and 5**
 
 * [ ] Design of structural elements based on critical combination of M+N, M-N etc.
 
 * [ ] Add class of reinforcement and concrete as input arguments
 
-* [x] Add softening slope by Vecchio and Collins 1986
-
-* [x] All input xlsx, csv etc. files will be modified to be more flexible
-
-* [x] Add explanations on how and in which format to provide the inputs for the software
-
-* [x] Reinforced concrete moment-resisting frame
-
-* [x] Variable storey-loss-functions along the height
-
-* [x] Symmetric structures only -> add considerations for 3D models
-
-* [x] Conversion factor regression for peak floor accelerations
-
-* [x] Code-based overstrength factors indirectly accounted for -> flexible to include
-
-* [x] Same beam cross-sections along the height/no grouping for beams -> partially done, more will be added when necessary
- 
 * [ ] Considerations for shear design, will be useful also in identifying inelastic rotation capacities, then input ro_sh based on that for Haselton platic hinge length definition
 
-* [x] SLF generator -> based on Sebastiano's work
+</details>
 
+* [ ] **Data visualization**
 
-</a><font color=blue><div style="text-align: right">[up](#contents)
-  
