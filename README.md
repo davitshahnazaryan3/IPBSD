@@ -223,6 +223,8 @@ Note: *Iterations 1a and 1b are manual, while iterations 3a and 4a may be manual
 
 * [ ] **Other analysis methods, 4 and 5**
 
+* [ ] **to_sql**
+
 * [ ] Design of structural elements based on critical combination of M+N, M-N etc.
 
 * [ ] Add class of reinforcement and concrete as input arguments
@@ -230,7 +232,7 @@ Note: *Iterations 1a and 1b are manual, while iterations 3a and 4a may be manual
 * [ ] Considerations for shear design, will be useful also in identifying inelastic rotation capacities, then input 
   ro_sh based on that for Haselton plastic hinge length definition
 
-* [ ] **Data visualization**
+* [x] **Data visualization**
 
 </details>
 
