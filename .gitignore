@@ -4,14 +4,9 @@ Details.xlsx
 postprocess/__pycache__/*
 .idea/*
 *.iml
-runAnalysisEC.py
-runAnalysisEC1.py
 runIPBSD2d.py
 runIPBSD.py
-runAnalysisEC.py
-runAnalysisEC.py
 runIPBSD.py
-runAnalysisEC.py
 runIPBSD.py
 runIPBSDSpace.py
 runIPBSDSeekDesign.py
