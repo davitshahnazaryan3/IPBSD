@@ -1,0 +1,5 @@
+design_scenario,PLS,ELR,TR,aleatory,bldg_ch,h_storeys,mode_red,spans_X,spans_Y,fy,fc,Es,configuration
+case2,OLS,0.01,10,0.1,8.0625,3.5,1,4.5,4.5,415,25,200000,space
+,SLS,0.15,60,0.2,6.5625,3,,4.5,4.5,,,,
+,CLS,1,1600,0.3,,3,,4.5,4.5,,,,
+,,,,,,3,,,4.5,,,,

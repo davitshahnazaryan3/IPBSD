@@ -234,6 +234,8 @@ Note: *Iterations 1a and 1b are manual, while iterations 3a and 4a may be manual
 
 * [x] **Data visualization**
 
+* [ ] **Update demands on beams for capacity design of columns**
+
 </details>
 
 
