@@ -3,6 +3,7 @@ Optimizes for the fundamental period by seeking cross-sections of all structural
 """
 from ipbsd.analysis.modalAnalysis import ModalAnalysis
 from ipbsd.utils.performance_obj_verifications import check_period
+from ipbsd.utils.ipbsd_utils import append_row
 
 import numpy as np
 import constraint
@@ -62,10 +63,10 @@ class CrossSection:
         :return: dict                                       All possible solutions within a period range
         """
         solutions = pd.DataFrame(columns=self.elements.columns)
-        solutions["T"] = ""
-        solutions["Weight"] = ""
-        solutions["Mstar"] = ""
-        solutions["Part Factor"] = ""
+        solutions["T"] = np.nan
+        solutions["Weight"] = np.nan
+        solutions["Mstar"] = np.nan
+        solutions["Part Factor"] = np.nan
         cnt = 0
         for i in self.elements.index:
             ele = self.elements.iloc[i]
@@ -83,7 +84,7 @@ class CrossSection:
                 gamma = (phi.transpose().dot(M)).dot(identity.transpose()) / (phi.transpose().dot(M)).dot(phi)
                 mstar = (phi.transpose().dot(M)).dot(identity.transpose())
 
-                solutions = solutions.append(ele, ignore_index=True)
+                solutions = append_row(solutions, ele)
                 solutions["T"].iloc[cnt] = period
                 solutions["Weight"].iloc[cnt] = weight
                 solutions["Part Factor"].iloc[cnt] = gamma

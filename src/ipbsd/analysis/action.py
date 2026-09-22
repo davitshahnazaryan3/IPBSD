@@ -90,8 +90,8 @@ class Action:
             modes_transposed = modes.transpose()
             for mode in range(self.num_modes):
                 modes = modes_transposed[0: self.nst, mode: mode+1]
-                part_factor[mode] = (modes.transpose().dot(M)).dot(identity.transpose()) / \
-                                    (modes.transpose().dot(M)).dot(modes)
+                part_factor[mode] = ((modes.transpose().dot(M)).dot(identity.transpose()) /
+                                     (modes.transpose().dot(M)).dot(modes)).item()
 
             # Generating the action
             forces = np.zeros([self.nst, self.num_modes])

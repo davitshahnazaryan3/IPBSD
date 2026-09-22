@@ -460,7 +460,7 @@ class Detailing:
 
                     data = np.concatenate((temp, phiNeg, mNeg, phiPos, mPos)).reshape(1, len(columns))
                     # Concatenate into the DataFrame
-                    hinge_models = hinge_models.append(pd.DataFrame(data=data, columns=columns), ignore_index=True)
+                    hinge_models = pd.concat([hinge_models, pd.DataFrame(data=data, columns=columns)], ignore_index=True)
 
                     # Along Y direction
                     lp = m["Pos"][j]["y"][0]["lp"]
@@ -474,7 +474,7 @@ class Detailing:
 
                     data = np.concatenate((temp, phiNeg, mNeg, phiPos, mPos)).reshape(1, len(columns))
                     # Concatenate into the DataFrame
-                    hinge_models = hinge_models.append(pd.DataFrame(data=data, columns=columns), ignore_index=True)
+                    hinge_models = pd.concat([hinge_models, pd.DataFrame(data=data, columns=columns)], ignore_index=True)
 
             else:
                 for j in m:
@@ -488,7 +488,7 @@ class Detailing:
                     data = np.concatenate((temp, phiNeg, mNeg, phiPos, mPos)).reshape(1, len(columns))
 
                     # Concatenate into the DataFrame
-                    hinge_models = hinge_models.append(pd.DataFrame(data=data, columns=columns), ignore_index=True)
+                    hinge_models = pd.concat([hinge_models, pd.DataFrame(data=data, columns=columns)], ignore_index=True)
 
         for i in numericCols:
             hinge_models[i] = pd.to_numeric(hinge_models[i])
@@ -783,7 +783,7 @@ class Detailing:
                 data = np.concatenate((temp, phiNeg, mNeg, phiPos, mPos)).reshape(1, len(columns))
 
                 # Concatenate into the DataFrame
-                df = df.append(pd.DataFrame(data=data, columns=columns), ignore_index=True)
+                df = pd.concat([df, pd.DataFrame(data=data, columns=columns)], ignore_index=True)
 
                 # Add symmetric elements
                 bayCount = self.nbays - (bay - 1) if ele.lower() == "beams" else self.nbays + 2 - bay
@@ -792,7 +792,7 @@ class Detailing:
                     temp[1] = bay
                     data = np.concatenate((temp, phiNeg, mNeg, phiPos, mPos)).reshape(1, len(columns))
                     # Concatenate into the DataFrame
-                    df = df.append(pd.DataFrame(data=data, columns=columns), ignore_index=True)
+                    df = pd.concat([df, pd.DataFrame(data=data, columns=columns)], ignore_index=True)
 
         for i in numericCols:
             df[i] = pd.to_numeric(df[i])

@@ -198,42 +198,29 @@ def export(data, fstiff, path, flag3d):
 
         load = distLoads[1] if st == nst else distLoads[0]
 
-        loads = loads.append({"Storey": st,
-                              "Pattern": "distributed",
-                              "Load": load}, ignore_index=True)
+        loads = append_row(loads, {"Storey": st, "Pattern": "distributed", "Load": load})
 
         # Point loads will be left as zeros for now
-        loads = loads.append({"Storey": st,
-                              "Pattern": "point internal",
-                              "Load": pLoads}, ignore_index=True)
-        loads = loads.append({"Storey": st,
-                              "Pattern": "point analysis",
-                              "Load": pLoads}, ignore_index=True)
+        loads = append_row(loads, {"Storey": st, "Pattern": "point internal", "Load": pLoads})
+        loads = append_row(loads, {"Storey": st, "Pattern": "point analysis", "Load": pLoads})
 
         # PDelta loads (for 2D only)
         if nGravity > 0:
             # Associated with each seismic frame
             load = pDeltaLoad[st - 1] / data.n_seismic
-            loads = loads.append({"Storey": st,
-                                  "Pattern": "pdelta",
-                                  "Load": load}, ignore_index=True)
+            loads = append_row(loads, {"Storey": st, "Pattern": "pdelta", "Load": load})
 
         else:
             # Add loads as zero
-            loads = loads.append({"Storey": st,
-                                  "Pattern": "pdelta",
-                                  "Load": pDeltaLoad}, ignore_index=True)
+            loads = append_row(loads, {"Storey": st, "Pattern": "pdelta", "Load": pDeltaLoad})
 
         # Masses (for 2D only)
-        loads = loads.append({"Storey": st,
-                              "Pattern": "mass",
-                              "Load": masses[st - 1] / data.n_seismic}, ignore_index=True)
+        loads = append_row(loads, {"Storey": st, "Pattern": "mass",
+                                   "Load": masses[st - 1] / data.n_seismic})
 
         # Area loads (for both 2D and 3D)
         q = q_roof if st == nst else q_floor
-        loads = loads.append({"Storey": st,
-                              "Pattern": "q",
-                              "Load": q}, ignore_index=True)
+        loads = append_row(loads, {"Storey": st, "Pattern": "q", "Load": q})
 
     # Exporting action for use by a Modeler module
     """
@@ -278,3 +265,13 @@ def check_for_file(filepath):
         # Read according to row index
         solution = filepath
     return solution
+
+
+def append_row(df, row):
+    """Appends a single row, replacing DataFrame.append which pandas 2 removed.
+    :param df: DataFrame
+    :param row: Series or dict                          Row to append
+    :return: DataFrame
+    """
+    row = pd.DataFrame([row]) if isinstance(row, dict) else row.to_frame().T
+    return pd.concat([df, row], ignore_index=True)

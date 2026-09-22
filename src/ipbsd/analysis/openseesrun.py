@@ -1142,11 +1142,11 @@ class OpenSeesRun:
         mstar = np.zeros(2)
         for i in range(2):
             # Modal participation factor
-            gamma[i] = (modalShape[:, i].transpose().dot(M)).dot(identity.transpose()) / \
-                       (modalShape[:, i].transpose().dot(M)).dot(modalShape[:, i])
+            gamma[i] = ((modalShape[:, i].transpose().dot(M)).dot(identity.transpose()) /
+                        (modalShape[:, i].transpose().dot(M)).dot(modalShape[:, i])).item()
 
             # Modal mass
-            mstar[i] = (modalShape[:, i].transpose().dot(M)).dot(identity.transpose())
+            mstar[i] = (modalShape[:, i].transpose().dot(M)).dot(identity.transpose()).item()
 
         # Modify indices of modal properties as follows:
         # index 0 = direction x

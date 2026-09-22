@@ -49,9 +49,9 @@ class Hazard:
         or
         :return: array                                  Hs associated with a limit state of interest
         """
-        k0 = coef[0]
-        k1 = coef[1]
-        k2 = coef[2]
+        k0 = coef.iloc[0]
+        k1 = coef.iloc[1]
+        k2 = coef.iloc[2]
         p = 1 / (1 + 2*k2*(np.power(self.beta_al, 2)))
         if cflag == "PGA":
             H = 1 / np.array(return_period)

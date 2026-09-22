@@ -2,7 +2,7 @@
 Optimizes for the fundamental period by seeking cross-sections of all structural elements
 """
 from ipbsd.analysis.openseesrun import OpenSeesRun
-from ipbsd.utils.ipbsd_utils import initiate_msg, success_msg
+from ipbsd.utils.ipbsd_utils import initiate_msg, success_msg, append_row
 from ipbsd.utils.performance_obj_verifications import check_period
 
 import numpy as np
@@ -106,31 +106,31 @@ class CrossSectionSpace:
         solutions_y = pd.DataFrame(columns=columns)
         solutions_gr = pd.DataFrame(columns=columns_gr)
         # Principal modal periods
-        solutions_x["T"] = ""
-        solutions_y["T"] = ""
+        solutions_x["T"] = np.nan
+        solutions_y["T"] = np.nan
         # Weight of structural components
-        solutions_x["Weight"] = ""
-        solutions_y["Weight"] = ""
+        solutions_x["Weight"] = np.nan
+        solutions_y["Weight"] = np.nan
         # Effective modal masses
-        solutions_x["Mstar"] = ""
-        solutions_y["Mstar"] = ""
+        solutions_x["Mstar"] = np.nan
+        solutions_y["Mstar"] = np.nan
         # Modal participation factors
-        solutions_x["Part Factor"] = ""
-        solutions_y["Part Factor"] = ""
+        solutions_x["Part Factor"] = np.nan
+        solutions_y["Part Factor"] = np.nan
 
         # Space systems will be used for 3D modelling only
         solutions = pd.DataFrame(columns=self.elements.columns)
         # Principal modal periods
-        solutions["T1"] = ""
-        solutions["T2"] = ""
+        solutions["T1"] = np.nan
+        solutions["T2"] = np.nan
         # Weight of structural components
-        solutions["Weight"] = ""
+        solutions["Weight"] = np.nan
         # Effective modal masses
-        solutions["Mstar1"] = ""
-        solutions["Mstar2"] = ""
+        solutions["Mstar1"] = np.nan
+        solutions["Mstar2"] = np.nan
         # Modal participation factors
-        solutions["Part Factor1"] = ""
-        solutions["Part Factor2"] = ""
+        solutions["Part Factor1"] = np.nan
+        solutions["Part Factor2"] = np.nan
 
         for i in self.elements.index:
             # Get element cross-sections of solution i
@@ -150,9 +150,9 @@ class CrossSectionSpace:
                     and check_period(periods[0], self.period_limits["2"][0], self.period_limits["2"][1], pflag=False):
 
                 weight = self.get_weight(ele)
-                solutions_x = solutions_x.append(cs["x_seismic"], ignore_index=True)
-                solutions_y = solutions_y.append(cs["y_seismic"], ignore_index=True)
-                solutions_gr = solutions_gr.append(cs["gravity"], ignore_index=True)
+                solutions_x = append_row(solutions_x, cs["x_seismic"])
+                solutions_y = append_row(solutions_y, cs["y_seismic"])
+                solutions_gr = append_row(solutions_gr, cs["gravity"])
 
                 solutions_x.at[solutions_x.index[-1], 'T'] = periods[0]
                 solutions_y.at[solutions_y.index[-1], 'T'] = periods[1]
@@ -164,7 +164,7 @@ class CrossSectionSpace:
                 solutions_y.at[solutions_y.index[-1], 'Part Factor'] = gamma[1]
 
                 # All solutions
-                solutions = solutions.append(ele, ignore_index=True)
+                solutions = append_row(solutions, ele)
 
                 solutions.at[solutions.index[-1], 'T1'] = periods[0]
                 solutions.at[solutions.index[-1], 'T2'] = periods[1]

@@ -16,14 +16,14 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "numpy>=1.26,<3",
+    "numpy>=2.0,<3",
     "scipy>=1.11",
-    "pandas>=2.1",
+    "pandas>=3",
     "matplotlib>=3.8",
     "openpyxl>=3.1",
     "python-constraint>=1.4",
     "colorama>=0.4.6",
-    "openseespy>=3.5",
+    "openseespy>=3.8",
 ]
 
 [project.optional-dependencies]
