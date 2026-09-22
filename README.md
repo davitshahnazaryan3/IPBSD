@@ -5,17 +5,17 @@ Integrated Performance-Based Seismic Design
 Design framework based on limiting economic losses, i.e. expected annual loss (EAL) and targeting a probability of collapse, i.e. mean annual frequency of collapse (MAFC).
 As long as there are no Failures and/or Warnings, then the framework has successfully completed.
 
-**Required libraries**: 
+**Install** (Python 3.10-3.12):
 
-      python -m pip install -r requirements.txt
+      python -m pip install -e ".[dev]"
 
 **Run tests**: 
 
-      python -m unittest tests/test_inputs.py
+      python -m pytest
 
 **Run**: 
 
-      python main.py
+      python -m ipbsd.main
 
 
 ### Table of Contents
