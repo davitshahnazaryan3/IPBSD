@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ipbsd"
+version = "0.1.0"
+description = "Integrated seismic risk and economic loss driven performance-based seismic design framework"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.10,<3.13"
+authors = [{ name = "Davit Shahnazaryan", email = "davit.shahnazaryan@iusspavia.it" }]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "numpy>=1.26,<3",
+    "scipy>=1.11",
+    "pandas>=2.1",
+    "matplotlib>=3.8",
+    "openpyxl>=3.1",
+    "python-constraint>=1.4",
+    "colorama>=0.4.6",
+    "openseespy>=3.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/davitshahnazaryan3/IPBSD"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
