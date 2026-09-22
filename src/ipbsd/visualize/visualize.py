@@ -317,7 +317,7 @@ class Visualize:
         try:
             plt.text(0.1, 0.9, r'$T_1 = %.1f$' % data["T1"], ha="center", va="center", size=self.FONTSIZE, color='b',
                      transform=ax.transAxes)
-        except:
+        except KeyError:
             pass
 
         if self.flag:
@@ -364,7 +364,7 @@ class Visualize:
         try:
             model = data["SPO"][direction]
             spo = data["SPO_idealized"][direction]
-        except:
+        except KeyError:
             model = data["SPO"]
             spo = data["SPO_idealized"]
 

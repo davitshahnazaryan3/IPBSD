@@ -255,7 +255,7 @@ def check_for_file(filepath):
             try:
                 # csv
                 solution = pd.read_csv(filepath)
-            except:
+            except (ValueError, UnicodeDecodeError, pd.errors.ParserError):
                 # wrong file type
                 solution = None
         else:

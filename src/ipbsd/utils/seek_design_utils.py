@@ -137,7 +137,8 @@ def derive_spo_shape(spo, residual=0.1):
     try:
         x = spo["d"]
         y = spo["v"]
-    except:
+    except (KeyError, TypeError):
+        # Also accepts the (displacement, force) sequence form
         x = spo[0]
         y = spo[1]
 
@@ -255,7 +256,8 @@ def derive_spo_shape_alternative(spo, residual=0.1):
     try:
         x = spo["d"]
         y = spo["v"]
-    except:
+    except (KeyError, TypeError):
+        # Also accepts the (displacement, force) sequence form
         x = spo[0]
         y = spo[1]
 

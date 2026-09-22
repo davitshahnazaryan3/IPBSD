@@ -171,7 +171,8 @@ class Master:
                                                sa.reshape(shape, 1)), axis=1)
                 sls_spectrum = pd.DataFrame(data=sls_spectrum, columns=["Period", "Sd", "Sa"])
                 export_results(self.ipbsd.output_path / "Cache/sls_spectrum", sls_spectrum, "csv")
-            except:
+            except (AttributeError, ValueError):
+                # Not shaped as arrays of equal length, so fall back to a pickled dict
                 sls_spectrum = {"sa": sa, "sd": sd, "periods": spectra.T_RANGE}
                 export_results(self.ipbsd.output_path / "Cache/sls_spectrum", sls_spectrum, "pickle")
         success_msg("Response spectrum at SLS generated!\n...")

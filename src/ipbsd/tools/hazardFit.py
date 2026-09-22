@@ -82,7 +82,8 @@ class HazardFit:
         for t in range(len(im)):
             try:
                 T[t] = im[t].replace('SA(', '').replace(')', '')
-            except:
+            except (AttributeError, ValueError):
+                # Not an SA(T) label, e.g. PGA
                 T[t] = 0.0
 
         info = {'hazard_fit': hazard_fit, 's_fit': s_fit, 'T': T, 'coefs': coefs}

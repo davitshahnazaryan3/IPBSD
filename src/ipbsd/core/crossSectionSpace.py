@@ -216,7 +216,7 @@ class CrossSectionSpace:
             cs_y["T"] = ele["T2"]
             cs_y["Mstar"] = ele["Mstar2"]
             cs_y["Part Factor"] = ele["Part Factor2"]
-        except:
+        except KeyError:
             # Central/internal (gravity) key does not need to have information on modal properties
             pass
 

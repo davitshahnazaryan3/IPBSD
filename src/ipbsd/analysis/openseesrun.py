@@ -1044,19 +1044,19 @@ class OpenSeesRun:
         lam = None
         try:
             lam = op.eigen(num_modes)
-        except:
+        except op.OpenSeesError:
             print("[EXCEPTION] Eigensolver failed, trying genBandArpack...")
             try:
                 lam = op.eigen('-genBandArpack', num_modes)
-            except:
+            except op.OpenSeesError:
                 print("[EXCEPTION] Eigensolver failed, trying fullGenLapack...")
                 try:
                     lam = op.eigen('-fullGenLapack', num_modes)
-                except:
+                except op.OpenSeesError:
                     print("[EXCEPTION] Eigensolver failed, trying symmBandLapack...")
                     try:
                         lam = op.eigen('-symmBandLapack', num_modes)
-                    except:
+                    except op.OpenSeesError:
                         print("[EXCEPTION] Eigensolver failed.")
 
         # Record stuff
