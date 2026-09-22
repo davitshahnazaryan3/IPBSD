@@ -16,11 +16,21 @@ import numpy as np
 from scipy import optimize
 import math
 
+from functools import wraps
+
 from ipbsd.analysis.plasticity import Plasticity
 from ipbsd.utils.ipbsd_utils import getIndex
 import warnings
 
-warnings.filterwarnings('ignore')
+
+def ignore_convergence_warnings(func):
+    """fsolve reports non-convergence as a RuntimeWarning; these methods detect it from NaN instead."""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            return func(*args, **kwargs)
+    return wrapper
 
 
 class MomentCurvatureRC:
@@ -208,6 +218,7 @@ class MomentCurvatureRC:
 
         return abs(nint + self.p)
 
+    @ignore_convergence_warnings
     def find_fracturing(self, epsc_prime, asinit):
         """
         Find fracturing point
@@ -232,6 +243,7 @@ class MomentCurvatureRC:
 
         return record
 
+    @ignore_convergence_warnings
     def max_moment(self, asi, epsc_prime):
         """
         Gets the maximum moment capacity
@@ -282,6 +294,7 @@ class MomentCurvatureRC:
             raise ValueError("[EXCEPTION] Wrong method for the definition of softening slope!")
         return phi_critical, m_critical, lp
 
+    @ignore_convergence_warnings
     def get_mphi(self, check_reinforcement=False, reinf_test=0., m_target=None, reinforcements=None, cover=None):
         # TODO, a bit too rigid, make it more flexible, easier to manipulate within IPBSD to achieve optimized designs
         # TODO, issue where fracturing curvature is not computed correctly and is equal to hardening curvature,
