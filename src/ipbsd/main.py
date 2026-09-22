@@ -11,7 +11,7 @@ class Main:
                  output_path, analysis_type=1, damping=.05, num_modes=3, iterate=False, maxiter=20, fstiff=0.5,
                  rebar_cover=0.03, export=False, hold_flag=False, overstrength=None, repl_cost=None,
                  gravity_cs=None, eal_correction=True, perform_scaling=True, solution_filex=None, solution_filey=None,
-                 solution_file=None, edp_profiles=None, flag3d=False):
+                 solution_file=None, edp_profiles=None, flag3d=False, dimension_limits=None):
         """
         Initializes IPBSD
         Files:
@@ -86,6 +86,7 @@ class Main:
         self.solution_file = solution_file
         self.edp_profiles = edp_profiles
         self.flag3d = flag3d
+        self.dimension_limits = dimension_limits
 
     def run_master(self):
         master = Master(self)

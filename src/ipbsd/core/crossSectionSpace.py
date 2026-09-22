@@ -11,7 +11,8 @@ import pandas as pd
 
 
 class CrossSectionSpace:
-    def __init__(self, data, period_limits, fstiff, iteration=False, reduce_combos=True):
+    def __init__(self, data, period_limits, fstiff, iteration=False, reduce_combos=True,
+                 dimension_limits=None):
         """
         Initialize
         :param data: object                        IPBSD input data
@@ -19,12 +20,21 @@ class CrossSectionSpace:
         :param fstiff: float                        Stiffness reduction factor (initial assumption)
         :param iteration: bool                      Whether iterations are being carried out via IPBSD
         :param reduce_combos: bool                  Reduce number of combinations to be created (adds more constraints)
+        :param dimension_limits: dict               Section search domains as (start, stop, step) per element type,
+                                                    keys 'col', 'beam_b', 'beam_h'. None keeps the defaults below.
+                                                    Narrowing them shrinks the search space, which grows steeply
+                                                    with storeys and bays.
         """
         self.data = data
         self.period_limits = period_limits
         self.fstiff = fstiff
         self.iteration = iteration
         self.reduce_combos = reduce_combos
+        self.dimension_limits = dimension_limits or {
+            "col": (0.35, 0.75, 0.05),
+            "beam_b": (0.35, 0.65, 0.05),
+            "beam_h": (0.45, 0.75, 0.05),
+        }
 
         # number of storeys
         self.nst = data.nst
@@ -325,18 +335,18 @@ class CrossSectionSpace:
                 for y in range(1, ny + 2):
                     # Add the variables
                     # Columns
-                    problem.addVariable(f"h{x}{y}{st}", np.arange(0.35, 0.75, 0.05))
+                    problem.addVariable(f"h{x}{y}{st}", np.arange(*self.dimension_limits["col"]))
                     ele_types.append(f"h{x}{y}{st}")
                     # Beams along x direction
                     if x < nx + 1:
-                        problem.addVariable(f"bx{x}{y}{st}", np.arange(0.35, 0.65, 0.05))
-                        problem.addVariable(f"hx{x}{y}{st}", np.arange(0.45, 0.75, 0.05))
+                        problem.addVariable(f"bx{x}{y}{st}", np.arange(*self.dimension_limits["beam_b"]))
+                        problem.addVariable(f"hx{x}{y}{st}", np.arange(*self.dimension_limits["beam_h"]))
                         ele_types.append(f"bx{x}{y}{st}")
                         ele_types.append(f"hx{x}{y}{st}")
                     # Beams along y direction
                     if y < ny + 1:
-                        problem.addVariable(f"by{x}{y}{st}", np.arange(0.35, 0.65, 0.05))
-                        problem.addVariable(f"hy{x}{y}{st}", np.arange(0.45, 0.75, 0.05))
+                        problem.addVariable(f"by{x}{y}{st}", np.arange(*self.dimension_limits["beam_b"]))
+                        problem.addVariable(f"hy{x}{y}{st}", np.arange(*self.dimension_limits["beam_h"]))
                         ele_types.append(f"by{x}{y}{st}")
                         ele_types.append(f"hy{x}{y}{st}")
 

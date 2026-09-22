@@ -227,7 +227,8 @@ class Master:
                                 period_limits[1], export_directory=path, iteration=iterate, solution_perp=perp)
 
         def run_cross_section_space(period_limits, iterate=False):
-            return CrossSectionSpace(self.data, period_limits, self.ipbsd.fstiff, iteration=iterate)
+            return CrossSectionSpace(self.data, period_limits, self.ipbsd.fstiff, iteration=iterate,
+                                     dimension_limits=self.ipbsd.dimension_limits)
 
         if self.data.configuration == "perimeter" or not self.ipbsd.flag3d:
             # Get number of seismic frames and lumped masses along the height
