@@ -308,8 +308,8 @@ class Master:
             n_seismic = 2
             masses = self.data.masses
         else:
-            q_floor = self.data.i_d['bldg_ch'][0]
-            q_roof = self.data.i_d['bldg_ch'][1]
+            q_floor = self.data.inputs['loads'][0]
+            q_roof = self.data.inputs['loads'][1]
             n_seismic = 1
             # Considering the critical frame only (with max tributary length)
             if direction == "x":

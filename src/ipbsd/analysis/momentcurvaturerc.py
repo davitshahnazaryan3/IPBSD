@@ -179,8 +179,8 @@ class MomentCurvatureRC:
         :param data: list                       Reinforcement characteristics
         :return: float                          Difference between internal and analysis forces
         """
-        # Force it to look for only positive values of c
-        c = abs(c)
+        # Force it to look for only positive values of c; fsolve passes it as a 1-element array
+        c = abs(np.asarray(c).item())
         # Concrete strains
         epsBot = data[0]
         epsc_prime = data[1]
@@ -220,7 +220,7 @@ class MomentCurvatureRC:
         # epss_bot = 0.044
         # Initialize moment and compressed concrete height
         c = 0.01
-        c = float(optimize.fsolve(self.get_residual_strength, c, [epss_bot, epsc_prime, asinit], factor=0.1))
+        c = optimize.fsolve(self.get_residual_strength, c, [epss_bot, epsc_prime, asinit], factor=0.1).item()
 
         moment = self.mi
         phii = self.phii
@@ -241,7 +241,7 @@ class MomentCurvatureRC:
         """
         asinit = asi[0]
         c = np.array([0.05])
-        c = float(abs(optimize.fsolve(self.objective, c, [2 * epsc_prime, epsc_prime, asinit], factor=0.1)))
+        c = abs(optimize.fsolve(self.objective, c, [2 * epsc_prime, epsc_prime, asinit], factor=0.1).item())
         return abs(self.mi / self.k_hard - self.m_target)
 
     def get_softening_slope(self, **kwargs):
@@ -302,7 +302,7 @@ class MomentCurvatureRC:
             self.AsTotal = sum(reinforcements)
             self.distAs = reinforcements / self.AsTotal
         if m_target is not None:
-            self.m_target = float(m_target)
+            self.m_target = np.asarray(m_target).item()
         if cover is not None:
             self.d = cover
 
@@ -341,7 +341,7 @@ class MomentCurvatureRC:
         else:
             asinit = np.array([0.002])
 
-        asinit = abs(float(optimize.fsolve(self.max_moment, asinit, epsc_prime, factor=0.1)))
+        asinit = abs(optimize.fsolve(self.max_moment, asinit, epsc_prime, factor=0.1).item())
 
         # Are we doing a reinforcement check? If, yes...
         if check_reinforcement:
@@ -349,8 +349,8 @@ class MomentCurvatureRC:
             self.mi = None
             init_factor = 2.
             while self.mi is None or np.isnan(self.mi[0]):
-                c = abs(float(optimize.fsolve(self.objective, c, [init_factor * epsc_prime, epsc_prime, reinf_test],
-                                              factor=0.1)))
+                c = abs(optimize.fsolve(self.objective, c, [init_factor * epsc_prime, epsc_prime, reinf_test],
+                                              factor=0.1).item())
                 init_factor -= 0.1
             return self.mi
 
@@ -359,27 +359,27 @@ class MomentCurvatureRC:
             for i in range(len(epsc)):
                 # compressed section height optimization - make a good guess, otherwise convergence won't be achieved
                 c = 0.05
-                c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100, xtol=1e-4)))
+                c = abs(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100, xtol=1e-4).item())
                 # Stop analysis if RunTimeWarning is caught (i.e. no convergence)
-                if math.isnan(self.mi):
+                if np.isnan(self.mi[0]):
                     # Check if target moment was reached (it not then analysis stopped prematurely due to bad guess)
                     if max(m) < self.m_target:
                         # Rerun with different c
                         c = 0.03
-                        c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100,
-                                                      xtol=1e-4)))
+                        c = abs(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100,
+                                                      xtol=1e-4).item())
                     else:
                         # Check if c initial should be modified, as the analysis stopped prematurely
                         if m[-2] / m[-1] < 0.9:
                             c = 0.02
-                            c = abs(float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100,
-                                                          xtol=1e-4)))
+                            c = abs(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100,
+                                                          xtol=1e-4).item())
                         else:
                             if m[-2] / m[-1] < 0.9:
                                 c = 0.1
                                 c = abs(
-                                    float(optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100,
-                                                          xtol=1e-4)))
+                                    optimize.fsolve(self.objective, c, [epsc[i], epsc_prime, asinit], factor=100,
+                                                          xtol=1e-4).item())
                             else:
                                 break
 

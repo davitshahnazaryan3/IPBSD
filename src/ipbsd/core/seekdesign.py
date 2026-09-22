@@ -268,8 +268,8 @@ class SeekDesign:
         fsolve(m.objective, x0=np.array([0.02]), factor=0.1)
 
         # Yield displacement for ESDOF
-        dy = float(m.cy) * 9.81 * (period / 2 / np.pi) ** 2
-        cy = float(m.cy)
+        cy = m.cy.item()
+        dy = cy * 9.81 * (period / 2 / np.pi) ** 2
 
         return cy, dy
 

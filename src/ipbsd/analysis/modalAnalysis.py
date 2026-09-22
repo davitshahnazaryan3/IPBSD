@@ -223,14 +223,14 @@ class ModalAnalysis:
         mi_diag[2::3] = 1e-5
         m_frame = np.diag(mi_diag)
         # Calculate T1
-        # Mode 1: eigvals=(0,0), Period [0][0], Phis [1][x]
-        T = 2 * np.pi / (eigh(k_frame, m_frame, eigvals=(0, 0))[0][0] ** 0.5)
+        # Mode 1: subset_by_index=(0,0), Period [0][0], Phis [1][x]
+        T = 2 * np.pi / (eigh(k_frame, m_frame, subset_by_index=(0, 0))[0][0] ** 0.5)
         phis = np.zeros(self.nstoreys)
         phi_norm = np.zeros((self.nstoreys, 1))
 
         if self.single_mode:
             for storey in range(self.nstoreys):
-                phis[storey] = abs(eigh(k_frame, m_frame, eigvals=(0, 0))[1][storey * (nbays * 3 + 3)])
+                phis[storey] = abs(eigh(k_frame, m_frame, subset_by_index=(0, 0))[1][storey * (nbays * 3 + 3)].item())
             for i in range(len(phis)):
                 phi_norm[i] = phis[i] / max(phis)
         else:
@@ -239,17 +239,17 @@ class ModalAnalysis:
             phi_all = np.zeros((n_modes, self.nstoreys))
             phi_all_norm = np.zeros((n_modes, self.nstoreys))
             for j in range(n_modes):
-                T[j] = 2*np.pi/(eigh(k_frame, m_frame, eigvals=(j, j))[0][0]**.5)
+                T[j] = 2*np.pi/(eigh(k_frame, m_frame, subset_by_index=(j, j))[0][0]**.5)
             for storey in range(self.nstoreys):
-                phis[storey] = -(eigh(k_frame, m_frame, eigvals=(0, 0))[1][storey*(nbays*3+3)])
+                phis[storey] = -(eigh(k_frame, m_frame, subset_by_index=(0, 0))[1][storey*(nbays*3+3)].item())
             for i in range(len(phis)):
                 phi_norm[i] = phis[i] / max(abs(phis))
             for j in range(n_modes):
                 for st in range(self.nstoreys):
                     if j == 0:
-                        phi_all[j, st] = -(eigh(k_frame, m_frame, eigvals=(j, j))[1][st * (nbays * 3 + 3)])
+                        phi_all[j, st] = -(eigh(k_frame, m_frame, subset_by_index=(j, j))[1][st * (nbays * 3 + 3)].item())
                     else:
-                        phi_all[j, st] = (eigh(k_frame, m_frame, eigvals=(j, j))[1][st * (nbays * 3 + 3)])
+                        phi_all[j, st] = (eigh(k_frame, m_frame, subset_by_index=(j, j))[1][st * (nbays * 3 + 3)].item())
             for j in range(n_modes):
                 for st in range(self.nstoreys):
                     phi_all_norm[j, st] = phi_all[j, st] / max(abs(phi_all[j, :]))

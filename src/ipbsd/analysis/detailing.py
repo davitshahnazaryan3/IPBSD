@@ -302,8 +302,8 @@ class Detailing:
 
         # Initial guess for the solver
         As = 0.002
-        AsPos = float(optimize.fsolve(get_As, As, mpos, factor=0.1))
-        AsNeg = float(optimize.fsolve(get_As, As, mneg, factor=0.1))
+        AsPos = optimize.fsolve(get_As, As, mpos, factor=0.1).item()
+        AsNeg = optimize.fsolve(get_As, As, mneg, factor=0.1).item()
         AsTotal = AsPos + AsNeg
         distributions = [AsPos / AsTotal, AsNeg / AsTotal]
         return AsTotal, distributions

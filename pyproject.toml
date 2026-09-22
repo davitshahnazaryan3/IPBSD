@@ -37,3 +37,4 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: end-to-end runs taking minutes (deselect with -m 'not slow')"]

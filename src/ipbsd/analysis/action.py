@@ -51,14 +51,14 @@ class Action:
             # TODO, use phi shape from actual modal analysis of the nonlinear system if available
             d = pd.DataFrame({'phi':    np.array(df.loc['phi']),
                               'm':      [mi / self.n_seismic for mi in self.masses],
-                              'Fi':     [0] * self.nst,
-                              'Vi':     [0] * self.nst,
+                              'Fi':     [0.] * self.nst,
+                              'Vi':     [0.] * self.nst,
                               'pdelta': [pdelta / self.n_seismic for pdelta in self.pdelta_loads]})
 
             # lateral forces
             for n in range(self.nst):
-                d.at[n, 'Fi'] = d['m'][n] * df.loc['phi'][n] * self.get_vb(cy, solution['Mstar'],
-                                                                           solution['Part Factor']) / \
+                d.at[n, 'Fi'] = d['m'][n] * df.loc['phi'].iloc[n] * self.get_vb(cy, solution['Mstar'],
+                                                                               solution['Part Factor']) / \
                                 sum(map(lambda x, y: x * y, list(d['m']), list(df.loc['phi'])))
 
             # base shear at each storey level

@@ -2,7 +2,6 @@
 user defines input arguments
 Main file to run the software
 """
-from threading import Thread
 import pandas as pd
 import numpy as np
 
@@ -152,7 +151,8 @@ class Input:
         self.w_seismic = {'roof': q_beam_roof, 'floor': q_beam_floor}
 
     def run_all(self):
-        Thread(target=self._get_performance_limit_states).start()
-        Thread(target=self._get_mode_reduction_factor).start()
-        Thread(target=self._get_building_dimensions).start()
-        Thread(target=self._get_material_props).start()
+        # Sequential: get_input_arguments reads these attributes as soon as this returns
+        self._get_performance_limit_states()
+        self._get_mode_reduction_factor()
+        self._get_building_dimensions()
+        self._get_material_props()

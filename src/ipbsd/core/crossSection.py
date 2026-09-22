@@ -81,14 +81,16 @@ class CrossSection:
                 for st in range(self.nst):
                     M[st][st] = self.masses[st] / self.n_seismic
                 identity = np.ones((1, self.nst))
-                gamma = (phi.transpose().dot(M)).dot(identity.transpose()) / (phi.transpose().dot(M)).dot(phi)
-                mstar = (phi.transpose().dot(M)).dot(identity.transpose())
+                gamma = ((phi.transpose().dot(M)).dot(identity.transpose()) /
+                         (phi.transpose().dot(M)).dot(phi)).item()
+                mstar = (phi.transpose().dot(M)).dot(identity.transpose()).item()
 
                 solutions = append_row(solutions, ele)
-                solutions["T"].iloc[cnt] = period
-                solutions["Weight"].iloc[cnt] = weight
-                solutions["Part Factor"].iloc[cnt] = gamma
-                solutions["Mstar"].iloc[cnt] = mstar
+                # Single-step .at: chained assignment writes to a copy under Copy-on-Write
+                solutions.at[solutions.index[cnt], "T"] = period
+                solutions.at[solutions.index[cnt], "Weight"] = weight
+                solutions.at[solutions.index[cnt], "Part Factor"] = gamma
+                solutions.at[solutions.index[cnt], "Mstar"] = mstar
                 cnt += 1
 
         return solutions

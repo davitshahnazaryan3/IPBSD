@@ -22,21 +22,26 @@ from ipbsd.main import Main
 REPO_ROOT = Path(__file__).parents[1]
 SAMPLE = REPO_ROOT / "sample" / "sample1"
 
-# Written by pandas 1.x and unreadable by pandas >= 2; Hazard regenerates them via HazardFit.
-STALE_CACHE = ("coef_hazard.pkl", "fit_hazard.pkl")
+# Derived hazard fit; deleted so the run regenerates it via HazardFit rather than reading it back.
+REGENERATED_CACHE = ("coef_hazard.pkl", "fit_hazard.pkl")
 
 SOLUTION_CACHES = ("solution_cache_space_x.csv", "solution_cache_space_y.csv", "solution_cache_space_gr.csv")
 
 
-@pytest.fixture(scope="module")
-def case(tmp_path_factory):
-    """Runs the sample case once from a clean copy and yields its output directory."""
-    path = tmp_path_factory.mktemp("sample1")
+def prepare_case(path):
+    """Copies the sample into path, dropping the caches so a run recomputes them."""
     shutil.copytree(SAMPLE, path, dirs_exist_ok=True)
-    for name in STALE_CACHE:
+    for name in REGENERATED_CACHE:
         (path / name).unlink(missing_ok=True)
-    # Drop the committed results so the run computes them rather than reading them back
     shutil.rmtree(path / "Cache")
+    return path
+
+
+def run_case(path, **overrides):
+    """Runs the sample case, with main.py's __main__ arguments as the defaults."""
+    settings = dict(analysis_type=3, damping=.05, iterate=True, maxiter=10, fstiff=0.5, flag3d=True,
+                    export=True, overstrength=1.0, repl_cost=349459.2, gravity_cs=None, hold_flag=True)
+    settings.update(overrides)
 
     Main(
         path / "ipbsd_input.csv",
@@ -46,19 +51,15 @@ def case(tmp_path_factory):
         limit_eal=1.0,
         target_mafc=2.e-4,
         output_path=path,
-        analysis_type=3,
-        damping=.05,
-        iterate=True,
-        maxiter=10,
-        fstiff=0.5,
-        flag3d=True,
-        export=True,
-        overstrength=1.0,
-        repl_cost=349459.2,
-        gravity_cs=None,
-        hold_flag=True,
+        **settings,
     ).run_master()
 
+
+@pytest.fixture(scope="module")
+def case(tmp_path_factory):
+    """Runs the sample case once from a clean copy and yields its output directory."""
+    path = prepare_case(tmp_path_factory.mktemp("sample1"))
+    run_case(path)
     return path
 
 
@@ -69,7 +70,7 @@ def read_cache(case, name):
 
 def test_run_exports_expected_artefacts(case):
     # Hazard fitting regenerated the cache it found missing
-    for name in STALE_CACHE:
+    for name in REGENERATED_CACHE:
         assert (case / name).is_file(), f"{name} was not regenerated"
 
     assert (case / "Cache").is_dir()
@@ -126,3 +127,37 @@ def test_solutions_match_committed_reference(case):
         assert list(computed.columns) == list(reference.columns)
         numeric = reference.select_dtypes("number")
         assert_allclose(computed[numeric.columns], numeric, rtol=1e-3, err_msg=name)
+
+
+@pytest.mark.slow
+def test_iteration_phase(tmp_path):
+    """Covers perform_iterations: seekdesign, detailing, momentcurvaturerc, plasticity, spo2ida."""
+    path = prepare_case(tmp_path)
+    run_case(path, hold_flag=False)
+
+    with open(path / "Cache" / "ipbsd.pickle", "rb") as file:
+        results = pickle.load(file)
+
+    assert_allclose(results["cy"], 0.4799, rtol=1e-3)
+    assert_allclose(results["dy"], [0.01401, 0.01668], rtol=1e-3)
+    assert_allclose(results["part_factor"], [1.224, 1.218], rtol=1e-3)
+    assert_allclose(results["Mstar"], [270.7, 274.8], rtol=1e-3)
+    assert_allclose(results["overstrength"], [1.222, 1.138], rtol=1e-3)
+
+    with open(path / "Cache" / "optimal_solution.pickle", "rb") as file:
+        assert set(pickle.load(file)) == {"x_seismic", "y_seismic", "gravity"}
+
+
+def test_two_dimensional_path(tmp_path):
+    """Covers crossSection.py, which the 3D sample never reaches."""
+    path = prepare_case(tmp_path)
+    run_case(path, flag3d=False)
+
+    solutions = pd.read_csv(path / "Cache" / "solution_cache_x.csv", index_col=0)
+
+    assert len(solutions) == 113
+    # Modal properties are written per row; a copy-on-write regression would leave these empty
+    for column in ("T", "Weight", "Part Factor", "Mstar"):
+        assert solutions[column].notna().all(), f"{column} was not populated"
+
+    assert_allclose([solutions["T"].min(), solutions["T"].max()], [0.1904, 0.4315], rtol=1e-3)
