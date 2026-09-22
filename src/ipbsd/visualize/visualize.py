@@ -2,10 +2,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-import pickle
-from pathlib import Path
 
-from ipbsd.utils.ipbsd_utils import create_folder
 from ipbsd.utils.utils_plotter import *
 
 
@@ -392,24 +389,3 @@ class Visualize:
 
         if self.export:
             export_figure(fig, filename=self.export_dir / f"spo2ida_{direction}", filetype=self.filetype)
-
-
-if __name__ == "__main__":
-    path = Path.cwd().parents[0]
-    export_dir = path / "sample/figs"
-    create_folder(export_dir)
-
-    loss_curve = path / "sample/sample1/Cache/lossCurve.pickle"
-    spectrum = path / "sample/sample1/Cache/sls_spectrum.csv"
-    solution = path / "sample/sample1/Cache/ipbsd.pickle"
-    spo2ida = path / "sample/sample1/Cache/spoAnalysisCurveShape.pickle"
-    spo_model = path / "sample/sample1/Cache/modelOutputs.pickle"
-    n_seismic = 1
-    direction = "x"
-
-    viz = Visualize(export=False, filetype="png", export_dir=export_dir, flag=True)
-    viz.plot_loss_curve(loss_curve)
-    viz.plot_spectrum(spectrum)
-    viz.plot_solution_space(solution, spectrum, direction=0)
-    viz.plot_spo2ida_outputs(spo2ida, 0)
-    viz.plot_spo(spo_model, solution, spo2ida, n_seismic, direction)

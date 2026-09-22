@@ -294,34 +294,3 @@ class CrossSection:
         opt_modes = {"Periods": period, "Modes": phi}
 
         return optimal, opt_modes
-
-
-if __name__ == "__main__":
-    import timeit
-    start_time = timeit.default_timer()
-    from pathlib import Path
-    mainDir = Path.cwd().parents[0] / "Database"
-    
-    nst = 3
-    nbays = 3
-    fy = 415
-    fc = 25
-    bay_widths = [5, 5, 5]
-    heights = [3.5, 3, 3]
-    n_seismic = 2
-    fstiff = 0.5
-    mi = [99.08, 99.08, 82.57]
-    tlower = 0.6
-    tupper = 0.8
-    ma = CrossSection(nst, nbays, fy, fc, bay_widths, heights, n_seismic, mi, fstiff, tlower, tupper, export_directory=mainDir)
-    opt_sol = ma.find_optimal_solution()
-    print(ma.solutions)
-
-    def truncate(n, decimals=0):
-        multiplier = 10 ** decimals
-        return int(n * multiplier) / multiplier
-
-    # --------- Stop the clock and report the time taken in seconds
-    elapsed = timeit.default_timer() - start_time
-    print('Running time: ', truncate(elapsed, 1), ' seconds')
-    print('Running time: ', truncate(elapsed / float(60), 2), ' minutes')

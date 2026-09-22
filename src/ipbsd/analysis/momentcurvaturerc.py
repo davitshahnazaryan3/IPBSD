@@ -495,31 +495,3 @@ class MomentCurvatureRC:
                  "fracturing": {"curvature": phi_critical, "moment": 0}}
 
         return data, reinforcement, concrete, model, MPhi_idealization
-
-
-if __name__ == '__main__':
-    """
-    --- Info on the input data:
-    b                       section width [m]
-    h                       section height [m]
-    m_target                target Moment demand [kNm]
-    nlayers                 number of reinforcement layers
-    p                       analysis axial force, negative=compressive [kN]
-    d                       reinforcement cover [m]
-    fc_prime                concrete strength [MPa]
-    fy                      reinforcement yield strength [MPa]
-    young_modulus_s         reinforcement elastic modulus [MPa]
-    """
-    # Section properties
-    b = 0.4
-    h = 0.7
-    Mtarget = 136.78
-    N = 0
-    cover = 0.03
-    nlayers = 0
-
-    mphi = MomentCurvatureRC(b, h, Mtarget, p=N, nlayers=nlayers, d=cover, young_mod_s=200000.,
-                             k_hard=1, soft_method="Collins")
-
-    m = mphi.get_mphi()
-    print(m)
