@@ -176,6 +176,7 @@ poetry.lock
 **/archive*
 /dump
 /.claude
+/work
 
 # Large data assets (distributed via GitHub Releases, see src/djura/data_loader.py)
 src/**/*.pickle
