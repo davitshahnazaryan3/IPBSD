@@ -1,9 +1,9 @@
 """
 Optimizes for the fundamental period by seeking cross-sections of all structural elements
 """
-from analysis.openseesrun import OpenSeesRun
-from utils.ipbsd_utils import initiate_msg, success_msg
-from utils.performance_obj_verifications import check_period
+from ipbsd.analysis.openseesrun import OpenSeesRun
+from ipbsd.utils.ipbsd_utils import initiate_msg, success_msg
+from ipbsd.utils.performance_obj_verifications import check_period
 
 import numpy as np
 import constraint

@@ -5,8 +5,8 @@ import numpy as np
 import pickle
 from pathlib import Path
 
-from utils.ipbsd_utils import create_folder
-from utils.utils_plotter import *
+from ipbsd.utils.ipbsd_utils import create_folder
+from ipbsd.utils.utils_plotter import *
 
 
 class Visualize:

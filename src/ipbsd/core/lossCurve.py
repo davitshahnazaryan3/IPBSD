@@ -3,8 +3,8 @@ defines loss curve
 """
 import numpy as np
 
-from utils.performance_obj_verifications import check_eal
-from utils.ipbsd_utils import success_msg, error_msg
+from ipbsd.utils.performance_obj_verifications import check_eal
+from ipbsd.utils.ipbsd_utils import success_msg, error_msg
 
 
 class LossCurve:

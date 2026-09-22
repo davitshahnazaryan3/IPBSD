@@ -6,8 +6,8 @@ import numpy as np
 from scipy import optimize
 import pandas as pd
 
-from analysis.momentcurvaturerc import MomentCurvatureRC
-from analysis.plasticity import Plasticity
+from ipbsd.analysis.momentcurvaturerc import MomentCurvatureRC
+from ipbsd.analysis.plasticity import Plasticity
 
 
 class Detailing:
@@ -812,9 +812,9 @@ class Detailing:
 
 
 if __name__ == "__main__":
-    from src.master import Master
+    from ipbsd.core.master import Master
     from pathlib import Path
-    from analysis.openseesrun import OpenSeesRun
+    from ipbsd.analysis.openseesrun import OpenSeesRun
 
     directory = Path.cwd().parents[0]
 

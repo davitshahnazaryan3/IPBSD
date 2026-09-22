@@ -2,12 +2,12 @@ import unittest
 import os
 from pathlib import Path
 
-from src.input import Input
+from ipbsd.core.input import Input
 
 
 class TestInputs(unittest.TestCase):
-    path = Path.cwd()
-    outputPath = path.parents[0] / "sample/sample1"
+    path = Path(__file__).parents[1]
+    outputPath = path / "sample/sample1"
 
     # Set FLAG for 3D here
     flag3d = True
@@ -106,8 +106,8 @@ def assertIsDir(path, msg):
 
 class TestMain(unittest.TestCase):
     # Set input parameters here --->
-    path = Path.cwd()
-    outputPath = path.parents[0] / "sample/sample1"
+    path = Path(__file__).parents[1]
+    outputPath = path / "sample/sample1"
 
     # Set FLAG for 3D here
     flag3d = True

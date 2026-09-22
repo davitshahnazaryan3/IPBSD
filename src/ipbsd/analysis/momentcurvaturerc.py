@@ -16,8 +16,8 @@ import numpy as np
 from scipy import optimize
 import math
 
-from analysis.plasticity import Plasticity
-from utils.ipbsd_utils import getIndex
+from ipbsd.analysis.plasticity import Plasticity
+from ipbsd.utils.ipbsd_utils import getIndex
 import warnings
 
 warnings.filterwarnings('ignore')

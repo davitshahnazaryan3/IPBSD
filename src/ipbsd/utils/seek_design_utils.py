@@ -1,6 +1,6 @@
 import numpy as np
 
-from utils.ipbsd_utils import getIndex, getEquation
+from ipbsd.utils.ipbsd_utils import getIndex, getEquation
 
 
 def get_critical_designs(hinge_models_x, hinge_models_y):

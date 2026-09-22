@@ -1,10 +1,10 @@
-from src.master import Master
+from ipbsd.core.master import Master
 from pathlib import Path
 import pandas as pd
 import numpy as np
 from scipy.interpolate import interp1d
 import pickle
-from analysis.getT1 import GetT1
+from ipbsd.analysis.getT1 import GetT1
 import json
 import sys
 

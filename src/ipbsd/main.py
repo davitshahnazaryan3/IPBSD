@@ -3,7 +3,7 @@ Runs the integrated seismic risk and economic loss driven framework
 """
 from pathlib import Path
 
-from src.master import Master
+from ipbsd.core.master import Master
 
 
 class Main:

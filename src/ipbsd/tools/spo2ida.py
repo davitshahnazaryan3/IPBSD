@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 
-from utils.spo2ida_utils import *
+from ipbsd.utils.spo2ida_utils import *
 
 
 class SPO2IDA:

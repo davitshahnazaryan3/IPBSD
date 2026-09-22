@@ -6,20 +6,20 @@ import numpy as np
 import pandas as pd
 import pickle
 
-from src.crossSection import CrossSection
-from src.crossSectionSpace import CrossSectionSpace
-from src.designLimits import DesignLimits
-from src.input import Input
-from src.hazard import Hazard
-from src.lossCurve import LossCurve
-from src.periodRange import PeriodRange
-from src.seekdesign import SeekDesign
-from src.spectra import Spectra
-from src.transformations import Transformations
-from analysis.analysisMethods import run_opensees_analysis
-from utils.ipbsd_utils import create_folder, export_results, initiate_msg, success_msg, error_msg, \
+from ipbsd.core.crossSection import CrossSection
+from ipbsd.core.crossSectionSpace import CrossSectionSpace
+from ipbsd.core.designLimits import DesignLimits
+from ipbsd.core.input import Input
+from ipbsd.core.hazard import Hazard
+from ipbsd.core.lossCurve import LossCurve
+from ipbsd.core.periodRange import PeriodRange
+from ipbsd.core.seekdesign import SeekDesign
+from ipbsd.core.spectra import Spectra
+from ipbsd.core.transformations import Transformations
+from ipbsd.analysis.analysisMethods import run_opensees_analysis
+from ipbsd.utils.ipbsd_utils import create_folder, export_results, initiate_msg, success_msg, error_msg, \
     create_and_export_cache, check_for_file
-from utils.performance_obj_verifications import verify_period_range
+from ipbsd.utils.performance_obj_verifications import verify_period_range
 
 
 class Master:

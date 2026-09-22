@@ -1,7 +1,7 @@
 """
 utility functions for verifying performance objectives, or other design objectives within IPBSD
 """
-from utils.ipbsd_utils import success_msg, error_msg
+from ipbsd.utils.ipbsd_utils import success_msg, error_msg
 
 
 def check_eal(eal, eal_limit):

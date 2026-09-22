@@ -3,7 +3,7 @@ identifies design limits for the verification of expected annual loss (EAL)
 """
 import numpy as np
 
-from tools.slf import SLF
+from ipbsd.tools.slf import SLF
 
 
 class DesignLimits:

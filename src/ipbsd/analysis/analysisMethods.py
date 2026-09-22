@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from analysis.openseesrun import OpenSeesRun
+from ipbsd.analysis.openseesrun import OpenSeesRun
 
 
 def run_simple_analysis(direction, solution, yield_sa, sls, data):

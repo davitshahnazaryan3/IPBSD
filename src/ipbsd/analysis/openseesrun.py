@@ -1489,7 +1489,7 @@ class OpenSeesRun:
 if __name__ == "__main__":
 
     from pathlib import Path
-    from src.input import Input
+    from ipbsd.core.input import Input
     import pandas as pd
     import pickle
     import sys

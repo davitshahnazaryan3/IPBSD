@@ -1,8 +1,8 @@
 """
 Optimizes for the fundamental period by seeking cross-sections of all structural elements
 """
-from analysis.modalAnalysis import ModalAnalysis
-from utils.performance_obj_verifications import check_period
+from ipbsd.analysis.modalAnalysis import ModalAnalysis
+from ipbsd.utils.performance_obj_verifications import check_period
 
 import numpy as np
 import constraint

@@ -5,7 +5,7 @@ import pickle
 import numpy as np
 import os
 
-from tools.hazardFit import HazardFit
+from ipbsd.tools.hazardFit import HazardFit
 
 
 class Hazard:

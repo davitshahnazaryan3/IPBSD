@@ -1,16 +1,16 @@
 from scipy.optimize import fsolve
 import pandas as pd
 
-from analysis.detailing import Detailing
-from src.MAFC import MAFC
-from src.crossSectionSpace import CrossSectionSpace
-from tools.spo2ida import SPO2IDA
-from analysis.action import Action
-from analysis.openseesrun import OpenSeesRun
-from analysis.analysisMethods import run_opensees_analysis
-from utils.ipbsd_utils import compare_areas
-from utils.seek_design_utils import *
-from utils.spo2ida_utils import read_spo_data
+from ipbsd.analysis.detailing import Detailing
+from ipbsd.core.MAFC import MAFC
+from ipbsd.core.crossSectionSpace import CrossSectionSpace
+from ipbsd.tools.spo2ida import SPO2IDA
+from ipbsd.analysis.action import Action
+from ipbsd.analysis.openseesrun import OpenSeesRun
+from ipbsd.analysis.analysisMethods import run_opensees_analysis
+from ipbsd.utils.ipbsd_utils import compare_areas
+from ipbsd.utils.seek_design_utils import *
+from ipbsd.utils.spo2ida_utils import read_spo_data
 
 
 class SeekDesign:
