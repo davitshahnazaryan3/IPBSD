@@ -521,7 +521,8 @@ class Detailing:
         # Design of beams
         for st in range(self.nst):
             if self.nbays > 2:
-                for bay in range(int(round(self.nbays / 2, 0))):
+                # ceil, not round: round(2.5) == 2 would skip the middle bay of a 5-bay frame
+                for bay in range(int(np.ceil(self.nbays / 2))):
                     # Design bending moment
                     # Note: Negative = bottom, positive = top
                     m_target_pos = mbiPos[st][bay]
