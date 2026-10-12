@@ -34,8 +34,9 @@ class HazardFit:
         with open(self.filename, 'rb') as file:
             [im, s, apoe] = pickle.load(file)
             im = np.array(im)
-            s = np.array(s)
-            apoe = np.array(apoe)
+            # Kept per IM: curves may have different Sa grids
+            s = [np.asarray(x, dtype=float) for x in s]
+            apoe = [np.asarray(x, dtype=float) for x in apoe]
         data = {'im': im, 's': s, 'apoe': apoe}
         return data
 
